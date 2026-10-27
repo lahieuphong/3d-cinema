@@ -25,6 +25,8 @@ export function keyBelongsToFocus(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
   if (!target || !(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
+  // Panels that keep the keyboard for their own controls (the film player).
+  if (target.closest('[data-keys="own"]')) return true;
   // Composite widgets that move focus with arrow keys themselves (the seat map is a grid).
   if (target.closest('[role="grid"], [role="listbox"], [role="tablist"], [role="radiogroup"], [role="menu"]')) return true;
   if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;

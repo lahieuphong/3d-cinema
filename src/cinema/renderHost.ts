@@ -1,4 +1,5 @@
-import { type Material, type Texture, UniformsLib, WebGLRenderer } from 'three';
+import { type Material, WebGLRenderer } from 'three';
+import { SharedTextureListeners } from './sharedTextureListeners.ts';
 
 export type ViewStatus = { kind: 'ready' } | { kind: 'context-lost' } | { kind: 'error'; message: string };
 
@@ -29,26 +30,6 @@ export interface RenderHostOptions {
   textureProbe?(): Material | undefined;
 }
 
-/** EventDispatcher's listener lists (a three.js internal field, not in its type definitions). */
-type Listeners = { _listeners?: Record<string, Array<(event: unknown) => void> | undefined> };
-
-/**
- * Textures three.js (r186) keeps for the whole page and shares between renderers and contexts: the
- * area lights' LTC tables and the DFG lookup table used by physically based materials.
- *
- * Each WebGL context that uploads one adds a `dispose` listener to it from that context's texture
- * manager, and nothing ever removes it. After a context loss and restore, or once a renderer is
- * disposed, the old listener keeps the old context's whole bookkeeping alive (programs, uniforms,
- * state: measured about 0.37 MiB per restore). The listeners can only delete GPU handles that died
- * with their context, so dropping them is safe; this app has one renderer at a time.
- */
-function dropDisposeListeners(textures: Iterable<Texture>, only?: ReadonlyMap<Texture, ReadonlyArray<(event: unknown) => void>>): void {
-  for (const texture of textures) {
-    const listeners = only ? only.get(texture) : (texture as unknown as Listeners)._listeners?.dispose;
-    for (const listener of [...(listeners ?? [])]) texture.removeEventListener('dispose', listener);
-  }
-}
-
 /**
  * Owns one WebGL renderer and its canvas inside `container`: size and pixel ratio, an on-demand
  * frame loop, context loss reporting and teardown. A frame is scheduled only by `requestRender()`,
@@ -67,10 +48,8 @@ export class RenderHost {
   private contextLost = false;
   /** Time of the previous frame while the loop keeps running; null once it has gone idle. */
   private lastFrameTime: number | null = null;
-  /** Page-wide three.js textures (see dropDisposeListeners); the DFG table joins once found. */
-  private readonly pageTextures = new Set<Texture>();
-  /** Their dispose listeners from the context that was just lost. */
-  private staleListeners: Map<Texture, ReadonlyArray<(event: unknown) => void>> | null = null;
+  /** Workaround for three.js r186 listeners on page-wide textures (see that module). */
+  private readonly sharedTextures: SharedTextureListeners;
   /** Frames drawn by the on-demand loop; stays put while nothing moves. */
   private framesRendered = 0;
 
@@ -87,6 +66,8 @@ export class RenderHost {
       throw new WebGLUnavailableError('Không tạo được ngữ cảnh WebGL. Tăng tốc phần cứng có thể đang bị tắt.', { cause });
     }
     this.renderer.setClearColor(options.background);
+    this.sharedTextures = new SharedTextureListeners(this.renderer, options.textureProbe);
+    this.sharedTextures.attach();
 
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'cinema-canvas';
@@ -100,16 +81,23 @@ export class RenderHost {
   /** Starts tracking the container size and draws the first frame. Call once the scene is built. */
   start(): void {
     if (this.disposed || this.resizeObserver) return;
-    this.resizeObserver = new ResizeObserver(this.resize);
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.resize()) this.drawNow();
+    });
     this.resizeObserver.observe(this.container);
     this.resize();
     this.requestRender();
   }
 
-  /** Caps the device pixel ratio (quality setting) and resizes the drawing buffer to match. */
+  /**
+   * Caps the device pixel ratio (quality setting) and resizes the drawing buffer to match. Called
+   * from an input task, so the scheduled frame still draws before the browser paints; drawing here
+   * at once would also catch the caller halfway (e.g. shadow map reallocated, not yet redrawn).
+   */
   setMaxPixelRatio(value: number): void {
     this.maxPixelRatio = value;
     this.resize();
+    this.requestRender();
   }
 
   readonly requestRender = (): void => {
@@ -127,7 +115,7 @@ export class RenderHost {
       memory: { geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs?.length ?? 0 },
       framesRendered: this.framesRendered,
       /** Dispose listeners on each page-wide three.js texture: 1 (this context's) when nothing leaks. */
-      pageTextureListeners: [...this.pageTextures].map((texture) => (texture as unknown as Listeners)._listeners?.dispose?.length ?? 0),
+      pageTextureListeners: this.sharedTextures.counts(),
     };
   }
 
@@ -140,12 +128,12 @@ export class RenderHost {
     this.resizeObserver?.disconnect();
     this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
+    // This renderer's listener leaves the page-wide textures while its context is still alive.
+    this.sharedTextures.dispose();
     this.renderer.dispose();
     // Release the GL context now instead of waiting for GC, so remounts never pile up contexts.
     this.renderer.forceContextLoss();
     this.canvas.remove();
-    // Every listener on the page-wide textures now belongs to a dead renderer.
-    dropDisposeListeners(this.pageTextures);
   }
 
   private readonly renderFrame = (time: number): void => {
@@ -154,7 +142,7 @@ export class RenderHost {
     const maxDelta = (this.options.maxDeltaSeconds ?? 0.1) * 1000;
     const dt = this.lastFrameTime === null ? 0 : Math.min(maxDelta, Math.max(0, time - this.lastFrameTime)) / 1000;
     const needsAnotherFrame = this.options.onFrame(time, dt);
-    this.findPageTextures();
+    this.sharedTextures.collect();
     if (!this.renderedOnce) {
       this.renderedOnce = true;
       this.options.onStatus({ kind: 'ready' });
@@ -163,25 +151,33 @@ export class RenderHost {
     if (needsAnotherFrame) this.requestRender();
   };
 
-  private readonly resize = (): void => {
+  /** Applies the container's size; false while it has none (hidden). */
+  private resize(): boolean {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
-    if (width === 0 || height === 0) return;
+    if (width === 0 || height === 0) return false;
     // Re-read the device pixel ratio: it changes with browser zoom and when moving between screens.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.maxPixelRatio));
     this.renderer.setSize(width, height, false);
     this.options.onResize(width, height);
-    this.requestRender();
-  };
+    return true;
+  }
 
-  /** Collects the page-wide textures; the DFG table is only reachable once a material using it is drawn. */
-  private findPageTextures(): void {
-    if (this.pageTextures.size >= 5) return;
-    const lib = UniformsLib as unknown as Record<string, Texture | undefined>;
-    for (const key of ['LTC_FLOAT_1', 'LTC_FLOAT_2', 'LTC_HALF_1', 'LTC_HALF_2']) if (lib[key]?.isTexture) this.pageTextures.add(lib[key]);
-    const probe = this.options.textureProbe?.();
-    const lut = probe ? (this.renderer.properties.get(probe) as { uniforms?: { dfgLUT?: { value?: Texture } } }).uniforms?.dfgLUT?.value : undefined;
-    if (lut?.isTexture) this.pageTextures.add(lut);
+  /**
+   * Sizing the canvas clears it. When the container resizes (seat panel opened, window resized or
+   * rotated) the frame is therefore drawn at once instead of on the next animation frame:
+   * ResizeObserver callbacks run after this frame's animation callbacks, after layout and before
+   * paint, so a frame requested from there would leave the cleared canvas on screen for one frame.
+   * Before the first frame, or without a context, it only schedules one.
+   */
+  private drawNow(): void {
+    if (this.disposed || this.contextLost || !this.renderedOnce) {
+      this.requestRender();
+      return;
+    }
+    if (this.frameId !== null) cancelAnimationFrame(this.frameId);
+    this.frameId = null;
+    this.renderFrame(performance.now());
   }
 
   private readonly handleContextLost = (): void => {
@@ -189,18 +185,15 @@ export class RenderHost {
     this.frameId = null;
     this.lastFrameTime = null;
     this.contextLost = true;
-    // These listeners belong to the context that is going away; dropped once the new one is up.
-    this.staleListeners = new Map(
-      [...this.pageTextures].map((texture) => [texture, [...((texture as unknown as Listeners)._listeners?.dispose ?? [])]]),
-    );
+    // The listener of the context that is going away; the restored context brings its own.
+    this.sharedTextures.release();
     this.options.onContextLost?.();
     this.options.onStatus({ kind: 'context-lost' });
   };
 
   private readonly handleContextRestored = (): void => {
     this.contextLost = false;
-    if (this.staleListeners) dropDisposeListeners(this.staleListeners.keys(), this.staleListeners);
-    this.staleListeners = null;
+    this.sharedTextures.attach();
     this.options.onContextRestored?.();
     this.options.onStatus({ kind: 'ready' });
     this.requestRender();

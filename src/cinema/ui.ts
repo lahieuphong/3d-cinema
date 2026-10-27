@@ -43,6 +43,8 @@ export interface CinemaUi {
   viewport: HTMLElement;
   /** The row holding the viewport; the seat panel goes in here next to (or under) it. */
   main: HTMLElement;
+  /** The column of the 3D view; the film player goes in here, under the view. */
+  screen: HTMLElement;
   /** Root of the page, for page-wide live regions. */
   root: HTMLElement;
   /** The toolbar button that opens the seat panel (focus returns here when it closes). */
@@ -61,6 +63,8 @@ export interface CinemaUi {
   setCaption(text: string): void;
   setStatus(status: UiStatus): void;
   setTransitioning(active: boolean): void;
+  /** Without 3D: shows the film's own element in the viewport area, labelled as the 2D mode. */
+  showVideo2d(video: HTMLVideoElement, label: string): void;
   dispose(): void;
 }
 
@@ -211,8 +215,10 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   const status = el('div', 'cinema-status');
   status.setAttribute('role', 'status');
   stage.append(viewport, caption, tourBar, returnButton, notice, status);
+  const screen = el('div', 'cinema-screen');
+  screen.append(stage);
   const main = el('div', 'cinema-main');
-  main.append(stage);
+  main.append(screen);
 
   root.append(header, toolbar, inspectPanel, main);
   host.replaceChildren(root);
@@ -236,6 +242,7 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   const ui: CinemaUi = {
     viewport,
     main,
+    screen,
     root,
     seatPanelButton,
     setSeatPanelOpen(open) {
@@ -302,6 +309,14 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     },
     setTransitioning(active) {
       root.dataset.transitioning = String(active);
+    },
+    showVideo2d(video, label) {
+      const box = el('div', 'cinema-video2d');
+      video.className = 'cinema-video2d__video';
+      video.setAttribute('aria-label', label);
+      box.append(el('p', 'cinema-video2d__label', label), video);
+      stage.classList.add('cinema-stage--video2d');
+      stage.append(box);
     },
     dispose() {
       clearTimeout(noticeTimer);

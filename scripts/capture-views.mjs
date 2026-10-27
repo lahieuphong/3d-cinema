@@ -8,8 +8,11 @@
 // resize/orientation, visibility switches with their lights and shadows, both quality levels,
 // context loss (also while moving), hot re-mount, the seat inspector (also opened from the page),
 // seat selection (3D picking with mouse and real touch, the 2D map with keyboard, highlights,
-// limits, seat views, occlusion, lifecycle across context restores) and a simulated WebGL failure,
-// then writes screenshots, videos and report.json to artifacts/<CAPTURE_DIR or prompt-06>/.
+// limits, seat views, occlusion, lifecycle across context restores), the film on the screen (real
+// playback, controls, colour and aspect with generated clips, errors, refused play, slow network,
+// hidden tab, inspector, quality, context loss, phones, 2D fallback, lifecycle, render rate) and a
+// simulated WebGL failure, then writes screenshots, videos and report.json to
+// artifacts/<CAPTURE_DIR or prompt-07>/.
 // When <output folder>/baseline/ exists (a run of the previous code with CAPTURE_DIR=prompt-NN/baseline),
 // its renderer figures are copied into the report and its screenshots are paired with the new ones
 // from the same cameras in compare-*.png.
@@ -27,7 +30,7 @@ import { chromium } from 'playwright-core';
 import { createServer, normalizePath } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-06');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-07');
 
 const BROWSER_CANDIDATES = [
   process.env.BROWSER_PATH,
@@ -359,6 +362,9 @@ async function main() {
     await contextLoss(browser, base);
     await lifecycleChecks(browser, base);
     await webglFailure(browser, base);
+    await filmDesktop(browser, base);
+    await filmFixtures(browser, base);
+    await filmMobile(browser, base);
     await videos(browser, base);
     await comparisons(browser);
   } finally {
@@ -1888,7 +1894,7 @@ async function lifecycleChecks(browser, base) {
     await cdp.send('HeapProfiler.collectGarbage');
     await cdp.send('HeapProfiler.collectGarbage');
     const objects = {};
-    for (const type of ['BufferGeometry', 'Material', 'Texture', 'Object3D', 'WebGLRenderTarget']) {
+    for (const type of ['BufferGeometry', 'Material', 'Texture', 'Object3D', 'WebGLRenderTarget', 'MediaController', 'HTMLVideoElement']) {
       const { result: proto } = await cdp.send('Runtime.evaluate', { expression: `window.__cinema.types.${type}.prototype` });
       const { objects: list } = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.objectId });
       const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: list.objectId, functionDeclaration: 'function () { return this.length; }', returnByValue: true });
@@ -2261,6 +2267,29 @@ async function webglFailure(browser, base) {
     hint,
   });
   await screenshot(page, 'webgl-unavailable');
+
+  // The film without 3D: the same element and controls, shown flat and labelled as 2D.
+  const flat = await page.evaluate(() => {
+    const video = document.querySelector('.cinema-video2d video');
+    return {
+      videos: document.querySelectorAll('video').length,
+      label: document.querySelector('.cinema-video2d__label')?.textContent ?? '',
+      visible: Boolean(video && video.getBoundingClientRect().height > 100),
+      controls: video?.controls ?? null,
+    };
+  });
+  await page.click('button[data-seat="F04"]');
+  await page.click('button[data-action="seat-panel"]');
+  await page.click('button[data-action="media-primary"]');
+  await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'playing', null, { timeout: 10_000 });
+  await page.waitForTimeout(1500);
+  const playing = await page.evaluate(() => window.__cinema.film());
+  check('WebGL unavailable: the film plays in 2D (one element, labelled 2D mode, same controls), seat map still works', flat.videos === 1 && flat.visible && /chế độ 2D/.test(flat.label) && playing.snapshot.currentTime > 1 && playing.playback.decoded > 20 && playing.inDocument, {
+    flat,
+    currentTime: playing.snapshot.currentTime,
+  });
+  await screenshot(page, 'film-14-2d-fallback');
+  await page.click('button[data-action="media-primary"]');
   await context.close();
 }
 
@@ -2279,7 +2308,7 @@ async function comparisons(browser) {
     'mobile-4-seat-eye',
   ]) {
     const before = path.join(baselineDir, `${file}.png`);
-    if (existsSync(before)) pairs.push([`compare-p05-p06-${file}`, [['Prompt 05 (baseline)', before], ['Prompt 06', path.join(outDir, `${file}.png`)]]]);
+    if (existsSync(before)) pairs.push([`compare-p06-p07-${file}`, [['Prompt 06 (baseline)', before], ['Prompt 07', path.join(outDir, `${file}.png`)]]]);
   }
   for (const name of ['overview', 'seat-eye', 'seat-leather', 'graphite-grazing']) {
     pairs.push([
@@ -2304,6 +2333,881 @@ async function comparisons(browser) {
     await screenshot(page, name, { fullPage: true });
   }
   await context.close();
+}
+
+// ---------------------------------------------------------------- Prompt 07: the film on the screen
+
+const film = (page) => page.evaluate(() => window.__cinema.film());
+const PLAYER = '.cinema-player';
+const PRIMARY = 'button[data-action="media-primary"]';
+
+async function waitForFilm(page, states, timeout = 15_000) {
+  await page.waitForFunction((list) => list.includes(window.__cinema?.film().snapshot.state), states, { timeout });
+  return film(page);
+}
+
+/** Renders and presented video frames per second over `ms`, with decoded/dropped frames. */
+async function filmRates(page, ms = 2000) {
+  const sample = () =>
+    page.evaluate(() => {
+      const view = window.__cinema.getState().view;
+      const f = window.__cinema.film();
+      return { renders: view.framesRendered, clock: view.film.clock.frames, playback: f.playback, time: f.snapshot.currentTime, at: performance.now() };
+    });
+  const a = await sample();
+  await page.waitForTimeout(ms);
+  const b = await sample();
+  const seconds = (b.at - a.at) / 1000;
+  const rate = (x) => Number((x / seconds).toFixed(1));
+  return {
+    seconds: Number(seconds.toFixed(2)),
+    rendersPerSecond: rate(b.renders - a.renders),
+    videoFramesPerSecond: rate(b.clock - a.clock),
+    decoded: b.playback.decoded - a.playback.decoded,
+    dropped: b.playback.dropped - a.playback.dropped,
+    mediaSeconds: Number((b.time - a.time).toFixed(2)),
+  };
+}
+
+/** Renders and browser animation frames in the same second (renders may never exceed frames). */
+const rendersPerBrowserFrame = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let ticks = 0;
+        const start = performance.now();
+        const first = window.__cinema.getState().view.framesRendered;
+        const loop = (t) => {
+          ticks++;
+          if (t - start < 1000) requestAnimationFrame(loop);
+          else resolve({ ticks, renders: window.__cinema.getState().view.framesRendered - first });
+        };
+        requestAnimationFrame(loop);
+      }),
+  );
+
+/** A camera square on to the screen, the whole picture in view. */
+const faceScreen = (page) =>
+  page.evaluate(() => {
+    const { center } = window.__cinema.layout.screen;
+    window.__cinema.setCamera({ x: center.x, y: center.y, z: center.z + 7.6 }, { x: center.x, y: center.y, z: center.z }, 'eye');
+  });
+
+/** Exact colours of the fixture pattern (scripts/make-media-fixtures.mjs) at picture points (u, v from the lower left). */
+const PATTERN_POINTS = [
+  ...[
+    [255, 255, 255],
+    [255, 255, 0],
+    [0, 255, 255],
+    [0, 255, 0],
+    [255, 0, 255],
+    [255, 0, 0],
+    [0, 0, 255],
+  ].map((rgb, i) => ({ name: `bar ${i + 1}`, uv: [(i + 0.5) / 7, 0.66], rgb })),
+  ...[0, 64, 128, 192].map((v, i) => ({ name: `grey ${v}`, uv: [(i + 0.5) / 4, 0.31], rgb: [v, v, v] })),
+  { name: 'top-left marker (orange)', uv: [0.03, 0.96], rgb: [255, 128, 0] },
+];
+
+async function playFilm(page) {
+  await page.click(PRIMARY);
+  return waitForFilm(page, ['playing']);
+}
+
+async function pauseFilm(page) {
+  await page.click(PRIMARY);
+  return waitForFilm(page, ['paused']);
+}
+
+/** The player sits outside the 3D view and the seat panel and covers neither. */
+async function playerLayout(page) {
+  return page.evaluate(() => {
+    const rect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element || element.hidden || element.getClientRects().length === 0) return null;
+      const r = element.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom };
+    };
+    const overlap = (a, b) => Boolean(a && b && a.x < b.right - 0.5 && b.x < a.right - 0.5 && a.y < b.bottom - 0.5 && b.y < a.bottom - 0.5);
+    const player = rect('.cinema-player');
+    const stage = rect('.cinema-stage');
+    const panel = rect('#cinema-seat-panel');
+    const stick = rect('.cinema-stick');
+    const back = rect('button[data-action="return"]');
+    return {
+      player,
+      overlaps: { stage: overlap(player, stage), panel: overlap(player, panel), stick: overlap(player, stick), returnButton: overlap(player, back) },
+      insideWindow: player ? player.x >= 0 && player.y >= 0 && player.right <= innerWidth + 0.5 && player.bottom <= innerHeight + 0.5 : false,
+      playerShare: player ? Number(((player.width * player.height) / (innerWidth * innerHeight)).toFixed(3)) : null,
+      stageShare: stage ? Number(((stage.width * stage.height) / (innerWidth * innerHeight)).toFixed(3)) : null,
+      overflowX: document.documentElement.scrollWidth - innerWidth,
+    };
+  });
+}
+
+/**
+ * The first frames the browser presents after `action`, as JPEG data (CDP screencast), each with
+ * how varied the middle of the 3D view is: a cleared canvas is one flat colour (deviation ~0).
+ */
+async function framesAfter(page, action, count = 4) {
+  const cdp = await page.context().newCDPSession(page);
+  const frames = [];
+  cdp.on('Page.screencastFrame', ({ data, sessionId }) => {
+    frames.push(data);
+    cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+  });
+  await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 85, maxWidth: 1440, maxHeight: 1440 });
+  await page.waitForTimeout(300);
+  const skip = frames.length;
+  await action();
+  await page.waitForTimeout(700);
+  await cdp.send('Page.stopScreencast');
+  await cdp.detach();
+  return page.evaluate(async (list) => {
+    const stage = document.querySelector('.cinema-stage').getBoundingClientRect();
+    const results = [];
+    for (const data of list) {
+      const image = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${data}`)).blob());
+      const scale = image.width / innerWidth;
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      const x = Math.round((stage.x + stage.width * 0.3) * scale);
+      const y = Math.round((stage.y + stage.height * 0.12) * scale);
+      const w = Math.round(stage.width * 0.4 * scale);
+      const h = Math.round(stage.height * 0.4 * scale);
+      const pixels = context.getImageData(x, y, w, h).data;
+      let sum = 0;
+      let sq = 0;
+      const n = pixels.length / 4;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const l = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+        sum += l;
+        sq += l * l;
+      }
+      const mean = sum / n;
+      results.push({ mean: Math.round(mean), deviation: Number(Math.sqrt(Math.max(0, sq / n - mean * mean)).toFixed(1)) });
+    }
+    return results;
+  }, frames.slice(skip, skip + count));
+}
+
+/** Live objects (after GC) and listeners, through the DevTools protocol. */
+async function liveCounts(cdp, types) {
+  await cdp.send('HeapProfiler.collectGarbage');
+  await cdp.send('HeapProfiler.collectGarbage');
+  const objects = {};
+  for (const type of types) {
+    const { result: proto } = await cdp.send('Runtime.evaluate', { expression: `(window.__cinema?.types ?? window.__filmTypes).${type}.prototype` });
+    const { objects: list } = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.objectId });
+    const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: list.objectId, functionDeclaration: 'function () { return this.length; }', returnByValue: true });
+    objects[type] = result.value;
+    await cdp.send('Runtime.releaseObject', { objectId: list.objectId });
+    await cdp.send('Runtime.releaseObject', { objectId: proto.objectId });
+  }
+  const listeners = {};
+  for (const [name, expression] of [['window', 'window'], ['document', 'document']]) {
+    const { result } = await cdp.send('Runtime.evaluate', { expression });
+    listeners[name] = (await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId })).listeners.length;
+    await cdp.send('Runtime.releaseObject', { objectId: result.objectId });
+  }
+  const heap = await cdp.send('Runtime.getHeapUsage');
+  return { objects, listeners, heapMiB: Number((heap.usedSize / 2 ** 20).toFixed(2)) };
+}
+
+// Desktop: waiting screen, no autoplay, play/pause, render rate, seek (paused, playing, while
+// dragging), sound, ended/replay, seats and seat view while playing, quality switch, hidden tab,
+// keyboard and pointer isolation, context loss, the inspector round trip and the metrics.
+async function filmDesktop(browser, base) {
+  report.film = { media: {}, metrics: {} };
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  attachConsole(page, 'film-desktop');
+  await page.goto(`${base}cinema`);
+  await waitForStatus(page);
+  await closeSeatPanel(page);
+  await selectPreset(page, 'overview');
+
+  // Waiting screen: poster, nothing playing, nothing rendering.
+  await page.waitForFunction(() => window.__cinema.film().view?.screen?.content === 'poster', null, { timeout: 10_000 });
+  await page.waitForTimeout(1500);
+  let f = await film(page);
+  const idle = await filmRates(page, 1500);
+  check('film: no autoplay (paused at 0 s, "Phát" offered, 1.5 s after load)', f.paused && f.snapshot.currentTime === 0 && !f.snapshot.started && ['ready', 'loading'].includes(f.snapshot.state) && (await page.getAttribute(PRIMARY, 'aria-label')) === 'Phát', {
+    state: f.snapshot.state,
+    paused: f.paused,
+    currentTime: f.snapshot.currentTime,
+  });
+  check('film: preload is metadata-only, plays inline, no loop, one element not in the page', await page.evaluate(() => {
+    const v = window.__cinema.filmElement();
+    return v.preload === 'metadata' && v.playsInline && !v.loop && !v.autoplay && !v.isConnected && document.querySelectorAll('video').length === 0;
+  }));
+  check('film: waiting screen is the poster; nothing renders while idle', f.view.screen.content === 'poster' && idle.rendersPerSecond === 0, { screen: f.view.screen, idle });
+  report.film.media = {
+    src: '/media/big-buck-bunny-trailer-720p.mp4',
+    width: f.snapshot.videoWidth,
+    height: f.snapshot.videoHeight,
+    duration: f.snapshot.duration,
+  };
+  const layout = await playerLayout(page);
+  check('film: player sits under the 3D view (no overlap with view or seat panel), inside the window', !layout.overlaps.stage && !layout.overlaps.panel && layout.insideWindow && layout.overflowX <= 0, layout);
+  const a11y = await page.evaluate(() => {
+    const q = (s) => document.querySelector(s);
+    return {
+      region: q('.cinema-player').getAttribute('aria-label'),
+      primary: q('button[data-action="media-primary"]').getAttribute('aria-label'),
+      seek: q('input[data-action="media-seek"]').getAttribute('aria-label'),
+      mute: [q('button[data-action="media-mute"]').getAttribute('aria-label'), q('button[data-action="media-mute"]').getAttribute('aria-pressed')],
+      volume: q('input[data-action="media-volume"]').getAttribute('aria-label'),
+      credit: q('.cinema-player__credit').textContent,
+      live: q('.cinema-player [aria-live]') !== null,
+    };
+  });
+  check('film: controls have names and states; the attribution and licence are shown', a11y.primary === 'Phát' && a11y.seek && a11y.mute[1] === 'false' && a11y.volume && /Blender Foundation/.test(a11y.credit) && /CC BY 3\.0/.test(a11y.credit) && a11y.live, a11y);
+  await screenshot(page, 'film-1-waiting-overview');
+  const staticScene = await state(page);
+  report.film.metrics.staticNotPlaying = { renders: idle.rendersPerSecond, ...staticScene.view.render, ...staticScene.view.memory };
+
+  // Play: only the element's own events count. Real frames, real time, picture changes.
+  await page.click(PRIMARY);
+  f = await waitForFilm(page, ['playing']);
+  const startPixels = await page.evaluate(() => window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]));
+  const rates = await filmRates(page, 2500);
+  const endPixels = await page.evaluate(() => window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]));
+  f = await film(page);
+  const changed = startPixels.some((p, i) => p.screen.some((c, k) => Math.abs(c - endPixels[i].screen[k]) > 24));
+  check('film: playing — media time advances, frames are decoded and presented, the screen picture changes', rates.mediaSeconds > 2 && rates.decoded > 30 && rates.videoFramesPerSecond > 15 && changed && f.view.screen.content === 'video', {
+    rates,
+    textureVersion: f.view.screen.textureVersion,
+    changed,
+  });
+  check('film: UI shows "Tạm dừng" while playing', (await page.getAttribute(PRIMARY, 'aria-label')) === 'Tạm dừng' && (await page.getAttribute(PLAYER, 'data-state')) === 'playing');
+  check('film: still camera renders at the film’s frame rate, not the display’s (≤ 1.25 × video fps, < 40/s)', rates.rendersPerSecond <= rates.videoFramesPerSecond * 1.25 + 1 && rates.rendersPerSecond < 40, rates);
+  check('film: sound — an audio track is decoded, not muted, volume 1 (not verified by ear)', f.snapshot.hasAudio === true && f.audioDecodedBytes > 0 && !f.snapshot.muted && f.snapshot.volume === 1, {
+    hasAudio: f.snapshot.hasAudio,
+    audioDecodedBytes: f.audioDecodedBytes,
+  });
+  const playingStill = await state(page);
+  report.film.metrics.playingStillCamera = { ...rates, ...playingStill.view.render, ...playingStill.view.memory };
+  await screenshot(page, 'film-2-playing-overview');
+
+  // Mute and volume, read back from the element (its volumechange events arrive a moment later).
+  const muteButton = 'button[data-action="media-mute"]';
+  await page.click(muteButton);
+  await page.waitForFunction((b) => window.__cinema.filmElement().muted && document.querySelector(b).getAttribute('aria-pressed') === 'true', muteButton);
+  const mutedAria = await page.getAttribute(muteButton, 'aria-pressed');
+  await page.click(muteButton);
+  await page.waitForFunction((b) => !window.__cinema.filmElement().muted && document.querySelector(b).getAttribute('aria-pressed') === 'false', muteButton);
+  await page.focus('input[data-action="media-volume"]');
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
+  await page.waitForFunction(() => document.querySelector('input[data-action="media-volume"]').getAttribute('aria-valuetext') === '80 %', null, { timeout: 3000 }).catch(() => {});
+  const sound = await page.evaluate(() => ({ volume: window.__cinema.filmElement().volume, muted: window.__cinema.filmElement().muted, text: document.querySelector('input[data-action="media-volume"]').getAttribute('aria-valuetext') }));
+  check('film: mute toggles the element (aria-pressed follows); the volume slider sets the element’s volume', mutedAria === 'true' && Math.abs(sound.volume - 0.8) < 0.01 && !sound.muted, { mutedAria, ...sound });
+
+  // Dragging the seek bar: playback time does not pull the thumb back; release seeks.
+  const seekBox = await page.locator('input[data-action="media-seek"]').boundingBox();
+  const target = 0.3;
+  await page.mouse.move(seekBox.x + seekBox.width * target, seekBox.y + seekBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(900);
+  const thumbWhileHeld = await page.evaluate(() => Number(document.querySelector('input[data-action="media-seek"]').value));
+  const timeWhileHeld = (await film(page)).snapshot.currentTime;
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  f = await film(page);
+  const duration = f.snapshot.duration;
+  check('film: while the seek bar is held, media time does not move the thumb; releasing seeks there (playing)', Math.abs(thumbWhileHeld - duration * target) < 1.2 && Math.abs(f.snapshot.currentTime - duration * target) < 1.5 && f.snapshot.state === 'playing', {
+    thumbWhileHeld,
+    timeWhileHeld,
+    after: f.snapshot.currentTime,
+  });
+  // Arrow keys on the focused seek bar jump 5 s while playing.
+  const beforeKey = (await film(page)).snapshot.currentTime;
+  await page.focus('input[data-action="media-seek"]');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(150);
+  const afterKey = (await film(page)).snapshot.currentTime;
+  check('film: → on the seek bar jumps about 5 s while playing', afterKey - beforeKey > 4 && afterKey - beforeKey < 6.5, { beforeKey, afterKey });
+
+  // Pause: the last frame is drawn, then nothing renders.
+  await page.click(PRIMARY);
+  f = await waitForFilm(page, ['paused']);
+  await page.waitForTimeout(300);
+  const pausedRates = await filmRates(page, 1200);
+  check('film: pause — "Tiếp tục" offered, media time stops, no more renders', (await page.getAttribute(PRIMARY, 'aria-label')) === 'Tiếp tục' && pausedRates.rendersPerSecond === 0 && pausedRates.mediaSeconds === 0 && f.view.clock.pending === 0, {
+    pausedRates,
+    clock: f.view.clock,
+  });
+  report.film.metrics.pausedStill = { renders: pausedRates.rendersPerSecond };
+
+  // Seek while paused: the new frame appears, then rendering stops again.
+  const beforeSeek = await page.evaluate(() => ({ pixels: window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]), version: window.__cinema.film().view.screen.textureVersion, rendered: window.__cinema.getState().view.framesRendered }));
+  await page.focus('input[data-action="media-seek"]');
+  await page.keyboard.press('Home');
+  await page.waitForFunction(() => window.__cinema.film().snapshot.currentTime < 0.5);
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => Math.abs(window.__cinema.film().snapshot.currentTime - 15) < 0.6);
+  await page.waitForTimeout(400);
+  const afterSeek = await page.evaluate(() => ({ pixels: window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]), version: window.__cinema.film().view.screen.textureVersion, rendered: window.__cinema.getState().view.framesRendered }));
+  const seekIdle = await filmRates(page, 1000);
+  f = await film(page);
+  const seekChanged = beforeSeek.pixels.some((p, i) => p.screen.some((c, k) => Math.abs(c - afterSeek.pixels[i].screen[k]) > 24));
+  check('film: seek while paused shows the new frame (texture re-uploaded, picture changed), then rendering stops', f.snapshot.state === 'paused' && afterSeek.version > beforeSeek.version && afterSeek.rendered > beforeSeek.rendered && seekChanged && seekIdle.rendersPerSecond === 0, {
+    time: f.snapshot.currentTime,
+    versions: [beforeSeek.version, afterSeek.version],
+    seekIdle,
+  });
+  await screenshot(page, 'film-3-paused-after-seek');
+
+  // Pointer and keys on the player stay there: no seat, no camera turn, no walking, no page-wide Space.
+  const camera0 = (await state(page)).view.camera;
+  const seats0 = (await seatsState(page)).selected;
+  await page.click('.cinema-player__title');
+  const box = await page.locator('input[data-action="media-seek"]').boundingBox();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.2, box.y - 120, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const camera1 = (await state(page)).view.camera;
+  const seats1 = await seatsState(page);
+  check('film: clicks and drags on the player never pick a seat or turn the camera', JSON.stringify(camera0.position) === JSON.stringify(camera1.position) && JSON.stringify(camera0.target) === JSON.stringify(camera1.target) && JSON.stringify(seats0) === JSON.stringify(seats1.selected) && seats1.hovered === null, {
+    selected: seats1.selected,
+  });
+  await page.click(PRIMARY); // play again (from where the drag left it)
+  await waitForFilm(page, ['playing']);
+  await page.click('button[data-action="explore"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+  const walker0 = (await state(page)).view.explore.walker;
+  await page.focus(PRIMARY);
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(600);
+  await page.keyboard.up('ArrowUp');
+  await page.focus('input[data-action="media-seek"]');
+  await page.keyboard.down('ArrowLeft');
+  await page.waitForTimeout(300);
+  await page.keyboard.up('ArrowLeft');
+  const walker1 = (await state(page)).view.explore.walker;
+  check('film: arrow keys on the player’s controls do not walk', Math.hypot(walker1.x - walker0.x, walker1.z - walker0.z) < 1e-6, { walker0, walker1 });
+  await page.evaluate(() => document.activeElement?.blur());
+  const spaceBefore = (await film(page)).snapshot.state;
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
+  check('film: Space with nothing focused does not play or pause (no page-wide shortcut)', (await film(page)).snapshot.state === spaceBefore, spaceBefore);
+  await page.click('button[data-action="explore"]');
+
+  // Seats and the seat view while playing: the same element keeps playing.
+  await page.evaluate(() => (window.__filmElement = window.__cinema.filmElement()));
+  await selectPreset(page, 'overview');
+  const picked = await clickFirstVisible(page, ['G06', 'F05', 'E04', 'H07', 'D05']);
+  const afterPick = await film(page);
+  check('film: picking a seat in 3D while playing selects it; playback goes on', picked && (await seatsState(page)).selected.includes(picked) && afterPick.snapshot.state === 'playing', { picked });
+  await openSeatPanel(page);
+  await page.click('button[data-seat="F06"]');
+  await page.click('button[data-action="view-from-seat"]');
+  // A camera move while playing: renders never exceed browser frames.
+  const moving = await rendersPerBrowserFrame(page);
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+  await nextFrames(page);
+  await closeSeatPanel(page);
+  await page.waitForTimeout(400);
+  f = await film(page);
+  check('film: seat view from F06 while playing: still playing, same element, picture on screen', f.snapshot.state === 'playing' && f.view.screen.content === 'video' && (await page.evaluate(() => window.__filmElement === window.__cinema.filmElement())), {
+    camera: (await state(page)).view.state,
+  });
+  check('film: camera moving while playing — at most one render per browser frame', moving.renders <= moving.ticks + 1 && moving.renders > 0, moving);
+  report.film.metrics.playingMovingCamera = moving;
+  await screenshot(page, 'film-4-playing-from-F06');
+
+  // Quality switch while playing: time, playing, sound and element unchanged.
+  const q0 = await film(page);
+  // The pixel ratio changes too, which clears the canvas: no blank frame may reach the screen.
+  const qualityFrames = await framesAfter(page, () => page.click('button[data-quality="economy"]'));
+  await nextFrames(page);
+  const q1 = await film(page);
+  check('film: switching quality (drawing buffer resized) never presents a blank canvas frame', qualityFrames.length > 0 && qualityFrames.every((f) => f.deviation > 6), qualityFrames);
+  check('film: switching to Economy while playing keeps playing, time, mute and volume, and the same element', q1.snapshot.state === 'playing' && q1.snapshot.currentTime > q0.snapshot.currentTime && q1.snapshot.muted === q0.snapshot.muted && q1.snapshot.volume === q0.snapshot.volume && q1.view.screen.content === 'video' && (await page.evaluate(() => window.__filmElement === window.__cinema.filmElement())), {
+    before: q0.snapshot.currentTime,
+    after: q1.snapshot.currentTime,
+  });
+  await page.click('button[data-quality="high"]');
+  await nextFrames(page);
+  // Drop the test's own reference, so the live-object counts below see only the page's.
+  await page.evaluate(() => delete window.__filmElement);
+
+  // Timing along the fixed camera path while the film plays (texture uploads included).
+  const timingPlaying = await page.evaluate(() => window.__cinema.measureFrames(120));
+  report.film.metrics.frameTimingWhilePlaying = timingPlaying;
+
+  // Hidden tab: pauses with a notice; showing it again does not resume.
+  const setHidden = (h) =>
+    page.evaluate((hidden) => {
+      Object.defineProperty(document, 'hidden', { value: hidden, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, h);
+  await setHidden(true);
+  await page.waitForTimeout(200);
+  const hidden = await film(page);
+  await setHidden(false);
+  await page.waitForTimeout(1200);
+  const shown = await film(page);
+  const shownRates = await filmRates(page, 800);
+  check('film: hidden tab pauses (notice), frame callbacks cancelled; visible again stays paused, nothing renders', hidden.paused && hidden.snapshot.notice === 'hidden' && hidden.view.clock.pending === 0 && shown.paused && shown.snapshot.state === 'paused' && shownRates.rendersPerSecond === 0, {
+    hidden: hidden.snapshot.state,
+    shown: shown.snapshot.state,
+    notice: shown.snapshot.notice,
+  });
+
+  // Ended, then replay.
+  await page.click(PRIMARY);
+  await waitForFilm(page, ['playing']);
+  await page.focus('input[data-action="media-seek"]');
+  await page.keyboard.press('End');
+  f = await waitForFilm(page, ['ended'], 10_000);
+  await page.waitForTimeout(300);
+  const endedRates = await filmRates(page, 1000);
+  check('film: the end — "Phát lại" offered, nothing renders, no loop', (await page.getAttribute(PRIMARY, 'aria-label')) === 'Phát lại' && endedRates.rendersPerSecond === 0 && f.paused, endedRates);
+  await screenshot(page, 'film-5-ended');
+  await page.click(PRIMARY);
+  f = await waitForFilm(page, ['playing']);
+  check('film: replay starts again from the beginning', f.snapshot.currentTime < 3, f.snapshot.currentTime);
+
+  // Context loss while playing: paused, no frame callbacks, play disabled; after the restore the
+  // current frame is back, camera and seats kept, nothing plays by itself, "Tiếp tục" offered.
+  await page.waitForTimeout(800);
+  const beforeLoss = await state(page);
+  await page.evaluate(() => {
+    window.__lose = document.querySelector('.cinema-canvas').getContext('webgl2').getExtension('WEBGL_lose_context');
+    window.__lose.loseContext();
+  });
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.status === 'context-lost');
+  const lost = await film(page);
+  const lostDisabled = await page.isDisabled(PRIMARY);
+  await page.waitForTimeout(500);
+  await page.evaluate(() => window.__lose.restoreContext());
+  await waitForStatus(page);
+  await nextFrames(page);
+  await page.waitForTimeout(1000);
+  const restored = await film(page);
+  const afterLoss = await state(page);
+  check('film: context loss while playing pauses it (notice), stops frame callbacks, disables play', lost.paused && lost.snapshot.notice === 'context-lost' && lost.view.clock.pending === 0 && lostDisabled, {
+    state: lost.snapshot.state,
+    clock: lost.view.clock,
+  });
+  check('film: after the restore — current frame shown, camera and seats kept, still paused and not unmuted, "Tiếp tục" offered', restored.paused && restored.view.screen.content === 'video' && restored.snapshot.muted === lost.snapshot.muted && (await page.getAttribute(PRIMARY, 'aria-label')) === 'Tiếp tục' && !(await page.isDisabled(PRIMARY)) && JSON.stringify(afterLoss.view.camera.position) === JSON.stringify(beforeLoss.view.camera.position) && JSON.stringify(afterLoss.seats.selected) === JSON.stringify(beforeLoss.seats.selected), {
+    screen: restored.view.screen,
+    camera: afterLoss.view.state,
+  });
+  await screenshot(page, 'film-6-context-restored-paused');
+  await page.click(PRIMARY);
+  f = await waitForFilm(page, ['playing']);
+  await page.waitForTimeout(700);
+  const resumedRates = await filmRates(page, 1000);
+  check('film: playing again after the restore draws new frames', resumedRates.videoFramesPerSecond > 15 && resumedRates.rendersPerSecond > 15, resumedRates);
+  // play() still pending when the context goes: it must not start once things settle.
+  await page.click(PRIMARY);
+  await waitForFilm(page, ['paused']);
+  await page.evaluate(() => {
+    document.querySelector('button[data-action="media-primary"]').click();
+    window.__lose.loseContext();
+  });
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.status === 'context-lost');
+  await page.waitForTimeout(400);
+  await page.evaluate(() => window.__lose.restoreContext());
+  await waitForStatus(page);
+  await page.waitForTimeout(800);
+  const pending = await film(page);
+  check('film: play pressed just before a context loss does not start playing after the restore', pending.paused && pending.snapshot.state !== 'playing', pending.snapshot);
+
+  // The seat inspector: the film stops and its element goes; back in the room it is paused where it was.
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('HeapProfiler.enable');
+  await page.click(PRIMARY);
+  await waitForFilm(page, ['playing']);
+  await page.waitForTimeout(1500);
+  await openInspectTools(page);
+  const leftAt = (await film(page)).snapshot;
+  await page.click('button[data-action="open-inspector"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
+  await page.evaluate(() => (window.__filmTypes = { MediaController: null, HTMLVideoElement }));
+  const inInspector = await liveCounts(cdp, ['HTMLVideoElement']);
+  check('film: in the seat inspector no media element is alive (no audio playing on)', inInspector.objects.HTMLVideoElement === 0 && (await page.evaluate(() => document.querySelectorAll('video').length)) === 0, inInspector.objects);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
+  await page.waitForFunction(() => window.__cinema.film().snapshot.hasFrame, null, { timeout: 10_000 });
+  await page.waitForTimeout(500);
+  f = await film(page);
+  check('film: back from the inspector — paused at the same time, same sound, picture shown', f.paused && f.snapshot.state === 'paused' && Math.abs(f.snapshot.currentTime - leftAt.currentTime) < 0.5 && f.snapshot.muted === leftAt.muted && Math.abs(f.snapshot.volume - leftAt.volume) < 1e-6 && f.view.screen.content === 'video', {
+    leftAt: leftAt.currentTime,
+    back: f.snapshot.currentTime,
+  });
+
+  // Play → pause → leave in quick succession: nothing restarts, nothing is left playing.
+  await page.evaluate(() => {
+    const button = document.querySelector('button[data-action="media-primary"]');
+    button.click();
+    button.click();
+    history.pushState(null, '', '/cinema?inspect=seat');
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
+  await page.waitForTimeout(800);
+  const afterLeave = await liveCounts(cdp, ['HTMLVideoElement']);
+  check('film: play → pause → leave at once leaves no media element alive', afterLeave.objects.HTMLVideoElement === 0, afterLeave.objects);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
+  f = await film(page);
+  check('film: and coming back it is paused', f.paused && f.snapshot.state !== 'playing', f.snapshot.state);
+
+  // Many play/pause/seek rounds and inspector round trips: resources stay put.
+  const types = ['MediaController', 'HTMLVideoElement', 'Texture', 'Material', 'BufferGeometry'];
+  const round = async () => {
+    await page.click(PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(250);
+    await page.focus('input[data-action="media-seek"]');
+    // Back 5 s, so the rounds never run into the end.
+    await page.keyboard.press('ArrowLeft');
+    await page.click(PRIMARY);
+    await waitForFilm(page, ['paused']);
+  };
+  for (let i = 0; i < 2; i++) await round();
+  const first = await liveCounts(cdp, types);
+  const firstState = await film(page);
+  const firstMemory = (await state(page)).view.memory;
+  for (let i = 0; i < 8; i++) await round();
+  for (let i = 0; i < 3; i++) {
+    await openInspectTools(page);
+    await page.click('button[data-action="open-inspector"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
+    await round();
+  }
+  const last = await liveCounts(cdp, types);
+  const lastState = await film(page);
+  const lastMemory = (await state(page)).view.memory;
+  report.film.lifecycle = { first, last, firstMemory, lastMemory, subscribers: [firstState.subscribers, lastState.subscribers], clock: lastState.view.clock };
+  check('film: after 13 play/pause/seek rounds and 3 inspector round trips — one controller and one element alive, subscribers and frame callbacks not piling up', last.objects.MediaController === 1 && last.objects.HTMLVideoElement === 1 && lastState.subscribers === firstState.subscribers && lastState.view.clock.pending === 0, report.film.lifecycle);
+  check('film: …and live three.js objects, page listeners and renderer resources steady (heap +< 1 MiB)', JSON.stringify(first.objects) === JSON.stringify(last.objects) && JSON.stringify(first.listeners) === JSON.stringify(last.listeners) && JSON.stringify(firstMemory) === JSON.stringify(lastMemory) && last.heapMiB - first.heapMiB < 1, {
+    objects: [first.objects, last.objects],
+    listeners: [first.listeners, last.listeners],
+    heap: [first.heapMiB, last.heapMiB],
+  });
+
+  // Opening the seat panel resizes the 3D view, which clears the canvas: it must be drawn again
+  // before the browser presents the frame, never shown blank for a frame.
+  await page.click('button[data-action="reset"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.transitioning === 'false');
+  await closeSeatPanel(page);
+  await page.waitForTimeout(500);
+  const resizeFrames = await framesAfter(page, () => page.click('button[data-action="seat-panel"]'));
+  check('film: opening the seat panel (3D view resized) never presents a blank canvas frame', resizeFrames.length > 0 && resizeFrames.every((f) => f.deviation > 6), resizeFrames);
+  await closeSeatPanel(page);
+  await page.waitForTimeout(300);
+
+  // The flow on video: choose a seat, view from it, play, pause.
+  await recordVideo(browser, page, 'video-film-seat-view-play-pause', async () => {
+    await page.waitForTimeout(500);
+    await openSeatPanel(page);
+    await page.waitForTimeout(400);
+    await page.click('button[data-seat="E08"]');
+    await page.waitForTimeout(500);
+    await page.click('button[data-action="view-from-seat"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+    await page.waitForTimeout(500);
+    await page.click(PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(3500);
+    await page.click(PRIMARY);
+    await waitForFilm(page, ['paused']);
+    await page.waitForTimeout(800);
+  });
+  await context.close();
+}
+
+// Generated clips: colours against the browser's own frame, orientation, letterbox and pillarbox,
+// no sound, unknown duration; bad files; a refused play(); slow network; no frame-callback API.
+async function filmFixtures(browser, base) {
+  report.film ??= { metrics: {} };
+  const open = async (label, query, options = {}) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, ...options.context });
+    if (options.init) await context.addInitScript(options.init);
+    const page = await context.newPage();
+    attachConsole(page, label);
+    if (options.before) await options.before(page, context);
+    await page.goto(`${base}cinema${query}`);
+    await waitForStatus(page);
+    await closeSeatPanel(page);
+    return { context, page };
+  };
+
+  // Colour and orientation: the same paused frame read from the canvas and from the video.
+  {
+    const { context, page } = await open('film-color', '?film=pattern-16x9.mp4');
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await faceScreen(page);
+    await playFilm(page);
+    await page.waitForTimeout(1200);
+    await pauseFilm(page);
+    await page.waitForTimeout(300);
+    const samples = await page.evaluate((points) => window.__cinema.screenPixels(points.map((p) => p.uv)), PATTERN_POINTS);
+    const rows = PATTERN_POINTS.map((p, i) => ({
+      name: p.name,
+      expected: p.rgb,
+      screen: samples[i].screen,
+      video: samples[i].video,
+      screenVsVideo: Math.max(...samples[i].screen.map((c, k) => Math.abs(c - samples[i].video[k]))),
+      screenVsExpected: Math.max(...samples[i].screen.map((c, k) => Math.abs(c - p.rgb[k]))),
+    }));
+    report.film.color = rows;
+    const worst = Math.max(...rows.map((r) => r.screenVsVideo));
+    const worstExpected = Math.max(...rows.map((r) => r.screenVsExpected));
+    check('film colour: screen pixels match the browser’s own decoding of the same frame (max channel difference ≤ 8 over bars, grey ramp, marker)', worst <= 8, { worst });
+    check('film colour: grey 128 stays mid-grey on screen (no double gamma or tone mapping) and bars are within 16 of their sRGB values', rows.find((r) => r.name === 'grey 128').screen.every((c) => Math.abs(c - 128) <= 10) && worstExpected <= 16, {
+      grey128: rows.find((r) => r.name === 'grey 128').screen,
+      worstExpected,
+    });
+    const marker = rows.find((r) => r.name.startsWith('top-left'));
+    check('film orientation: the top-left marker is top-left on the screen (no flip or mirror)', marker.screenVsExpected <= 24, marker);
+    await screenshot(page, 'film-7-colour-check-16x9');
+    await context.close();
+  }
+
+  // Other shapes: contain inside the 16:9 screen, black bars, nothing cropped or stretched.
+  for (const [file, aspect, shot, bars] of [
+    ['pattern-9x16.mp4', 9 / 16, 'film-8-pillarbox-9x16', [[0.08, 0.5], [0.92, 0.5]]],
+    ['pattern-239.mp4', 860 / 360, 'film-9-letterbox-239', [[0.5, 0.04], [0.5, 0.96]]],
+  ]) {
+    const { context, page } = await open(`film-${file}`, `?film=${file}`);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await faceScreen(page);
+    await playFilm(page);
+    await page.waitForTimeout(1000);
+    await pauseFilm(page);
+    const f = await film(page);
+    const { width, height, screen } = f.view.screen;
+    const outside = await page.evaluate((points) => window.__cinema.screenPixels(points, 'screen'), bars);
+    const inside = await page.evaluate(() => window.__cinema.screenPixels([[0.03, 0.96], [0.5, 0.66]]));
+    const fits = Math.abs(width / height - aspect) < 0.01 && (Math.abs(width - screen.width) < 1e-6 || Math.abs(height - screen.height) < 1e-6) && width <= screen.width + 1e-6 && height <= screen.height + 1e-6;
+    check(`film shape ${file}: contained in the 16:9 screen with its own aspect, bars black, corner marker in place`, fits && outside.every((p) => p.screen.every((c) => c <= 14)) && inside[0].screen[0] > 200 && inside[0].screen[2] < 80, {
+      picture: { width, height },
+      bars: outside.map((p) => p.screen),
+      marker: inside[0].screen,
+    });
+    await screenshot(page, shot);
+    await context.close();
+  }
+
+  // No sound: said so, mute disabled. Unknown duration: seeking disabled until it is known.
+  {
+    const { context, page } = await open('film-silent', '?film=pattern-silent.mp4');
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await playFilm(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.hasAudio !== null, null, { timeout: 8000 });
+    const f = await film(page);
+    const mute = await page.evaluate(() => {
+      const b = document.querySelector('button[data-action="media-mute"]');
+      return { disabled: b.disabled, label: b.getAttribute('aria-label') };
+    });
+    check('film without sound: detected; the mute button says so and is disabled', f.snapshot.hasAudio === false && mute.disabled && /không có âm thanh/.test(mute.label), { hasAudio: f.snapshot.hasAudio, mute });
+    await context.close();
+  }
+  {
+    const { context, page } = await open('film-no-duration', '?film=pattern-no-duration.webm');
+    await page.waitForFunction(() => ['ready', 'loading'].includes(window.__cinema.film().snapshot.state));
+    await page.waitForTimeout(500);
+    const before = await film(page);
+    const seekDisabled = await page.isDisabled('input[data-action="media-seek"]');
+    const total = await page.textContent('.cinema-player__time');
+    await playFilm(page);
+    await waitForFilm(page, ['ended'], 15_000);
+    const after = await film(page);
+    check('film with unknown duration: seeking disabled and "--:--" shown, no guess; playback still works to the end', before.snapshot.duration === null && seekDisabled && /--:--/.test(total) && after.snapshot.state === 'ended', {
+      before: before.snapshot.duration,
+      total,
+      after: after.snapshot.duration,
+    });
+    await context.close();
+  }
+
+  // Broken sources: a readable error, retry by hand only, no endless spinner.
+  for (const [file, shot, play] of [
+    ['not-a-video.mp4', 'film-10-error-not-a-video', false],
+    ['missing-file.mp4', null, false],
+    ['damaged-data.mp4', 'film-11-error-decode', true],
+  ]) {
+    const { context, page } = await open(`film-error-${file}`, `?film=${file}`);
+    const requests = [];
+    page.on('request', (request) => request.url().includes(file) && requests.push(request.url()));
+    if (play) {
+      await page.waitForFunction(() => ['ready', 'error'].includes(window.__cinema.film().snapshot.state), null, { timeout: 10_000 });
+      if ((await film(page)).snapshot.state === 'ready') await page.click(PRIMARY);
+    }
+    const f = await waitForFilm(page, ['error'], 10_000);
+    await page.waitForTimeout(2500);
+    const ui = await page.evaluate(() => ({
+      status: document.querySelector('.cinema-player__status').textContent,
+      busy: document.querySelector('.cinema-player__status').classList.contains('cinema-player__status--busy'),
+      retry: !document.querySelector('button[data-action="media-retry"]').hidden,
+      playDisabled: document.querySelector('button[data-action="media-primary"]').disabled,
+    }));
+    const requestsBeforeRetry = requests.length;
+    check(`film error (${file}): "${f.snapshot.error?.code}" with a message and a retry button, no spinner, play disabled, no automatic retries`, ui.retry && !ui.busy && ui.playDisabled && ui.status.length > 10 && f.view.screen.content !== 'video', {
+      error: f.snapshot.error,
+      ui,
+      requests: requestsBeforeRetry,
+    });
+    if (shot) await screenshot(page, shot);
+    if (file === 'not-a-video.mp4') {
+      await page.click('button[data-action="media-retry"]');
+      await waitForFilm(page, ['error'], 10_000);
+      await page.waitForTimeout(1500);
+      check('film error: "Thử lại" loads once more and ends in the same error (no loop)', (await film(page)).snapshot.state === 'error' && requests.length - requestsBeforeRetry <= 2, { requests: requests.length - requestsBeforeRetry });
+    }
+    await context.close();
+  }
+
+  // play() refused by the browser: a message, no fake "playing", trying again works.
+  {
+    const { context, page } = await open('film-blocked', '', {
+      init: () => {
+        const original = HTMLMediaElement.prototype.play;
+        HTMLMediaElement.prototype.play = function () {
+          if (window.__allowPlay) return original.call(this);
+          return Promise.reject(new DOMException('play() is not allowed here', 'NotAllowedError'));
+        };
+      },
+    });
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await page.click(PRIMARY);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.notice === 'blocked');
+    await page.waitForTimeout(500);
+    const f = await film(page);
+    const text = await page.textContent('.cinema-player__status');
+    check('film: a refused play() shows a message, stays "Phát" (not a fake "playing"), element paused', f.paused && f.snapshot.state !== 'playing' && (await page.getAttribute(PRIMARY, 'aria-label')) === 'Phát' && /chưa cho phát/.test(text), { state: f.snapshot.state, text });
+    await screenshot(page, 'film-12-play-blocked');
+    await page.evaluate(() => (window.__allowPlay = true));
+    await page.click(PRIMARY);
+    const after = await waitForFilm(page, ['playing']);
+    check('film: pressing Phát again once allowed plays and clears the message', after.snapshot.notice === null && (await page.textContent('.cinema-player__status')) === '', after.snapshot.state);
+    await context.close();
+  }
+
+  // Slow network, simulated by the server: the first 256 KB (header and about a second of film) come
+  // at once, later range requests are held back. Buffering shows, then the slow notice; nothing is
+  // retried automatically; once data flows again, playback goes on by itself.
+  {
+    const file = await readFile(path.join(root, 'public', 'media', 'big-buck-bunny-trailer-720p.mp4'));
+    let hold = true;
+    let held = 0;
+    const { context, page } = await open('film-slow', '', {
+      before: (p) =>
+        p.route('**/media/big-buck-bunny-trailer-720p.mp4', async (route) => {
+          const match = /bytes=(\d+)-(\d*)/.exec(route.request().headers().range ?? '');
+          const start = match ? Number(match[1]) : 0;
+          if (start > 0) {
+            held++;
+            while (hold) await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          const end = Math.min(match?.[2] ? Number(match[2]) : file.length - 1, start + 256 * 1024 - 1);
+          await route
+            .fulfill({
+              status: 206,
+              headers: { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${file.length}`, 'Content-Length': String(end - start + 1) },
+              body: file.subarray(start, end + 1),
+            })
+            .catch(() => {});
+        }),
+    });
+    await page.waitForFunction(() => ['ready', 'loading'].includes(window.__cinema.film().snapshot.state), null, { timeout: 20_000 });
+    await page.click(PRIMARY);
+    const states = new Set();
+    let slowSeen = false;
+    let busyText = '';
+    for (let i = 0; i < 100 && !slowSeen; i++) {
+      const f = await film(page);
+      states.add(f.snapshot.state);
+      if (f.snapshot.state === 'buffering' && !busyText) busyText = await page.textContent('.cinema-player__status');
+      slowSeen = f.snapshot.notice === 'slow';
+      await page.waitForTimeout(250);
+    }
+    const retryVisible = await page.isVisible('button[data-action="media-retry"]');
+    check('film on a slow network: "buffering" shown while waiting, then the slow notice with a "Tải lại" button (no automatic retry)', states.has('buffering') && /chờ dữ liệu/.test(busyText) && slowSeen && retryVisible, {
+      states: [...states],
+      busyText,
+      heldRequests: held,
+    });
+    await screenshot(page, 'film-13-slow-network');
+    hold = false;
+    const recovered = await waitForFilm(page, ['playing'], 30_000).catch(() => null);
+    check('film: once data flows again it plays by itself (the play request still stands) and the notice clears', recovered?.snapshot.notice === null, recovered?.snapshot.state ?? 'timeout');
+    await context.close();
+  }
+
+  // Without requestVideoFrameCallback: a bounded timer while playing, nothing when paused.
+  {
+    const { context, page } = await open('film-no-rvfc', '?film=pattern-16x9.mp4', {
+      init: () => {
+        delete HTMLVideoElement.prototype.requestVideoFrameCallback;
+        delete HTMLVideoElement.prototype.cancelVideoFrameCallback;
+      },
+    });
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await playFilm(page);
+    await page.waitForTimeout(500);
+    const playing = await filmRates(page, 2000);
+    const f = await film(page);
+    await pauseFilm(page);
+    await page.waitForTimeout(300);
+    const paused = await filmRates(page, 1000);
+    check('film without requestVideoFrameCallback: renders at the fallback rate (≤ 31/s) while playing, none when paused', !f.view.clock.supported && playing.rendersPerSecond >= 20 && playing.rendersPerSecond <= 31 && paused.rendersPerSecond === 0, { playing, paused });
+    report.film.metrics.fallbackClock = { playing, paused };
+    await context.close();
+  }
+}
+
+// Phones: the player between the view and the seat sheet in portrait, a single row in landscape;
+// never over the stick or the way back; safe areas.
+async function filmMobile(browser, base) {
+  for (const [name, viewport] of [
+    ['portrait', { width: 390, height: 844 }],
+    ['landscape', { width: 844, height: 390 }],
+  ]) {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    attachConsole(page, `film-mobile-${name}`);
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await page.tap(PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(1500);
+    const playing = await playerLayout(page);
+    check(`film mobile ${name}: player under the view, inside the window, the 3D view keeps most of the space`, !playing.overlaps.stage && playing.insideWindow && playing.overflowX <= 0 && playing.stageShare > playing.playerShare * 3, playing);
+    await screenshot(page, `film-mobile-${name}-playing`);
+    await openSeatPanel(page);
+    await page.waitForTimeout(300);
+    const sheet = await playerLayout(page);
+    check(`film mobile ${name}: with the seat panel open the player overlaps neither the panel nor the view`, !sheet.overlaps.panel && !sheet.overlaps.stage && sheet.insideWindow, sheet);
+    await page.click('button[data-seat="F06"]');
+    await page.click('button[data-action="view-from-seat"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+    await closeSeatPanel(page);
+    await page.waitForTimeout(400);
+    const seat = await playerLayout(page);
+    check(`film mobile ${name}: seat view — the way back button and the player do not overlap`, !seat.overlaps.returnButton, seat);
+    await screenshot(page, `film-mobile-${name}-seat-view`);
+    await page.tap('button[data-action="explore"]');
+    await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+    const explore = await playerLayout(page);
+    check(`film mobile ${name}: exploring — the stick and the player do not overlap`, !explore.overlaps.stick && !explore.overlaps.stage, explore);
+    await screenshot(page, `film-mobile-${name}-explore`);
+    const f = await film(page);
+    check(`film mobile ${name}: still playing through panel, seat view and explore`, f.snapshot.state === 'playing', f.snapshot.state);
+    await context.close();
+  }
 }
 
 function distance(a, b) {

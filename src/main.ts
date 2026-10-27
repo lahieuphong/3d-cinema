@@ -10,10 +10,11 @@ if (!host) throw new Error('Missing #app element.');
 const app = host;
 
 let unmount: (() => void) | undefined;
-// Seat selection lives for the whole visit: it survives opening the seat inspector and coming back.
+// Seat selection and the film's place live for the whole visit: they survive opening the seat
+// inspector and coming back.
 const session: CinemaSession = (() => {
   const { seats, config } = createAuditoriumLayout();
-  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null };
+  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null, media: null };
 })();
 // Bumped on every render so a slow lazy import cannot mount over a newer page.
 let generation = 0;

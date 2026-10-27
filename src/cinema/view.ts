@@ -33,8 +33,10 @@ import {
   type BlockoutMaterials,
   type SeatMaterials,
 } from './materials.ts';
+import type { MediaChange, MediaController, MediaSnapshot } from './mediaController.ts';
 import type { QualityLevel } from './quality.ts';
 import { RenderHost, type ViewStatus } from './renderHost.ts';
+import { imageReady, ScreenVideo } from './screenVideo.ts';
 import { SeatHighlighter } from './seatHighlight.ts';
 import { pickSeat, SeatPicker, visibleMeshes, type SeatHit } from './seatPicking.ts';
 import { createCinemaSeatModel, createSeatInstances, seatPivotMatrix, type SeatInstances, type SeatModel } from './seats.ts';
@@ -42,6 +44,7 @@ import { seatViewPose } from './seatView.ts';
 import type { SeatSelection } from './selection.ts';
 import { TapTracker } from './tapTracker.ts';
 import { createTour, TourPath } from './tour.ts';
+import { VideoFrameClock } from './videoFrames.ts';
 import { chooseWalkStart, stepWalker, turnWalker, type StartPoint, type WalkerState } from './walker.ts';
 
 export { WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
@@ -98,6 +101,14 @@ interface SceneContent {
   /** Seat states drawn onto the instances, and picking proxies for the same model. */
   highlighter: SeatHighlighter;
   picker: SeatPicker;
+  /** The film's picture on the screen (null when the page has no film). */
+  screenVideo: ScreenVideo | null;
+}
+
+/** The film as the view sees it: its element (owned by the page's controller) and its poster. */
+export interface ViewMedia {
+  controller: MediaController;
+  poster: HTMLImageElement | null;
 }
 
 /**
@@ -144,17 +155,22 @@ export class CinemaView {
   private shadowRenders = 0;
   private reportedState: CameraState | null = null;
   private debugOverlay: Group | null = null;
+  private readonly media: ViewMedia | null;
+  private readonly frameClock: VideoFrameClock | null;
+  private readonly unsubscribeMedia: () => void;
+  private contextLost = false;
   private disposed = false;
 
   constructor(
     container: HTMLElement,
     layout: AuditoriumLayout,
     callbacks: CinemaViewCallbacks,
-    options: { quality: QualityLevel; reducedMotion: boolean; touchStick: boolean; selection: SeatSelection },
+    options: { quality: QualityLevel; reducedMotion: boolean; touchStick: boolean; selection: SeatSelection; media?: ViewMedia | null },
   ) {
     this.layout = layout;
     this.callbacks = callbacks;
     this.selection = options.selection;
+    this.media = options.media ?? null;
     this.taps = new TapTracker({ slopPx: layout.config.selection.tapSlopPx, maxMs: layout.config.selection.tapMaxMs });
     this.quality = options.quality;
     this.reducedMotion = options.reducedMotion;
@@ -227,6 +243,13 @@ export class CinemaView {
     this.unsubscribeSelection = this.selection.subscribe((change) => {
       if (this.content.highlighter.apply(this.selection, change.seats)) this.host.requestRender();
     });
+    // The film: a render per presented frame while it plays, one after any other change.
+    const media = this.media;
+    this.frameClock = media ? new VideoFrameClock(media.controller.video, this.host.requestRender) : null;
+    this.unsubscribeMedia = media ? media.controller.subscribe(this.handleMedia) : () => {};
+    if (media?.poster && !imageReady(media.poster)) {
+      media.poster.addEventListener('load', () => this.handleMedia(media.controller.snapshot, 'size'), { signal });
+    }
     renderer.shadowMap.needsUpdate = true;
     this.host.start();
   }
@@ -607,8 +630,58 @@ export class CinemaView {
       explore: this.exploring ? { walker: this.walker, input: this.input.debugState() } : null,
       lights: this.content.lighting.describe(),
       shadow: { mapSize: shadow.mapSize.x, radius: shadow.radius, renders: this.shadowRenders },
+      film: this.frameClock
+        ? {
+            screen: this.content.screenVideo?.describe() ?? null,
+            clock: { supported: this.frameClock.supported, frames: this.frameClock.frames, pending: this.frameClock.pending },
+          }
+        : null,
       ...this.host.getDebugInfo(),
     };
+  }
+
+  /**
+   * Development: draws one frame and reads the canvas pixels where points of the picture are
+   * shown (u, v in 0-1 from its lower-left corner; with `area` 'screen', of the whole 16:9 screen),
+   * next to the same points of the video's current frame drawn by the browser into a 2D canvas.
+   * Both are read in this task, so they are the same frame as long as the film is paused. Pixels
+   * are 3x3 averages.
+   */
+  debugScreenPixels(points: Array<[number, number]>, area: 'picture' | 'screen' = 'picture') {
+    const picture = this.content.screenVideo?.describe();
+    const video = this.media?.controller.video;
+    if (!picture || !video) return null;
+    const screen = area === 'screen' ? picture.screen : picture;
+    const { renderer } = this.host;
+    const { camera } = this.rig;
+    const centre = this.layout.screen.center;
+    const width = this.host.canvas.width;
+    const height = this.host.canvas.height;
+    renderer.render(this.scene, camera);
+    const gl = renderer.getContext();
+    const pixel = new Uint8Array(9 * 4);
+    const frame = document.createElement('canvas');
+    frame.width = video.videoWidth;
+    frame.height = video.videoHeight;
+    const context = frame.getContext('2d', { willReadFrequently: true });
+    if (frame.width > 0) context?.drawImage(video, 0, 0);
+    const average = (data: ArrayLike<number>) => {
+      const sum = [0, 0, 0];
+      for (let i = 0; i < 9; i++) for (let c = 0; c < 3; c++) sum[c] += data[i * 4 + c];
+      return sum.map((value) => Math.round(value / 9));
+    };
+    return points.map(([u, v]) => {
+      const world = new Vector3(centre.x + (u - 0.5) * screen.width, centre.y + (v - 0.5) * screen.height, centre.z + 0.004);
+      const ndc = world.project(camera);
+      const x = Math.round(((ndc.x + 1) / 2) * width);
+      const y = Math.round(((ndc.y + 1) / 2) * height);
+      gl.readPixels(x - 1, y - 1, 3, 3, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      const source =
+        context && frame.width > 0 && area === 'picture'
+          ? average(context.getImageData(Math.round(u * frame.width) - 1, Math.round((1 - v) * frame.height) - 1, 3, 3).data)
+          : null;
+      return { u, v, screen: average(pixel), video: source, onCanvas: Math.abs(ndc.x) < 1 && Math.abs(ndc.y) < 1 };
+    });
   }
 
   dispose(): void {
@@ -616,6 +689,8 @@ export class CinemaView {
     this.disposed = true;
     this.listeners.abort();
     this.unsubscribeSelection();
+    this.unsubscribeMedia();
+    this.frameClock?.dispose();
     this.selection.setHovered(null);
     this.input.dispose();
     this.tour = null;
@@ -898,6 +973,21 @@ export class CinemaView {
     }
   }
 
+  /**
+   * Media events: poster or video, the picture's shape, a new frame while paused (seek, load), and
+   * whether frames keep coming (only while playing, and never while the context is lost).
+   */
+  private readonly handleMedia = (snapshot: MediaSnapshot, change: MediaChange): void => {
+    if (this.disposed) return;
+    this.frameClock?.run(snapshot.state === 'playing' && !this.contextLost);
+    if (this.contextLost) return;
+    const screen = this.content.screenVideo;
+    if (!screen) return;
+    let changed = screen.update(snapshot);
+    if (change === 'frame' || change === 'state') changed = screen.refreshFrame(snapshot) || changed;
+    if (changed) this.host.requestRender();
+  };
+
   private renderFrame(dt: number): boolean {
     const needsAnotherFrame = this.rig.update(dt);
     const { renderer } = this.host;
@@ -907,11 +997,20 @@ export class CinemaView {
     return needsAnotherFrame;
   }
 
-  /** The context is gone: stop the tour and drop held input so nothing moves unseen. */
+  /**
+   * The context is gone: stop the tour and drop held input so nothing moves unseen. The film's
+   * frame clock stops, and the film's GPU objects are released now: their dispose events reach only
+   * the dying context's managers, whose GL calls do nothing on a lost context. That also cancels the
+   * video texture's frame callback, which would otherwise keep the old texture alive. (The page
+   * pauses the film itself.)
+   */
   private handleContextLost(): void {
+    this.contextLost = true;
     if (this.tour && !this.tour.steps) this.stopTour('context-lost');
     this.input.clear();
     this.dropPointers();
+    this.frameClock?.run(false);
+    this.content.screenVideo?.dispose();
   }
 
   /**
@@ -925,6 +1024,8 @@ export class CinemaView {
   private handleContextRestored(): void {
     const old = this.content;
     this.scene.remove(old.architecture.group, old.seatInstances.group, old.lighting.group, old.highlighter.markers);
+    if (old.screenVideo) this.scene.remove(old.screenVideo.group);
+    this.contextLost = false;
     this.content = this.buildContent(this.quality);
     for (const part of this.hiddenParts) {
       this.content.architecture.toggleable[part].visible = false;
@@ -956,7 +1057,14 @@ export class CinemaView {
     const picker = new SeatPicker(this.layout.seats, seatModel);
     this.scene.environment = environment.texture;
     this.scene.add(architecture.group, seatInstances.group, lighting.group, highlighter.markers);
-    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances, highlighter, picker };
+    // The current frame (or the poster) straight away, also after a restore.
+    let screenVideo: ScreenVideo | null = null;
+    if (this.media) {
+      screenVideo = new ScreenVideo(this.layout, this.media.controller.video, this.media.poster);
+      screenVideo.update(this.media.controller.snapshot);
+      this.scene.add(screenVideo.group);
+    }
+    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances, highlighter, picker, screenVideo };
   }
 
   private disposeContent(content: SceneContent): void {
@@ -967,6 +1075,7 @@ export class CinemaView {
     content.lighting.dispose();
     content.environment.dispose();
     content.highlighter.dispose();
+    content.screenVideo?.dispose();
     disposeMaterials(content.materials);
     disposeMaterials(content.seatMaterials);
   }

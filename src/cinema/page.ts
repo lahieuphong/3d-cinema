@@ -2,6 +2,9 @@ import { BufferGeometry, Material, Object3D, Texture, WebGLRenderTarget } from '
 import type { ToggleablePart } from './architecture.ts';
 import { DEFAULT_PRESET, describePreset, formatMetres, presetInfo, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
 import { createAuditoriumLayout, type Vec3 } from './layout.ts';
+import { DEMO_FILM, devFilm } from './media.ts';
+import { MediaController, type MediaControllerOptions } from './mediaController.ts';
+import { createPlayerUi } from './playerUi.ts';
 import { loadQuality, saveQuality } from './quality.ts';
 import { prefersReducedMotion } from './renderHost.ts';
 import { createSeatPanel } from './seatPanel.ts';
@@ -25,6 +28,12 @@ declare global {
       seatScreenPoint(seatId: string): { x: number; y: number; visible: boolean } | null;
       seatLook(seatId: string): unknown;
       measurePicking(samples?: number): unknown;
+      /** The film: media snapshot, playback quality, frame clock and screen. */
+      film(): unknown;
+      /** Canvas pixels of points of the picture next to the same points of the video frame. */
+      screenPixels(points: Array<[number, number]>, area?: 'picture' | 'screen'): unknown;
+      /** The film's element, to check it is the same one across camera, seat and quality changes. */
+      filmElement(): HTMLVideoElement;
       /** Constructors whose live instances the lifecycle check counts after garbage collection. */
       types: Record<string, unknown>;
     };
@@ -36,6 +45,8 @@ export interface CinemaSession {
   selection: SeatSelection;
   /** null until the user opens or closes the seat panel; then their choice. */
   seatPanelOpen: boolean | null;
+  /** Where the film was and how it sounded when the page was last left (it always comes back paused). */
+  media: MediaControllerOptions['resume'] | null;
 }
 
 export interface CinemaPageOptions {
@@ -75,6 +86,28 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   // The view a seat view returns to: the preset it was opened from, else the overview.
   let returnPreset: CameraPresetId | null = null;
   const touch = window.matchMedia?.('(any-pointer: coarse)').matches ?? false;
+
+  // The film: one controller (one element, one audio stream) for the life of this mount. Leaving
+  // the page records where it was; the next mount starts paused there, with the same sound.
+  const film = (import.meta.env.DEV ? devFilm(location.search) : null) ?? DEMO_FILM;
+  const media = new MediaController(film, { resume: options.session.media ?? undefined });
+  const poster = film.poster ? loadImage(film.poster) : null;
+  const player = createPlayerUi(film, {
+    onPlay: () => void media.play(),
+    onPause: () => media.pause(),
+    onReplay: () => void media.replay(),
+    onSeek: (seconds) => media.seek(seconds),
+    onMuted: (muted) => media.setMuted(muted),
+    onVolume: (volume) => media.setVolume(volume),
+    onRetry: () => media.retry(),
+  });
+  const unsubscribePlayer = media.subscribe((snapshot, change) => player.update(snapshot, change));
+  player.update(media.snapshot, 'all');
+  // A hidden tab pauses the film; coming back does not resume it.
+  const onVisibility = () => {
+    if (document.hidden) media.suspend('hidden');
+  };
+  document.addEventListener('visibilitychange', onVisibility);
 
   const setPartVisible = (part: ToggleablePart, visible: boolean) => {
     visibility[part] = visible;
@@ -186,6 +219,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     ui.setReturn(`Trở về ${presetInfo(returnPreset).label.toLowerCase()}`);
   };
 
+  ui.screen.append(player.root);
+
   const panel = createSeatPanel(ui.main, ui.root, layout, selection, {
     onViewFromSeat: viewFromSeat,
     onOpenChange: (open) => {
@@ -212,7 +247,16 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       ui.viewport,
       layout,
       {
-        onStatus: (status) => ui.setStatus(status),
+        onStatus: (status) => {
+          ui.setStatus(status);
+          // No context, no screen: the film pauses and waits for the user once the room is back.
+          if (status.kind === 'context-lost') {
+            media.suspend('context-lost');
+            player.setUnavailable('Cảnh 3D đang được khôi phục; chưa phát được.');
+          } else {
+            player.setUnavailable(null);
+          }
+        },
         onCameraState: (state) => {
           ui.setCameraState(state);
           ui.setTransitioning(state === 'transition');
@@ -258,7 +302,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
           );
         },
       },
-      { quality: quality.level, reducedMotion: prefersReducedMotion(), touchStick: touch, selection },
+      { quality: quality.level, reducedMotion: prefersReducedMotion(), touchStick: touch, selection, media: { controller: media, poster } },
     );
     applyPreset(DEFAULT_PRESET, false);
   } catch (error) {
@@ -270,6 +314,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     ui.seatPanelButton.disabled = false;
     panel.setOpen(true, { returnFocus: ui.seatPanelButton });
     panel.setViewAvailable(false, 'Không xem được góc nhìn từ ghế: cảnh 3D không khả dụng trên trình duyệt này. Sơ đồ vẫn dùng được.');
+    // The same film, element and controls, shown flat in place of the room (never both).
+    ui.showVideo2d(media.video, `Đang xem video ở chế độ 2D (không có cảnh 3D): ${film.title}`);
   }
 
   if (import.meta.env.DEV) {
@@ -313,16 +359,50 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       seatScreenPoint: (id) => view?.debugSeatScreenPoint(id) ?? null,
       seatLook: (id) => view?.debugSeatLook(id) ?? null,
       measurePicking: (samples) => view?.measurePicking(samples) ?? null,
-      types: { BufferGeometry, Material, Texture, Object3D, WebGLRenderTarget },
+      film: () => {
+        const quality = media.video.getVideoPlaybackQuality?.();
+        return {
+          id: film.id,
+          snapshot: media.snapshot,
+          readyState: media.video.readyState,
+          networkState: media.video.networkState,
+          paused: media.video.paused,
+          inDocument: media.video.isConnected,
+          subscribers: media.listenerCount,
+          playback: quality ? { decoded: quality.totalVideoFrames, dropped: quality.droppedVideoFrames } : null,
+          audioDecodedBytes: (media.video as HTMLVideoElement & { webkitAudioDecodedByteCount?: number }).webkitAudioDecodedByteCount ?? null,
+          view: view?.getDebugState().film ?? null,
+          player: { state: player.root.dataset.state, notice: player.root.dataset.notice },
+        };
+      },
+      screenPixels: (points, area) => view?.debugScreenPixels(points, area) ?? null,
+      filmElement: () => media.video,
+      types: { BufferGeometry, Material, Texture, Object3D, WebGLRenderTarget, MediaController, HTMLVideoElement },
     };
   }
 
   return () => {
     motionQuery?.removeEventListener('change', onMotionChange);
+    document.removeEventListener('visibilitychange', onVisibility);
+    // Remember the film's place and sound, then stop it before anything else goes.
+    const { currentTime, muted, volume, started } = media.snapshot;
+    options.session.media = { time: currentTime, muted, volume, started };
+    media.pause();
     view?.dispose();
     view = null;
+    unsubscribePlayer();
+    player.dispose();
+    media.dispose();
     panel.dispose();
     ui.dispose();
     if (import.meta.env.DEV) delete window.__cinema;
   };
+}
+
+/** Starts loading an image (the poster) without waiting for it. */
+function loadImage(url: string): HTMLImageElement {
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = url;
+  return image;
 }
