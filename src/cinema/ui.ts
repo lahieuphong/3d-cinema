@@ -1,6 +1,7 @@
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
 import type { AuditoriumLayout } from './layout.ts';
+import { QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
 import type { ViewStatus } from './renderHost.ts';
 
 export const TOGGLEABLE_PARTS: ReadonlyArray<{ part: ToggleablePart; label: string }> = [
@@ -13,6 +14,7 @@ export interface CinemaUiHandlers {
   onPreset(id: CameraPresetId): void;
   onReset(): void;
   onToggle(part: ToggleablePart, visible: boolean): void;
+  onQuality(level: QualityLevel): void;
 }
 
 export type UiStatus = ViewStatus | { kind: 'loading' };
@@ -22,6 +24,7 @@ export interface CinemaUi {
   viewport: HTMLElement;
   setActivePreset(id: CameraPresetId): void;
   setPartVisible(part: ToggleablePart, visible: boolean): void;
+  setQuality(level: QualityLevel): void;
   setCaption(text: string): void;
   setStatus(status: UiStatus): void;
   setTransitioning(active: boolean): void;
@@ -80,7 +83,20 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     toggles.set(part, input);
     visibilityGroup.append(wrapper);
   }
-  toolbar.append(presetGroup, visibilityGroup);
+  const qualityGroup = group('Chất lượng hiển thị');
+  qualityGroup.classList.add('cinema-toolbar__group--quality');
+  const qualityButtons = new Map<QualityLevel, HTMLButtonElement>();
+  for (const level of QUALITY_LEVELS) {
+    const button = el('button', 'cinema-button cinema-button--compact', QUALITY_LABELS[level]);
+    button.type = 'button';
+    button.dataset.quality = level;
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', `Chất lượng ${QUALITY_LABELS[level].toLowerCase()}`);
+    button.addEventListener('click', () => handlers.onQuality(level), { signal });
+    qualityButtons.set(level, button);
+    qualityGroup.append(button);
+  }
+  toolbar.append(presetGroup, visibilityGroup, qualityGroup);
 
   const stage = el('main', 'cinema-stage');
   const viewport = el('div', 'cinema-viewport');
@@ -93,7 +109,7 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   root.append(header, toolbar, stage);
   host.replaceChildren(root);
 
-  const controls = [...presetButtons.values(), resetButton, ...toggles.values()];
+  const controls = [...presetButtons.values(), resetButton, ...toggles.values(), ...qualityButtons.values()];
 
   const ui: CinemaUi = {
     viewport,
@@ -104,6 +120,10 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     setPartVisible(part, visible) {
       const input = toggles.get(part);
       if (input) input.checked = visible;
+    },
+    setQuality(level) {
+      root.dataset.quality = level;
+      for (const [value, button] of qualityButtons) button.setAttribute('aria-pressed', String(value === level));
     },
     setCaption(text) {
       caption.textContent = text;

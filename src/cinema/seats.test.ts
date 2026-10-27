@@ -2,37 +2,48 @@ import { Box3, type BufferGeometry, Matrix4, Mesh, Raycaster, Vector3 } from 'th
 import { afterAll, describe, expect, it } from 'vitest';
 import { createAuditoriumLayout, floorElevationAt, seatEyePosition, type SeatData } from './layout.ts';
 import { createSeatMaterials, disposeMaterials } from './materials.ts';
+import { QUALITY_LEVELS, type QualityLevel } from './quality.ts';
 import { computeSeatModelBounds, createCinemaSeatModel, createSeatInstances, seatPivotMatrix, type SeatModel } from './seats.ts';
 
 const layout = createAuditoriumLayout();
 const { config, interior } = layout;
 const materials = createSeatMaterials();
-const model = createCinemaSeatModel(config, materials);
+const models = Object.fromEntries(
+  QUALITY_LEVELS.map((level) => [level, createCinemaSeatModel(config, materials, config.quality[level].seat)]),
+) as Record<QualityLevel, SeatModel>;
+const model = models.high;
 const bounds = computeSeatModelBounds(model);
 
 afterAll(() => {
-  model.dispose();
+  for (const level of QUALITY_LEVELS) models[level].dispose();
   disposeMaterials(materials);
 });
 
 // Geometry and instance matrices are stored as Float32, so compare them to ~1 µm.
 const GPU_DIGITS = 6;
 const EPS = 1e-6;
-const component = (name: string) => {
-  const found = model.components.find((c) => c.name === name);
+const componentOf = (seatModel: SeatModel, name: string) => {
+  const found = seatModel.components.find((c) => c.name === name);
   if (!found) throw new Error(`No seat component "${name}"`);
   return found.bounds;
 };
 const worldBounds = (seat: SeatData) => bounds.clone().applyMatrix4(seatPivotMatrix(seat));
+const triangles = (seatModel: SeatModel) => seatModel.parts.reduce((sum, part) => sum + part.geometry.index!.count / 3, 0);
 
 /** Seat-local positions of every vertex of a part. */
-function partVertices(name: string): Vector3[] {
-  const geometry = model.parts.find((p) => p.name === name)!.geometry;
+function partVertices(seatModel: SeatModel, name: string): Vector3[] {
+  const geometry = seatModel.parts.find((p) => p.name === name)!.geometry;
   const position = geometry.attributes.position;
   return Array.from({ length: position.count }, (_, i) => new Vector3().fromBufferAttribute(position, i));
 }
 
-describe('cinema seat model', () => {
+// Both quality levels build the same seat design at different segment counts; every shape check
+// applies to both.
+describe.each(QUALITY_LEVELS)('cinema seat model (%s)', (level) => {
+  const model = models[level];
+  const bounds = computeSeatModelBounds(model);
+  const component = (name: string) => componentOf(model, name);
+
   it('stands on the floor at its pivot, and only the feet touch it', () => {
     expect(bounds.min.y).toBeCloseTo(0, GPU_DIGITS);
     const touching = model.components.filter((c) => c.bounds.min.y < 1e-4).map((c) => c.name);
@@ -70,7 +81,7 @@ describe('cinema seat model', () => {
     expect(centreZ('cushion')).toBeLessThan(centreZ('lumbar'));
     expect(centreZ('lumbar')).toBeLessThan(centreZ('headrest'));
     // The rear cover's top is further back than its bottom.
-    const shell = partVertices('shell');
+    const shell = partVertices(model, 'shell');
     const meanZ = (points: Vector3[]) => points.reduce((sum, p) => sum + p.z, 0) / points.length;
     const top = shell.filter((p) => p.y > component('backrest-shell').max.y - 0.1);
     const bottom = shell.filter((p) => p.y < component('backrest-shell').min.y + 0.1);
@@ -146,10 +157,61 @@ describe('cinema seat model', () => {
   });
 
   it('merges pieces into one geometry per material', () => {
-    expect(model.parts.map((p) => p.name)).toEqual(['upholstery', 'shell', 'frame', 'cupWell']);
+    expect(model.parts.map((p) => p.name)).toEqual(['upholstery', 'shell', 'frame', 'metal', 'cupWell']);
     expect(new Set(model.parts.map((p) => p.geometry)).size).toBe(model.parts.length);
-    expect(model.parts.map((p) => p.material)).toEqual([materials.upholstery, materials.shell, materials.frame, materials.cupWell]);
+    expect(model.parts.map((p) => p.material)).toEqual([
+      materials.upholstery,
+      materials.shell,
+      materials.frame,
+      materials.metal,
+      materials.cupWell,
+    ]);
     for (const part of model.parts) expect(part.matrix.equals(new Matrix4())).toBe(true);
+  });
+});
+
+describe('economy seat level of detail', () => {
+  const high = models.high;
+  const economy = models.economy;
+
+  it('has the same components as the high level', () => {
+    expect(economy.components.map((c) => c.name)).toEqual(high.components.map((c) => c.name));
+  });
+
+  it('keeps every component within 1 cm of its high-level bounds, so the silhouette does not change', () => {
+    for (const { name, bounds: b } of high.components) {
+      const e = componentOf(economy, name);
+      for (const key of ['min', 'max'] as const) {
+        for (const axis of ['x', 'y', 'z'] as const) expect(Math.abs(e[key][axis] - b[key][axis]), `${name}.${key}.${axis}`).toBeLessThanOrEqual(0.01);
+      }
+    }
+    const e = computeSeatModelBounds(economy);
+    expect(e.min.y).toBeCloseTo(0, GPU_DIGITS);
+    expect(e.getSize(new Vector3()).distanceTo(bounds.getSize(new Vector3()))).toBeLessThanOrEqual(0.01);
+  });
+
+  it('uses at most half the triangles of the high level', () => {
+    expect(triangles(economy)).toBeLessThanOrEqual(triangles(high) / 2);
+  });
+
+  it('maps instance i to seats[i] at the same positions as the high level', () => {
+    const instances = createSeatInstances(economy, layout.seats);
+    const matrix = new Matrix4();
+    const position = new Vector3();
+    try {
+      expect(instances.meshes).toHaveLength(economy.parts.length);
+      for (const mesh of instances.meshes) {
+        expect(mesh.count).toBe(110);
+        layout.seats.forEach((seat, i) => {
+          mesh.getMatrixAt(i, matrix);
+          position.setFromMatrixPosition(matrix);
+          expect(position.distanceTo(new Vector3(seat.position.x, seat.position.y, seat.position.z))).toBeLessThan(EPS);
+        });
+      }
+      expect(layout.seats.map((_, i) => instances.seatForInstance(i)?.id)).toEqual(layout.seats.map((s) => s.id));
+    } finally {
+      instances.dispose();
+    }
   });
 });
 

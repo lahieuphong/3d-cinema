@@ -1,4 +1,4 @@
-import { CylinderGeometry, Matrix4, PlaneGeometry, Vector3 } from 'three';
+import { BoxGeometry, CylinderGeometry, Matrix4, PlaneGeometry, Vector3 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createDrapeGeometry, createSpeakerPieces, createSweptTube, yawTilt } from './interiorGeometry.ts';
 import { floorElevationAt, stairPitchY, toRadians, type AuditoriumLayout, type Box, type Range } from './layout.ts';
@@ -175,6 +175,17 @@ export function buildSideWall(batch: Batch, layout: AuditoriumLayout, side: Wall
   skirt('front-a', { min: p.firstBayZ, max: opening.z.min }, rows[0].floorY);
   skirt('front-b', { min: opening.z.max, max: rows[0].treadZ.min }, rows[0].floorY);
   rows.forEach((row, i) => skirt(row.label, { min: row.treadZ.min, max: i === rows.length - 1 ? interior.z.max : row.treadZ.max }, row.floorY));
+
+  // LED guide strip in the handrail recess, parallel to the stairs, just under the panels;
+  // the aisle guide light in lighting.ts sits on it.
+  const firstRow = rows[0];
+  const lastRow = rows[rows.length - 1];
+  const stripZ = [firstRow.treadZ.min, lastRow.treadZ.min];
+  const stripY = stripZ.map((z) => panelBottom(z) - 0.06);
+  const strip = new BoxGeometry(0.012, 0.02, Math.hypot(stripZ[1] - stripZ[0], stripY[1] - stripY[0]));
+  strip.rotateX(-Math.atan2(stripY[1] - stripY[0], stripZ[1] - stripZ[0]));
+  strip.translate(sideX(layout, side, lining - 0.006), (stripY[0] + stripY[1]) / 2, (stripZ[0] + stripZ[1]) / 2);
+  batch.add(`guide-strip-${name}`, 'lightSlot', strip);
 
   // Speakers in their bays; the front pair turns towards the audience.
   const s = config.interior.speakers;

@@ -16,6 +16,8 @@ export interface RenderHostOptions {
   /** Advances animation and draws one frame. Returns true while another frame is needed. */
   onFrame(time: number): boolean;
   onStatus(status: ViewStatus): void;
+  /** After a lost WebGL context comes back: rebuild anything that lived only on the GPU. */
+  onContextRestored?(): void;
 }
 
 /**
@@ -28,14 +30,18 @@ export class RenderHost {
   readonly canvas: HTMLCanvasElement;
   private readonly container: HTMLElement;
   private readonly options: RenderHostOptions;
+  private maxPixelRatio: number;
   private resizeObserver: ResizeObserver | null = null;
   private frameId: number | null = null;
   private renderedOnce = false;
   private disposed = false;
+  /** Frames drawn by the on-demand loop; stays put while nothing moves. */
+  private framesRendered = 0;
 
   constructor(container: HTMLElement, options: RenderHostOptions) {
     this.container = container;
     this.options = options;
+    this.maxPixelRatio = options.maxPixelRatio;
     if (typeof WebGL2RenderingContext === 'undefined') {
       throw new WebGLUnavailableError('Trình duyệt này không hỗ trợ WebGL 2.');
     }
@@ -64,6 +70,12 @@ export class RenderHost {
     this.requestRender();
   }
 
+  /** Caps the device pixel ratio (quality setting) and resizes the drawing buffer to match. */
+  setMaxPixelRatio(value: number): void {
+    this.maxPixelRatio = value;
+    this.resize();
+  }
+
   readonly requestRender = (): void => {
     if (this.disposed || this.frameId !== null) return;
     this.frameId = requestAnimationFrame(this.renderFrame);
@@ -76,7 +88,8 @@ export class RenderHost {
       drawingBuffer: { width: this.canvas.width, height: this.canvas.height },
       pixelRatio: this.renderer.getPixelRatio(),
       render: { calls: info.render.calls, triangles: info.render.triangles },
-      memory: { geometries: info.memory.geometries, textures: info.memory.textures },
+      memory: { geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs?.length ?? 0 },
+      framesRendered: this.framesRendered,
     };
   }
 
@@ -97,6 +110,7 @@ export class RenderHost {
 
   private readonly renderFrame = (time: number): void => {
     this.frameId = null;
+    this.framesRendered++;
     const needsAnotherFrame = this.options.onFrame(time);
     if (!this.renderedOnce) {
       this.renderedOnce = true;
@@ -110,7 +124,7 @@ export class RenderHost {
     const height = this.container.clientHeight;
     if (width === 0 || height === 0) return;
     // Re-read the device pixel ratio: it changes with browser zoom and when moving between screens.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.options.maxPixelRatio));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.maxPixelRatio));
     this.renderer.setSize(width, height, false);
     this.options.onResize(width, height);
     this.requestRender();
@@ -123,6 +137,7 @@ export class RenderHost {
   };
 
   private readonly handleContextRestored = (): void => {
+    this.options.onContextRestored?.();
     this.options.onStatus({ kind: 'ready' });
     this.requestRender();
   };

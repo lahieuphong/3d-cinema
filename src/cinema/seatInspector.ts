@@ -8,24 +8,29 @@ import {
   LineSegments,
   Mesh,
   MeshStandardMaterial,
+  NeutralToneMapping,
+  PCFShadowMap,
   Scene,
   Sphere,
   Vector3,
 } from 'three';
 import { CameraRig } from './cameraRig.ts';
 import { AUDITORIUM_CONFIG } from './config.ts';
-import { createAuditoriumLayout, toRadians, type SeatData, type Vec3 } from './layout.ts';
-import { createLighting, type Lighting } from './lighting.ts';
+import { createInteriorEnvironment, type InteriorEnvironment } from './environment.ts';
+import { toRadians, type SeatData, type Vec3 } from './layout.ts';
+import { createStudioLighting, type StudioLighting } from './lighting.ts';
 import { createSeatMaterials, disposeMaterials, type SeatMaterials } from './materials.ts';
+import { loadQuality, QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
 import { prefersReducedMotion, RenderHost, WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
 import { computeSeatModelBounds, createCinemaSeatModel, createSeatInstances, type SeatInstances, type SeatModel } from './seats.ts';
 import { el, group, renderStatus, switchControl } from './ui.ts';
 
 /**
  * Development seat inspector (/cinema?inspect=seat): the auditorium's seat model on a neutral
- * floor, with fixed views, orbit, an optional three-seat cluster, footprint and measured dimensions.
- * It uses the same SeatModel, materials, instancing and lighting as the auditorium, and replaces
- * the auditorium while open, so only one renderer ever exists.
+ * floor, with fixed views, orbit, an optional three-seat cluster, footprint and measured dimensions,
+ * at either quality level. It uses the same SeatModel, materials, instancing, tone mapping and
+ * reflection environment as the auditorium, under neutral studio lighting, and replaces the
+ * auditorium while open, so only one renderer ever exists.
  */
 
 export type InspectorViewId = 'front' | 'side' | 'back' | 'top' | 'cup';
@@ -70,11 +75,13 @@ class SeatInspectorView {
   private readonly rig: CameraRig;
   private readonly callbacks: InspectorViewCallbacks;
   private readonly materials: SeatMaterials;
-  private readonly model: SeatModel;
+  private model: SeatModel;
   private readonly seats = createInspectorSeats();
-  private readonly instances: SeatInstances;
-  private readonly lighting: Lighting;
-  private readonly modelBounds: Box3;
+  private instances: SeatInstances;
+  private readonly lighting: StudioLighting;
+  private environment: InteriorEnvironment;
+  private modelBounds: Box3;
+  private quality: QualityLevel;
   private readonly floor: Mesh<CircleGeometry, MeshStandardMaterial>;
   private readonly grid: GridHelper;
   private readonly footprint: LineSegments<BufferGeometry, LineBasicMaterial>;
@@ -83,23 +90,35 @@ class SeatInspectorView {
   private reportedTransition = false;
   private disposed = false;
 
-  constructor(container: HTMLElement, callbacks: InspectorViewCallbacks) {
+  constructor(container: HTMLElement, callbacks: InspectorViewCallbacks, quality: QualityLevel) {
     this.callbacks = callbacks;
+    this.quality = quality;
     this.host = new RenderHost(container, {
       background: inspector.background,
-      maxPixelRatio: config.render.maxPixelRatio,
+      maxPixelRatio: config.quality[quality].maxPixelRatio,
       ariaLabel: 'Khung nhìn 3D của mẫu ghế. Kéo để xoay, cuộn hoặc chụm để thu phóng.',
       onResize: (width, height) => this.rig.setAspect(width / height),
       onFrame: (time) => this.renderFrame(time),
       onStatus: (status) => callbacks.onStatus(status),
+      onContextRestored: () => this.handleContextRestored(),
     });
+    const { renderer } = this.host;
+    renderer.toneMapping = NeutralToneMapping;
+    renderer.toneMappingExposure = config.render.toneMappingExposure;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;
 
+    let environment: InteriorEnvironment | null = null;
     try {
       this.materials = createSeatMaterials();
-      this.model = createCinemaSeatModel(config, this.materials);
+      [this.model, this.instances] = this.buildSeats(quality);
       this.modelBounds = computeSeatModelBounds(this.model);
-      this.instances = createSeatInstances(this.model, this.seats);
-      this.lighting = createLighting(createAuditoriumLayout(config));
+      this.lighting = createStudioLighting();
+      this.lighting.setShadowQuality(config.quality[quality].shadowMapSize, config.quality[quality].shadowRadius);
+      environment = createInteriorEnvironment(renderer);
+      this.environment = environment;
+      this.scene.environment = environment.texture;
 
       this.floor = new Mesh(
         new CircleGeometry(inspector.floorRadius, 64),
@@ -107,6 +126,7 @@ class SeatInspectorView {
         new MeshStandardMaterial({ color: 0x8b8e94, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
       );
       this.floor.rotation.x = -Math.PI / 2;
+      this.floor.receiveShadow = true;
       this.grid = new GridHelper(inspector.gridSize, inspector.gridDivisions, 0x5b5f66, 0x71757c);
       this.footprint = new LineSegments(footprintGeometry(this.seats), new LineBasicMaterial({ color: 0xd8b65a }));
       this.boundsBox = new LineSegments(boxEdgesGeometry(this.modelBounds), new LineBasicMaterial({ color: 0x5ec8e5 }));
@@ -116,10 +136,12 @@ class SeatInspectorView {
 
       this.rig = new CameraRig(inspector.camera, this.host.canvas, this.focusCentre());
     } catch (error) {
+      environment?.dispose();
       this.host.dispose();
       throw error;
     }
     this.setCluster(false);
+    renderer.shadowMap.needsUpdate = true;
     this.rig.controls.addEventListener('change', this.host.requestRender);
     this.host.start();
   }
@@ -152,7 +174,25 @@ class SeatInspectorView {
     const count = on ? this.seats.length : 1;
     for (const mesh of this.instances.meshes) mesh.count = count;
     this.footprint.geometry.setDrawRange(0, 8 * count);
-    this.host.requestRender();
+    this.invalidateShadows();
+  }
+
+  /** Rebuilds the seats at the other level of detail, keeping view, cluster and overlays. */
+  setQuality(level: QualityLevel): void {
+    if (level === this.quality || this.disposed) return;
+    this.quality = level;
+    this.scene.remove(this.instances.group);
+    this.instances.dispose();
+    this.model.dispose();
+    [this.model, this.instances] = this.buildSeats(level);
+    this.modelBounds = computeSeatModelBounds(this.model);
+    this.boundsBox.geometry.dispose();
+    this.boundsBox.geometry = boxEdgesGeometry(this.modelBounds);
+    this.scene.add(this.instances.group);
+    this.setCluster(this.cluster);
+    this.lighting.setShadowQuality(config.quality[level].shadowMapSize, config.quality[level].shadowRadius);
+    this.host.setMaxPixelRatio(config.quality[level].maxPixelRatio);
+    this.invalidateShadows();
   }
 
   setFootprintVisible(visible: boolean): void {
@@ -193,6 +233,8 @@ class SeatInspectorView {
       transitioning: this.rig.isTransitioning,
       camera: { position: camera.position.toArray(), target: controls.target.toArray(), fov: camera.fov, aspect: camera.aspect },
       seats: this.instances.meshes[0].count,
+      quality: this.quality,
+      trianglesPerSeat: this.model.parts.reduce((sum, part) => sum + (part.geometry.index?.count ?? 0) / 3, 0),
       measured: this.measure(),
       ...this.host.getDebugInfo(),
     };
@@ -204,10 +246,12 @@ class SeatInspectorView {
     this.rig.controls.removeEventListener('change', this.host.requestRender);
     this.rig.dispose();
     this.scene.clear();
+    this.scene.environment = null;
     this.instances.dispose();
     this.model.dispose();
     disposeMaterials(this.materials);
     this.lighting.dispose();
+    this.environment.dispose();
     for (const object of [this.floor, this.footprint, this.boundsBox]) {
       object.geometry.dispose();
       object.material.dispose();
@@ -228,6 +272,28 @@ class SeatInspectorView {
   private focusCentre(): Vec3 {
     const centre = this.modelBounds.getCenter(new Vector3());
     return { x: centre.x, y: centre.y, z: centre.z };
+  }
+
+  private buildSeats(level: QualityLevel): [SeatModel, SeatInstances] {
+    const model = createCinemaSeatModel(config, this.materials, config.quality[level].seat);
+    const instances = createSeatInstances(model, this.seats);
+    for (const mesh of instances.meshes) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
+    return [model, instances];
+  }
+
+  /** Rebuilds the environment lost with the old context (see CinemaView.handleContextRestored). */
+  private handleContextRestored(): void {
+    this.environment = createInteriorEnvironment(this.host.renderer);
+    this.scene.environment = this.environment.texture;
+    this.invalidateShadows();
+  }
+
+  private invalidateShadows(): void {
+    this.host.renderer.shadowMap.needsUpdate = true;
+    this.host.requestRender();
   }
 
   private renderFrame(time: number): boolean {
@@ -330,7 +396,18 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   const footprintSwitch = switchControl('Footprint', 'footprint', false, (on) => setFootprint(on), signal);
   const dimensionsSwitch = switchControl('Kích thước', 'dimensions', false, (on) => setDimensions(on), signal);
   displayGroup.append(clusterSwitch.wrapper, footprintSwitch.wrapper, dimensionsSwitch.wrapper);
-  toolbar.append(viewGroup, displayGroup);
+  const qualityGroup = group('Chất lượng mẫu ghế');
+  const qualityButtons = new Map<QualityLevel, HTMLButtonElement>();
+  for (const level of QUALITY_LEVELS) {
+    const button = el('button', 'cinema-button cinema-button--compact', QUALITY_LABELS[level]);
+    button.type = 'button';
+    button.dataset.quality = level;
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => setQuality(level), { signal });
+    qualityButtons.set(level, button);
+    qualityGroup.append(button);
+  }
+  toolbar.append(viewGroup, displayGroup, qualityGroup);
 
   const stage = el('main', 'cinema-stage');
   const viewport = el('div', 'cinema-viewport');
@@ -346,7 +423,7 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   root.append(header, toolbar, stage);
   host.replaceChildren(root);
 
-  const controls = [...viewButtons.values(), clusterSwitch.input, footprintSwitch.input, dimensionsSwitch.input];
+  const controls = [...viewButtons.values(), clusterSwitch.input, footprintSwitch.input, dimensionsSwitch.input, ...qualityButtons.values()];
   const setStatus = (next: Parameters<typeof renderStatus>[2]) => {
     renderStatus(root, status, next);
     if (next.kind === 'error') for (const control of controls) control.disabled = true;
@@ -355,6 +432,7 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   root.dataset.transitioning = 'false';
 
   let view: SeatInspectorView | null = null;
+  const initialQuality = loadQuality().level;
   let activeView: InspectorViewId = 'front';
 
   function selectView(id: InspectorViewId, animate: boolean) {
@@ -372,6 +450,12 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   function setFootprint(on: boolean) {
     root.dataset.footprint = String(on);
     view?.setFootprintVisible(on);
+  }
+  // Compares the two levels here; the auditorium's stored choice is left alone.
+  function setQuality(level: QualityLevel) {
+    root.dataset.quality = level;
+    for (const [value, button] of qualityButtons) button.setAttribute('aria-pressed', String(value === level));
+    view?.setQuality(level);
   }
   function setDimensions(on: boolean) {
     root.dataset.dimensions = String(on);
@@ -391,7 +475,7 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
     view = new SeatInspectorView(viewport, {
       onStatus: (next) => setStatus(next),
       onTransitionChange: (active) => (root.dataset.transitioning = String(active)),
-    });
+    }, initialQuality);
     const m = view.measure();
     dimensions.replaceChildren(
       ...[
@@ -408,6 +492,7 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
     root.dataset.cluster = 'false';
     root.dataset.footprint = 'false';
     root.dataset.dimensions = 'false';
+    setQuality(initialQuality);
     selectView(activeView, false);
   } catch (error) {
     console.error('[cinema] Could not start the seat inspector:', error);

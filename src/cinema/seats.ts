@@ -54,6 +54,9 @@ export interface SeatModel {
 
 type PartName = keyof SeatMaterials;
 
+/** Segment counts for one quality level (`config.quality.<level>.seat`); proportions never change. */
+export type SeatDetail = AuditoriumConfig['quality']['high']['seat'];
+
 interface Piece {
   name: string;
   part: PartName;
@@ -66,13 +69,21 @@ interface Piece {
  *
  * Pieces are authored with their own local transforms, baked into seat-local space and merged per
  * material, so 110 seats cost one draw call per material:
- * - `upholstery`: seat cushion, lumbar, upper-back and headrest pads (soft superellipsoid pillows).
+ * - `upholstery`: seat cushion, lumbar, upper-back and headrest pads (soft superellipsoid pillows,
+ *   with darker rolled edges where pads meet).
  * - `shell`: the backrest's rear cover (tapered, bevelled panel).
- * - `frame`: side standards, foot plates, seat pan and pivot hubs, armrests, hinge brackets,
- *   lower back cover, cup holder rim.
+ * - `frame`: powder-coated parts — side standards, armrests, seat pan, lower back cover, cup holder rim.
+ * - `metal`: exposed metal — foot plates, seat pivot hubs, backrest hinge brackets.
  * - `cupWell`: inside wall and bottom of the cup holder.
+ *
+ * `detail` only sets segment counts (curves, rings, bevels); every dimension comes from the config,
+ * so both quality levels share one design.
  */
-export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatMaterials): SeatModel {
+export function createCinemaSeatModel(
+  config: AuditoriumConfig,
+  materials: SeatMaterials,
+  detail: SeatDetail = config.quality.high.seat,
+): SeatModel {
   const m = config.seat.model;
   const pieces: Piece[] = [];
   const add = (name: string, part: PartName, geometry: BufferGeometry, matrix = new Matrix4()) =>
@@ -93,14 +104,17 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
       [0, 0, s.topCornerRadius, s.topCornerRadius],
     );
     // Shape (u, v, extrusion w) → seat (Z = u, Y = v, X = −w), then centred under the armrest.
-    const standard = createBeveledSlab(profile, s.thickness, s.bevel, { curveSegments: 6, bevelSegments: 2 });
+    const standard = createBeveledSlab(profile, s.thickness, s.bevel, {
+      curveSegments: detail.standardCurveSegments,
+      bevelSegments: detail.smallBevelSegments,
+    });
     standard.rotateY(-Math.PI / 2);
     centreOnX(standard, side * m.armrest.centerX);
     add(`standard-${sideName(side)}`, 'frame', standard);
 
     add(
       `foot-plate-${sideName(side)}`,
-      'frame',
+      'metal',
       new RoundedBoxGeometry(m.footPlate.width, m.footPlate.height, s.footBackZ - s.footFrontZ, 1, m.footPlate.height / 3),
       translation(side * m.armrest.centerX, m.footPlate.height / 2, (s.footFrontZ + s.footBackZ) / 2),
     );
@@ -114,7 +128,7 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
     add(
       `armrest-${sideName(side)}`,
       'frame',
-      new RoundedBoxGeometry(a.width, a.height, a.backZ - frontZ, 2, a.cornerRadius),
+      new RoundedBoxGeometry(a.width, a.height, a.backZ - frontZ, detail.boxSegments, a.cornerRadius),
       translation(side * a.centerX, a.topHeight - a.height / 2, (frontZ + a.backZ) / 2),
     );
   }
@@ -137,7 +151,7 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
       [cup.innerRadius + fillet, 0],
       ...arc(cup.innerRadius + fillet, -fillet, fillet, Math.PI / 2, Math.PI, 3),
       [cup.innerRadius, -lip],
-    ]),
+    ], detail.revolveSegments),
     translation(cupCenter.x, cupCenter.y, cupCenter.z),
   );
   const wellFillet = 0.008;
@@ -148,12 +162,12 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
       [cup.innerRadius, -lip],
       [cup.innerRadius, -cup.depth + wellFillet],
       ...arc(cup.innerRadius - wellFillet, -cup.depth + wellFillet, wellFillet, 0, -Math.PI / 2, 3),
-    ]),
+    ], detail.revolveSegments),
     translation(cupCenter.x, cupCenter.y, cupCenter.z),
   );
   // A flat disc closes the bottom (a lathe cannot reach the axis without a pinhole or degenerate
   // triangles); it reaches slightly under the fillet so no seam opens between them.
-  const wellBottom = new CircleGeometry(cup.innerRadius - wellFillet + 0.001, 24);
+  const wellBottom = new CircleGeometry(cup.innerRadius - wellFillet + 0.001, detail.revolveSegments);
   wellBottom.rotateX(-Math.PI / 2);
   add('cup-holder-well-bottom', 'cupWell', wellBottom, translation(cupCenter.x, cupCenter.y - cup.depth, cupCenter.z));
 
@@ -161,9 +175,9 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
   const hub = m.seatHub;
   const hubOuterX = m.armrest.centerX;
   for (const side of [-1, 1]) {
-    const geometry = new CylinderGeometry(hub.radius, hub.radius, hubOuterX - hub.innerX, 16);
+    const geometry = new CylinderGeometry(hub.radius, hub.radius, hubOuterX - hub.innerX, detail.hubSegments);
     geometry.rotateZ(Math.PI / 2);
-    add(`seat-hub-${sideName(side)}`, 'frame', geometry, translation((side * (hub.innerX + hubOuterX)) / 2, hub.centerY, hub.centerZ));
+    add(`seat-hub-${sideName(side)}`, 'metal', geometry, translation((side * (hub.innerX + hubOuterX)) / 2, hub.centerY, hub.centerZ));
   }
 
   // Seat pan and cushion share a frame tilted about the pan's top centre, front edge up.
@@ -173,14 +187,14 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
   add(
     'seat-pan',
     'frame',
-    new RoundedBoxGeometry(pan.width, pan.height, pan.depth, 2, pan.cornerRadius),
+    new RoundedBoxGeometry(pan.width, pan.height, pan.depth, detail.boxSegments, pan.cornerRadius),
     seatFrame.clone().multiply(translation(0, -pan.height / 2, 0)),
   );
   const shape = m.padShape;
   add(
     'cushion',
     'upholstery',
-    createPillowGeometry({ ...pillowStyle(shape), width: cushion.width, depth: cushion.depth, thickness: cushion.thickness }),
+    createPillowGeometry({ ...pillowStyle(shape, detail), width: cushion.width, depth: cushion.depth, thickness: cushion.thickness }),
     seatFrame.clone().multiply(translation(0, cushion.thickness / 2 - cushion.embed, cushion.centerZ - pan.centerZ)),
   );
 
@@ -188,7 +202,15 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
   // its back. The frame leans back (towards +Z) by the recline angle.
   const back = m.backrest;
   const backFrame = translation(0, back.hingeHeight, back.hingeZ).multiply(new Matrix4().makeRotationX(toRadians(back.reclineDeg)));
-  add('backrest-shell', 'shell', createBeveledSlab(createPanelShape(back.shell), back.shell.thickness, back.shell.bevel), backFrame);
+  add(
+    'backrest-shell',
+    'shell',
+    createBeveledSlab(createPanelShape(back.shell), back.shell.thickness, back.shell.bevel, {
+      curveSegments: detail.shellCurveSegments,
+      bevelSegments: detail.shellBevelSegments,
+    }),
+    backFrame,
+  );
 
   const panel = back.backPanel;
   add(
@@ -204,14 +226,14 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
       }),
       panel.thickness,
       panel.bevel,
-      { curveSegments: 4, bevelSegments: 2 },
+      { curveSegments: Math.max(2, detail.shellCurveSegments / 2), bevelSegments: detail.smallBevelSegments },
     ),
     // Sits on the back face of the shell, sunk 2 mm into it.
     backFrame.clone().multiply(translation(0, panel.centerY - panel.height / 2, back.shell.thickness - 0.002)),
   );
 
   for (const pad of back.pads) {
-    const geometry = createPillowGeometry({ ...pillowStyle(shape), width: pad.width, depth: pad.height, thickness: pad.thickness });
+    const geometry = createPillowGeometry({ ...pillowStyle(shape, detail), width: pad.width, depth: pad.height, thickness: pad.thickness });
     // Turn the pillow's domed +Y face to the front (-Z) and its depth axis up the backrest.
     geometry.rotateX(-Math.PI / 2);
     add(pad.name, 'upholstery', geometry, backFrame.clone().multiply(translation(0, pad.centerY, -pad.thickness / 2 + back.padEmbed)));
@@ -221,7 +243,7 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
   for (const side of [-1, 1]) {
     add(
       `hinge-bracket-${sideName(side)}`,
-      'frame',
+      'metal',
       new RoundedBoxGeometry(bracket.width, bracket.height, bracket.depth, 1, bracket.cornerRadius),
       translation(side * bracket.centerX, bracket.centerY, bracket.centerZ),
     );
@@ -236,10 +258,11 @@ export function createCinemaSeatModel(config: AuditoriumConfig, materials: SeatM
     components.push({ name: piece.name, part: piece.part, bounds: piece.geometry.boundingBox!.clone() });
     byPart.set(piece.part, [...(byPart.get(piece.part) ?? []), piece.geometry]);
   }
-  const partOrder: PartName[] = ['upholstery', 'shell', 'frame', 'cupWell'];
+  const partOrder: PartName[] = ['upholstery', 'shell', 'frame', 'metal', 'cupWell'];
   const parts: SeatModelPart[] = partOrder.map((name) => ({
     name,
-    geometry: mergePieces(byPart.get(name) ?? []),
+    // Upholstery keeps its seam shading (vertex colour).
+    geometry: mergePieces(byPart.get(name) ?? [], name === 'upholstery' ? ['position', 'normal', 'color'] : ['position', 'normal']),
     material: materials[name],
     matrix: new Matrix4(),
   }));
@@ -330,21 +353,22 @@ export function createSeatInstances(model: SeatModel, seats: readonly SeatData[]
   };
 }
 
-function pillowStyle(shape: AuditoriumConfig['seat']['model']['padShape']) {
+function pillowStyle(shape: AuditoriumConfig['seat']['model']['padShape'], detail: SeatDetail) {
   return {
     outline: shape.outline,
     profile: shape.profile,
     crown: shape.crown,
-    radialSegments: shape.radialSegments,
-    ringSegments: shape.ringSegments,
+    seamShade: shape.seamShade,
+    radialSegments: detail.pillowRadial,
+    ringSegments: detail.pillowRings,
   };
 }
 
 /** Revolves a (radius, height) profile about +Y. */
-function lathe(profile: Array<[number, number]>): LatheGeometry {
+function lathe(profile: Array<[number, number]>, segments: number): LatheGeometry {
   return new LatheGeometry(
     profile.map(([r, y]) => new Vector2(r, y)),
-    24,
+    segments,
   );
 }
 

@@ -1,7 +1,7 @@
-import { type BufferGeometry, ExtrudeGeometry, Group, PlaneGeometry, Shape } from 'three';
+import { BoxGeometry, type BufferGeometry, ExtrudeGeometry, Float32BufferAttribute, Group, PlaneGeometry, Shape } from 'three';
 import { buildBackWall, buildCeiling, buildFrontWall, buildHandrails, buildSideWall } from './interior.ts';
 import type { AuditoriumLayout, FloorTread, Range } from './layout.ts';
-import type { BlockoutMaterials } from './materials.ts';
+import { CARPET_TILE, type BlockoutMaterials } from './materials.ts';
 import { MeshBatch, type PieceRecord } from './meshBatch.ts';
 
 /** Shell parts that can be hidden to look inside the room; each hides with everything fixed to it. */
@@ -48,16 +48,18 @@ export function buildArchitecture(layout: AuditoriumLayout, materials: BlockoutM
   const batch = (name: string) => new MeshBatch(name, materials, pieces);
 
   const floor = batch('floor');
-  floor.addBox('floor', 'carpet', { x: shell.x, y: { min: shell.y.min, max: interior.y.min }, z: shell.z });
+  const slab = new BoxGeometry(shell.x.max - shell.x.min, interior.y.min - shell.y.min, shell.z.max - shell.z.min);
+  slab.translate((shell.x.min + shell.x.max) / 2, (shell.y.min + interior.y.min) / 2, (shell.z.min + shell.z.max) / 2);
+  floor.add('floor', 'carpet', withWorldUv(slab, CARPET_TILE));
   // Stepped floor: one prism for the seat block and one per aisle, all cut from the same row
   // profile, so the aisles step up exactly with the rows. The aisle prisms continue under the
   // side-wall lining to the structural wall, where the handrail posts stand.
   const seatTiers = createSteppedFloorGeometry(layout.treads, layout.seatingZone.x);
-  if (seatTiers) floor.add('seat-tiers', 'carpet', seatTiers);
+  if (seatTiers) floor.add('seat-tiers', 'carpet', withWorldUv(seatTiers, CARPET_TILE));
   for (const aisle of layout.aisles) {
     const x = aisle.side === 'left' ? { min: structure.x.min, max: aisle.x.max } : { min: aisle.x.min, max: structure.x.max };
     const steps = createSteppedFloorGeometry(layout.treads, x);
-    if (steps) floor.add(`aisle-${aisle.side}`, 'aisle', steps);
+    if (steps) floor.add(`aisle-${aisle.side}`, 'aisle', withWorldUv(steps, CARPET_TILE));
   }
   // A contrasting strip on the front edge of every aisle step. It sits on top of the tread,
   // so it never shares a plane with the riser below it.
@@ -104,7 +106,7 @@ export function buildArchitecture(layout: AuditoriumLayout, materials: BlockoutM
 
   const geometries: BufferGeometry[] = [];
   for (const b of [floor, screen, ceiling, leftWall, rightWall, frontWall, backWall]) {
-    geometries.push(...b.build(new Set(['exitSign'])));
+    geometries.push(...b.build(new Set(['exitSign', 'carpet', 'aisle'])));
     group.add(b.group);
   }
 
@@ -138,5 +140,24 @@ function createSteppedFloorGeometry(treads: FloorTread[], x: Range): ExtrudeGeom
   // Shape space (u, v, w) → world (Z = u, Y = v, X = -w), then shift so X spans [x.min, x.max].
   geometry.rotateY(-Math.PI / 2);
   geometry.translate(x.max, 0, 0);
+  return geometry;
+}
+
+/**
+ * Replaces texture coordinates with world-space planar ones (`tile` metres per repeat), projected
+ * along each vertex's dominant normal axis, so carpet fleck has the same scale on every floor piece.
+ */
+function withWorldUv<G extends BufferGeometry>(geometry: G, tile: number): G {
+  const position = geometry.attributes.position;
+  const normal = geometry.attributes.normal;
+  const uv = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i++) {
+    const [x, y, z] = [position.getX(i), position.getY(i), position.getZ(i)];
+    const [nx, ny, nz] = [Math.abs(normal.getX(i)), Math.abs(normal.getY(i)), Math.abs(normal.getZ(i))];
+    const [u, v] = ny >= nx && ny >= nz ? [x, z] : nx >= nz ? [z, y] : [x, y];
+    uv[i * 2] = u / tile;
+    uv[i * 2 + 1] = v / tile;
+  }
+  geometry.setAttribute('uv', new Float32BufferAttribute(uv, 2));
   return geometry;
 }

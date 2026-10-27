@@ -386,3 +386,7 @@ body {
 .not-found a {
   color: var(--accent);
 }
+
+.cinema-button--compact {
+  padding-inline: 10px;
+}

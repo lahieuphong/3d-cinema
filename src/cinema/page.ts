@@ -1,6 +1,7 @@
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, DEFAULT_PRESET, describePreset, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
 import { createAuditoriumLayout, type Vec3 } from './layout.ts';
+import { loadQuality, saveQuality } from './quality.ts';
 import { createCinemaUi, TOGGLEABLE_PARTS } from './ui.ts';
 import { validateLayout } from './validation.ts';
 import { CinemaView, WebGLUnavailableError } from './view.ts';
@@ -13,6 +14,7 @@ declare global {
       getState(): unknown;
       setCamera(position: Vec3, target: Vec3, mode?: CameraMode): void;
       measureCost(): unknown;
+      measureFrames(frames?: number): Promise<unknown>;
     };
   }
 }
@@ -70,7 +72,16 @@ export function mountCinemaPage(host: HTMLElement): () => void {
       autoHidden.delete(part);
       setPartVisible(part, visible);
     },
+    onQuality: (level) => {
+      view?.setQuality(level);
+      saveQuality(level);
+      ui.setQuality(level);
+    },
   });
+
+  // The user's stored choice, else a conservative default from device capabilities.
+  const quality = loadQuality();
+  ui.setQuality(quality.level);
 
   try {
     view = new CinemaView(ui.viewport, layout, {
@@ -80,7 +91,7 @@ export function mountCinemaPage(host: HTMLElement): () => void {
         // Looking around from a seat keeps the seat caption; a free orbit no longer matches the preset.
         if (activeMode === 'orbit') ui.setCaption(FREE_CAMERA_CAPTION);
       },
-    });
+    }, quality.level);
     applyPreset(DEFAULT_PRESET, false);
   } catch (error) {
     console.error('[cinema] Could not start the 3D view:', error);
@@ -94,6 +105,7 @@ export function mountCinemaPage(host: HTMLElement): () => void {
       layout,
       getState: () => ({
         preset: activePreset,
+        qualitySource: quality.source,
         visibility: { ...visibility },
         canvasCount: document.querySelectorAll('canvas').length,
         view: view?.getDebugState() ?? null,
@@ -105,6 +117,7 @@ export function mountCinemaPage(host: HTMLElement): () => void {
         ui.setCaption(FREE_CAMERA_CAPTION);
       },
       measureCost: () => view?.measureCost() ?? null,
+      measureFrames: async (frames) => (view ? view.measureFrames(frames) : null),
     };
   }
 

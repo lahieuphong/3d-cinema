@@ -137,9 +137,10 @@ export const AUDITORIUM_CONFIG = {
       /**
        * Cushion shape (superellipsoid exponents): `outline` shapes the plan corners (small = squarer),
        * `profile` the edge across the thickness (1 = round, small = flatter face with a tighter edge),
-       * `crown` (m) domes the visible face.
+       * `crown` (m) domes the visible face, `seamShade` darkens the rolled edge where pads meet
+       * (vertex colour; 0 = none). Segment counts come from the quality level.
        */
-      padShape: { outline: 0.3, profile: 0.62, crown: 0.012, radialSegments: 24, ringSegments: 7 },
+      padShape: { outline: 0.3, profile: 0.62, crown: 0.012, seamShade: 0.3 },
     },
   },
 
@@ -231,6 +232,47 @@ export const AUDITORIUM_CONFIG = {
   render: {
     maxPixelRatio: 2,
     background: 0x16181c,
+    /** Khronos PBR Neutral: keeps the wine red's hue; ACES pushes saturated reds towards orange. */
+    toneMappingExposure: 1.0,
+  },
+
+  /**
+   * Two fixed quality levels sharing one seat design and one lighting design. Economy lowers
+   * curve and ring segments, the pixel ratio and the shadow map resolution.
+   */
+  quality: {
+    high: {
+      maxPixelRatio: 2,
+      shadowMapSize: 2048,
+      shadowRadius: 3,
+      seat: {
+        pillowRadial: 24,
+        pillowRings: 7,
+        shellCurveSegments: 8,
+        shellBevelSegments: 3,
+        standardCurveSegments: 6,
+        smallBevelSegments: 2,
+        boxSegments: 2,
+        revolveSegments: 24,
+        hubSegments: 16,
+      },
+    },
+    economy: {
+      maxPixelRatio: 1.25,
+      shadowMapSize: 1024,
+      shadowRadius: 2,
+      seat: {
+        pillowRadial: 14,
+        pillowRings: 4,
+        shellCurveSegments: 4,
+        shellBevelSegments: 1,
+        standardCurveSegments: 3,
+        smallBevelSegments: 1,
+        boxSegments: 1,
+        revolveSegments: 12,
+        hubSegments: 8,
+      },
+    },
   },
 
   /** Interior fit-out (Prompt 03). Positions are derived from the room, rows and these values. */

@@ -1,4 +1,4 @@
-import { Box3, type BufferGeometry, Mesh, Raycaster, Vector3 } from 'three';
+import { Box3, type BufferGeometry, Mesh, Raycaster, type Texture, Vector3 } from 'three';
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildArchitecture, INTERIOR_MATERIALS } from './architecture.ts';
 import { doorOpening, measureAisleClearance, projectorFrame, sideWallBays } from './interior.ts';
@@ -188,6 +188,10 @@ describe('fixtures do not collide', () => {
     ['curtain-', 'valance-'],
     ['handrail-', 'door-'],
     ['speaker-back', 'projector-'],
+    ['guide-strip-', 'panel-'],
+    ['guide-strip-', 'door-'],
+    ['guide-strip-', 'handrail-left-post'],
+    ['guide-strip-', 'handrail-right-post'],
   ];
   for (const [a, b] of pairs) {
     it(`${a}* and ${b}* are apart`, () => {
@@ -200,6 +204,25 @@ describe('fixtures do not collide', () => {
       }
     });
   }
+
+  // The strip is sloped, so its box overlaps the rail's and the skirting's; check the actual gaps.
+  it('runs the aisle guide strip behind the handrail and above the skirting', () => {
+    const h = config.interior.handrail;
+    for (const side of ['left', 'right'] as const) {
+      const strip = named(`guide-strip-${side}`)[0].bounds;
+      const railFace = interior.x.max + h.inset + h.radius;
+      if (side === 'right') expect(strip.min.x).toBeGreaterThan(railFace + 0.01);
+      else expect(strip.max.x).toBeLessThan(-railFace - 0.01);
+      // Bottom edge of the strip, which runs parallel to the stair pitch line.
+      const stripBottom = (z: number) => stairPitchY(layout, z) + config.interior.wallPanels.dadoHeight - 0.06 - 0.011;
+      for (const skirt of named(`skirting-${side}-`)) {
+        for (const z of [skirt.bounds.min.z, skirt.bounds.max.z]) {
+          if (z < strip.min.z || z > strip.max.z) continue;
+          expect(stripBottom(z) - skirt.bounds.max.y, skirt.name).toBeGreaterThan(0.1);
+        }
+      }
+    }
+  });
 
   it('cuts a real door opening: no structural wall behind the leaf', () => {
     const opening = doorOpening(layout);
@@ -254,7 +277,7 @@ describe('interior resources', () => {
     });
   });
 
-  it('disposes every geometry, material and the shared exit sign texture exactly once', () => {
+  it('disposes every geometry, material and shared texture (exit sign, carpet) exactly once', () => {
     const ownMaterials = createBlockoutMaterials();
     const own = buildArchitecture(layout, ownMaterials);
     const counts = new Map<object, number>();
@@ -266,11 +289,18 @@ describe('interior resources', () => {
     });
     geometries.forEach(track);
     Object.values(ownMaterials).forEach(track);
-    track(ownMaterials.exitSign.map!);
+    const textures = new Set<Texture>();
+    for (const material of Object.values(ownMaterials)) {
+      for (const value of Object.values(material)) if ((value as Texture | null)?.isTexture) textures.add(value as Texture);
+    }
+    // The carpet texture is shared by the carpet and aisle materials.
+    expect(ownMaterials.carpet.map).toBe(ownMaterials.aisle.map);
+    expect([...textures]).toEqual(expect.arrayContaining([ownMaterials.exitSign.map, ownMaterials.carpet.map]));
+    textures.forEach(track);
 
     own.dispose();
     disposeMaterials(ownMaterials);
-    expect(counts.size).toBe(geometries.size + Object.keys(ownMaterials).length + 1);
+    expect(counts.size).toBe(geometries.size + Object.keys(ownMaterials).length + textures.size);
     expect([...counts.values()].every((n) => n === 1)).toBe(true);
   });
 });

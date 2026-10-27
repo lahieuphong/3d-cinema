@@ -16,6 +16,11 @@ export interface PillowOptions {
   profile: number;
   /** Extra height at the centre of the +Y face, fading to zero at the outline. */
   crown: number;
+  /**
+   * Darkens the rolled edge (vertex colour, 0 = off), so the seams between neighbouring pads
+   * read without modelling stitches. Faces keep their full colour.
+   */
+  seamShade?: number;
   radialSegments: number;
   /** Rings per half (top or bottom). */
   ringSegments: number;
@@ -32,12 +37,18 @@ export function createPillowGeometry(o: PillowOptions): BufferGeometry {
   const U = o.radialSegments;
   const V = o.ringSegments * 2;
   const positions: number[] = [0, -c, 0];
+  const colors: number[] = [1, 1, 1];
+  const seam = o.seamShade ?? 0;
 
   for (let j = 1; j < V; j++) {
     const v = -Math.PI / 2 + (j / V) * Math.PI;
     const ring = signedPow(Math.cos(v), o.profile);
     const h = signedPow(Math.sin(v), o.profile);
+    // Full colour on the faces, easing down towards the equator of the edge roll.
+    const t = Math.min(1, Math.abs(h) / 0.6);
+    const shade = 1 - seam * (1 - t * t * (3 - 2 * t));
     for (let i = 0; i < U; i++) {
+      colors.push(shade, shade, shade);
       const u = (i / U) * Math.PI * 2;
       const x = a * ring * signedPow(Math.cos(u), o.outline);
       const z = b * ring * signedPow(Math.sin(u), o.outline);
@@ -47,6 +58,7 @@ export function createPillowGeometry(o: PillowOptions): BufferGeometry {
   }
   const top = positions.length / 3;
   positions.push(0, c + o.crown, 0);
+  colors.push(1, 1, 1);
 
   const ring = (j: number, i: number) => 1 + (j - 1) * U + (i % U);
   const indices: number[] = [];
@@ -64,6 +76,7 @@ export function createPillowGeometry(o: PillowOptions): BufferGeometry {
 
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
