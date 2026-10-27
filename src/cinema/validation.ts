@@ -115,9 +115,7 @@ export function validateLayout(layout: AuditoriumLayout): string[] {
   if (rows[0].treadZ.min <= stage.z.max) problems.push('Row A starts inside the stage.');
   if (layout.metrics.frontClearance <= 0) problems.push('No clear floor in front of row A.');
   if (layout.metrics.backClearance <= 0) problems.push('No clear floor behind the last row.');
-
-  const placeholderTop = config.seat.placeholder.backrest.bottomHeight + config.seat.placeholder.backrest.height;
-  if (rows[rows.length - 1].floorY + placeholderTop >= interior.y.max) problems.push('Last row seats reach the ceiling.');
+  // Seat height against the ceiling is checked in scene.test.ts with the real seat geometry.
 
   return problems;
 }

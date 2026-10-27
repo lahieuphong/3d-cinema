@@ -1,6 +1,6 @@
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, DEFAULT_PRESET, describePreset, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
-import { createAuditoriumLayout } from './layout.ts';
+import { createAuditoriumLayout, type Vec3 } from './layout.ts';
 import { createCinemaUi, TOGGLEABLE_PARTS } from './ui.ts';
 import { validateLayout } from './validation.ts';
 import { CinemaView, WebGLUnavailableError } from './view.ts';
@@ -8,7 +8,12 @@ import { CinemaView, WebGLUnavailableError } from './view.ts';
 declare global {
   interface Window {
     /** Development-only inspection hook used by `npm run capture`. */
-    __cinema?: { layout: ReturnType<typeof createAuditoriumLayout>; getState(): unknown };
+    __cinema?: {
+      layout: ReturnType<typeof createAuditoriumLayout>;
+      getState(): unknown;
+      setCamera(position: Vec3, target: Vec3, mode?: CameraMode): void;
+      measureCost(): unknown;
+    };
   }
 }
 
@@ -93,6 +98,13 @@ export function mountCinemaPage(host: HTMLElement): () => void {
         canvasCount: document.querySelectorAll('canvas').length,
         view: view?.getDebugState() ?? null,
       }),
+      setCamera: (position, target, mode = 'orbit') => {
+        if (!view) return;
+        view.debugSetCamera(position, target, mode);
+        activeMode = mode;
+        ui.setCaption(FREE_CAMERA_CAPTION);
+      },
+      measureCost: () => view?.measureCost() ?? null,
     };
   }
 

@@ -23,7 +23,7 @@ export function createLighting(layout: AuditoriumLayout): Lighting {
   key.position.set(interior.x.max * 0.5, interior.y.max * 2, interior.z.min * 0.8);
 
   // From the back-left corner: lights the right wall, the front wall and seat backs.
-  const fill = new DirectionalLight(0xdfe4ff, 0.9);
+  const fill = new DirectionalLight(0xdfe4ff, 1.3);
   fill.position.set(interior.x.min, interior.y.max, interior.z.max);
 
   const bounce = new DirectionalLight(0xfff4e6, 0.8);

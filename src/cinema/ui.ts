@@ -1,7 +1,7 @@
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
 import type { AuditoriumLayout } from './layout.ts';
-import type { ViewStatus } from './view.ts';
+import type { ViewStatus } from './renderHost.ts';
 
 export const TOGGLEABLE_PARTS: ReadonlyArray<{ part: ToggleablePart; label: string }> = [
   { part: 'ceiling', label: 'Trần' },
@@ -43,7 +43,7 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
 
   const header = el('header', 'cinema-header');
   const title = el('h1', 'cinema-title', 'Phòng chiếu 3D');
-  const badge = el('span', 'cinema-badge', 'Khối thô kiến trúc');
+  const badge = el('span', 'cinema-badge', 'Nội thất, vật liệu cơ bản');
   title.append(' ', badge);
   const stats = el('dl', 'cinema-stats');
   stats.append(
@@ -76,15 +76,8 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   const visibilityGroup = group('Hiện thành phần');
   const toggles = new Map<ToggleablePart, HTMLInputElement>();
   for (const { part, label } of TOGGLEABLE_PARTS) {
-    const wrapper = el('label', 'cinema-switch');
-    const input = el('input', 'cinema-switch__input');
-    input.type = 'checkbox';
-    input.setAttribute('role', 'switch');
-    input.checked = true;
-    input.dataset.toggle = part;
-    input.addEventListener('change', () => handlers.onToggle(part, input.checked), { signal });
+    const { wrapper, input } = switchControl(label, part, true, (checked) => handlers.onToggle(part, checked), signal);
     toggles.set(part, input);
-    wrapper.append(input, el('span', 'cinema-switch__track'), el('span', 'cinema-switch__label', label));
     visibilityGroup.append(wrapper);
   }
   toolbar.append(presetGroup, visibilityGroup);
@@ -116,23 +109,8 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
       caption.textContent = text;
     },
     setStatus(next) {
-      root.dataset.status = next.kind;
-      status.replaceChildren();
-      status.hidden = next.kind === 'ready';
-      status.setAttribute('role', next.kind === 'error' ? 'alert' : 'status');
-      status.classList.toggle('cinema-status--error', next.kind === 'error');
-      if (next.kind === 'loading') {
-        status.append(el('span', 'cinema-status__spinner'), el('span', '', 'Đang khởi tạo cảnh 3D…'));
-      } else if (next.kind === 'context-lost') {
-        status.append(el('span', '', 'Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…'));
-      } else if (next.kind === 'error') {
-        status.append(
-          el('strong', '', 'Không thể hiển thị cảnh 3D'),
-          el('span', '', next.message),
-          el('span', 'cinema-status__hint', 'Hãy bật tăng tốc phần cứng (WebGL) hoặc mở trang bằng trình duyệt khác.'),
-        );
-        for (const control of controls) control.disabled = true;
-      }
+      renderStatus(root, status, next);
+      if (next.kind === 'error') for (const control of controls) control.disabled = true;
     },
     setTransitioning(active) {
       root.dataset.transitioning = String(active);
@@ -148,18 +126,60 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   return ui;
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
+/**
+ * Shows `next` in a status overlay and mirrors it on `root.dataset.status`.
+ * Shared by the auditorium and the seat inspector.
+ */
+export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiStatus): void {
+  root.dataset.status = next.kind;
+  status.replaceChildren();
+  status.hidden = next.kind === 'ready';
+  status.setAttribute('role', next.kind === 'error' ? 'alert' : 'status');
+  status.classList.toggle('cinema-status--error', next.kind === 'error');
+  if (next.kind === 'loading') {
+    status.append(el('span', 'cinema-status__spinner'), el('span', '', 'Đang khởi tạo cảnh 3D…'));
+  } else if (next.kind === 'context-lost') {
+    status.append(el('span', '', 'Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…'));
+  } else if (next.kind === 'error') {
+    status.append(
+      el('strong', '', 'Không thể hiển thị cảnh 3D'),
+      el('span', '', next.message),
+      el('span', 'cinema-status__hint', 'Hãy bật tăng tốc phần cứng (WebGL) hoặc mở trang bằng trình duyệt khác.'),
+    );
+  }
+}
+
+export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
   if (className) element.className = className;
   if (text !== undefined) element.textContent = text;
   return element;
 }
 
-function group(label: string): HTMLDivElement {
+export function group(label: string): HTMLDivElement {
   const element = el('div', 'cinema-toolbar__group');
   element.setAttribute('role', 'group');
   element.setAttribute('aria-label', label);
   return element;
+}
+
+/** A labelled on/off switch (checkbox with role="switch"); `id` goes to `data-toggle`. */
+export function switchControl(
+  label: string,
+  id: string,
+  checked: boolean,
+  onChange: (checked: boolean) => void,
+  signal: AbortSignal,
+): { wrapper: HTMLLabelElement; input: HTMLInputElement } {
+  const wrapper = el('label', 'cinema-switch');
+  const input = el('input', 'cinema-switch__input');
+  input.type = 'checkbox';
+  input.setAttribute('role', 'switch');
+  input.checked = checked;
+  input.dataset.toggle = id;
+  input.addEventListener('change', () => onChange(input.checked), { signal });
+  wrapper.append(input, el('span', 'cinema-switch__track'), el('span', 'cinema-switch__label', label));
+  return { wrapper, input };
 }
 
 function stat(term: string, value: string): HTMLDivElement {

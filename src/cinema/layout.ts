@@ -99,9 +99,11 @@ export interface LayoutMetrics {
 
 export interface AuditoriumLayout {
   config: AuditoriumConfig;
-  /** Clear room volume. */
+  /** Clear room volume, bounded by the finished wall faces. */
   interior: Box;
-  /** Interior plus walls, floor slab and ceiling slab. */
+  /** Inner faces of the structural walls: the interior plus the side-wall lining zone. */
+  structure: Box;
+  /** Structure plus walls, floor slab and ceiling slab. */
   shell: Box;
   rows: RowData[];
   seats: SeatData[];
@@ -126,10 +128,15 @@ export function createAuditoriumLayout(config: AuditoriumConfig = AUDITORIUM_CON
     y: { min: 0, max: room.height },
     z: { min: -room.length / 2, max: room.length / 2 },
   };
+  const structure: Box = {
+    x: { min: interior.x.min - room.sideLiningDepth, max: interior.x.max + room.sideLiningDepth },
+    y: interior.y,
+    z: interior.z,
+  };
   const shell: Box = {
-    x: { min: interior.x.min - room.wallThickness, max: interior.x.max + room.wallThickness },
-    y: { min: -room.floorThickness, max: interior.y.max + room.ceilingThickness },
-    z: { min: interior.z.min - room.wallThickness, max: interior.z.max + room.wallThickness },
+    x: { min: structure.x.min - room.wallThickness, max: structure.x.max + room.wallThickness },
+    y: { min: -room.floorThickness, max: structure.y.max + room.ceilingThickness },
+    z: { min: structure.z.min - room.wallThickness, max: structure.z.max + room.wallThickness },
   };
 
   // Rows are packed against the back landing; whatever is left in front of row A is open floor.
@@ -234,6 +241,7 @@ export function createAuditoriumLayout(config: AuditoriumConfig = AUDITORIUM_CON
   return {
     config,
     interior,
+    structure,
     shell,
     rows,
     seats,
@@ -255,6 +263,25 @@ export function floorElevationAt(layout: AuditoriumLayout, z: number): number {
   const last = layout.treads[layout.treads.length - 1];
   if (last && z === last.z.max) return last.y;
   return 0;
+}
+
+/**
+ * Height of the stair pitch line at Z: straight through the front edge of every row's tread,
+ * flat at the first row's level in front of the stairs and at the last row's level behind them.
+ * Handrail heights and the side-wall panel line follow it.
+ */
+export function stairPitchY(layout: AuditoriumLayout, z: number): number {
+  const { rows } = layout;
+  if (z <= rows[0].treadZ.min) return rows[0].floorY;
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1];
+    const b = rows[i];
+    if (z <= b.treadZ.min) {
+      const t = (z - a.treadZ.min) / (b.treadZ.min - a.treadZ.min);
+      return a.floorY + (b.floorY - a.floorY) * t;
+    }
+  }
+  return rows[rows.length - 1].floorY;
 }
 
 /** World-space eye position for someone seated in `seat`. */

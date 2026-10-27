@@ -38,9 +38,11 @@ export const CAMERA_PRESETS: readonly CameraPresetInfo[] = [
 
 export const DEFAULT_PRESET: CameraPresetId = 'overview';
 
-/** Vertical FOV for a viewport: wider on portrait screens so the room stays in frame. */
-export function fovForAspect(config: AuditoriumConfig, aspect: number): number {
-  const { fov, maxFov, minHorizontalFov } = config.camera;
+/** Vertical FOV for a viewport: wider on portrait screens so the subject stays in frame. */
+export function fovForAspect(
+  { fov, maxFov, minHorizontalFov }: Pick<AuditoriumConfig['camera'], 'fov' | 'maxFov' | 'minHorizontalFov'>,
+  aspect: number,
+): number {
   const needed = 2 * Math.atan(Math.tan(toRadians(minHorizontalFov) / 2) / aspect);
   return Math.min(maxFov, Math.max(fov, toDegrees(needed)));
 }
@@ -89,7 +91,7 @@ export function computePresetPose(id: CameraPresetId, layout: AuditoriumLayout, 
       const target = { x: 0, y: (interior.y.min + interior.y.max) / 2, z: (interior.z.min + interior.z.max) / 2 };
       const halfWidth = (interior.z.max - interior.z.min) / 2 + p.fitMargin;
       const halfHeight = (interior.y.max - interior.y.min) / 2 + p.fitMargin;
-      const tanHalfFov = Math.tan(toRadians(fovForAspect(config, aspect)) / 2);
+      const tanHalfFov = Math.tan(toRadians(fovForAspect(config.camera, aspect)) / 2);
       const fitDistance = Math.max(halfHeight / tanHalfFov, halfWidth / (tanHalfFov * aspect));
       // Fit at the cut plane (the right wall's inner face), not at the room centre line.
       const distance = fitDistance + interior.x.max / dir.x;

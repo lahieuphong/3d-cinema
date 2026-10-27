@@ -4,6 +4,12 @@ import { fovForAspect, type CameraMode, type CameraPose } from './cameraPresets.
 import type { AuditoriumConfig } from './config.ts';
 import { toRadians, type Vec3 } from './layout.ts';
 
+/** Lens, transition and control limits; the auditorium and the seat inspector each pass their own. */
+export type CameraRigSettings = Pick<
+  AuditoriumConfig['camera'],
+  'fov' | 'maxFov' | 'minHorizontalFov' | 'near' | 'far' | 'transitionSeconds' | 'orbit' | 'eye'
+>;
+
 interface Transition {
   fromPosition: Vector3;
   fromLookAt: Vector3;
@@ -24,24 +30,24 @@ interface Transition {
 export class CameraRig {
   readonly camera: PerspectiveCamera;
   readonly controls: OrbitControls;
-  private readonly config: AuditoriumConfig;
+  private readonly settings: CameraRigSettings;
   private readonly defaultRotateSpeed: number;
   private readonly lookAt = new Vector3();
   private transition: Transition | null = null;
   private currentMode: CameraMode = 'orbit';
 
-  constructor(config: AuditoriumConfig, domElement: HTMLElement, roomCentre: Vec3) {
-    this.config = config;
-    const { camera: cameraConfig } = config;
-    this.camera = new PerspectiveCamera(cameraConfig.fov, 1, cameraConfig.near, cameraConfig.far);
+  /** `centre`: the orbit target is kept within `settings.orbit.maxTargetRadius` of this point. */
+  constructor(settings: CameraRigSettings, domElement: HTMLElement, centre: Vec3) {
+    this.settings = settings;
+    this.camera = new PerspectiveCamera(settings.fov, 1, settings.near, settings.far);
 
     this.controls = new OrbitControls(this.camera, domElement);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = cameraConfig.orbit.dampingFactor;
+    this.controls.dampingFactor = settings.orbit.dampingFactor;
     this.controls.screenSpacePanning = true;
-    // Keeps panning from wandering off: the target stays within a sphere around the room centre.
-    this.controls.cursor.set(roomCentre.x, roomCentre.y, roomCentre.z);
-    this.controls.maxTargetRadius = cameraConfig.orbit.maxTargetRadius;
+    // Keeps panning from wandering off: the target stays within a sphere around the centre of interest.
+    this.controls.cursor.set(centre.x, centre.y, centre.z);
+    this.controls.maxTargetRadius = settings.orbit.maxTargetRadius;
     this.defaultRotateSpeed = this.controls.rotateSpeed;
   }
 
@@ -55,7 +61,7 @@ export class CameraRig {
 
   setAspect(aspect: number): void {
     this.camera.aspect = aspect;
-    this.camera.fov = fovForAspect(this.config, aspect);
+    this.camera.fov = fovForAspect(this.settings, aspect);
     this.camera.updateProjectionMatrix();
   }
 
@@ -76,7 +82,7 @@ export class CameraRig {
       toLookAt,
       pose,
       startTime: null,
-      durationMs: animate ? this.config.camera.transitionSeconds * 1000 : 0,
+      durationMs: animate ? this.settings.transitionSeconds * 1000 : 0,
     };
     this.controls.enabled = false;
     if (!animate) this.finishTransition(this.transition);
@@ -108,7 +114,7 @@ export class CameraRig {
   private finishTransition(transition: Transition): void {
     this.transition = null;
     const { camera, controls } = this;
-    const { orbit, eye } = this.config.camera;
+    const { orbit, eye } = this.settings;
     camera.position.copy(transition.toPosition);
 
     if (transition.pose.mode === 'eye') {

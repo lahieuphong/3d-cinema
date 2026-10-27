@@ -1,0 +1,646 @@
+{
+  "generatedAt": "2026-10-27T05:06:17.585Z",
+  "browser": {
+    "executablePath": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "version": "156.0.8078.47",
+    "baseUrl": "http://localhost:5199/"
+  },
+  "webgl": {
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3090 (0x00002204) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "checks": [
+    {
+      "name": "\"/\" redirects to /cinema",
+      "passed": true,
+      "detail": "http://localhost:5199/cinema"
+    },
+    {
+      "name": "desktop: /cinema opens directly and reaches \"ready\"",
+      "passed": true,
+      "detail": "ready"
+    },
+    {
+      "name": "desktop: header shows rows and seat total",
+      "passed": true,
+      "detail": "Số hàng10 (A–J)Ghế mỗi hàng11Tổng số ghế110"
+    },
+    {
+      "name": "desktop: exactly one canvas",
+      "passed": true,
+      "detail": 1
+    },
+    {
+      "name": "desktop: no horizontal page overflow",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "name": "desktop: canvas fills its container",
+      "passed": true,
+      "detail": {
+        "viewport": {
+          "width": 1398,
+          "height": 784
+        },
+        "canvas": {
+          "width": 1398,
+          "height": 784
+        }
+      }
+    },
+    {
+      "name": "desktop: drawing buffer = size × capped pixel ratio",
+      "passed": true,
+      "detail": {
+        "drawingBuffer": {
+          "width": 1398,
+          "height": 784
+        },
+        "ratio": 1
+      }
+    },
+    {
+      "name": "desktop: camera aspect matches canvas",
+      "passed": true,
+      "detail": 1.7831632653061225
+    },
+    {
+      "name": "desktop: canvas uses most of the screen",
+      "passed": true,
+      "detail": 0.85
+    },
+    {
+      "name": "desktop: preset overview applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          0,
+          4.42,
+          8.399999999999999
+        ],
+        "target": [
+          0,
+          1.6953124999999998,
+          -6.2
+        ],
+        "fov": 50,
+        "aspect": 1.7831632653061225
+      }
+    },
+    {
+      "name": "desktop: preset seats applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          1.0531962472667237e-15,
+          4.9,
+          -7.699999999999999
+        ],
+        "target": [
+          0,
+          0.6480000000000001,
+          0.9000000000000002
+        ],
+        "fov": 50,
+        "aspect": 1.7831632653061225
+      }
+    },
+    {
+      "name": "desktop: preset side applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          17.35395861821293,
+          5.679554206549811,
+          -2.082475034185552
+        ],
+        "target": [
+          0,
+          3.25,
+          0
+        ],
+        "fov": 50,
+        "aspect": 1.7831632653061225
+      }
+    },
+    {
+      "name": "desktop: side view hides the right wall",
+      "passed": true
+    },
+    {
+      "name": "desktop: preset seatEye applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          0,
+          2.05,
+          2.8749999999999996
+        ],
+        "target": [
+          0,
+          2.0557525814152324,
+          2.825332024330952
+        ],
+        "fov": 50,
+        "aspect": 1.7831632653061225
+      }
+    },
+    {
+      "name": "desktop: seat-eye restores the right wall",
+      "passed": true
+    },
+    {
+      "name": "desktop: seat-eye uses look-around mode",
+      "passed": true
+    },
+    {
+      "name": "desktop: ceiling and back wall can be hidden",
+      "passed": true
+    },
+    {
+      "name": "desktop: zoom takes the camera outside the hidden back wall",
+      "passed": true,
+      "detail": [
+        0,
+        11.403792960037041,
+        15.272601706196888
+      ]
+    },
+    {
+      "name": "desktop: caption switches to free camera after manual orbit",
+      "passed": true,
+      "detail": "Camera tự do: kéo để xoay, cuộn hoặc chụm để thu phóng, chuột phải hoặc hai ngón để dịch. Chọn một góc để quay lại."
+    },
+    {
+      "name": "desktop: reset returns to the overview and shows every part",
+      "passed": true,
+      "detail": {
+        "ceiling": true,
+        "backWall": true,
+        "rightWall": true
+      }
+    },
+    {
+      "name": "desktop: presets work from the keyboard",
+      "passed": true
+    },
+    {
+      "name": "desktop: orbit drag moves the camera",
+      "passed": true,
+      "detail": 16.3223384898236
+    },
+    {
+      "name": "desktop: no drift after a preset change (damping cleared)",
+      "passed": true,
+      "detail": {
+        "settled": [
+          1.0531962472667237e-15,
+          4.9,
+          -7.699999999999999
+        ],
+        "later": [
+          1.0531962472667237e-15,
+          4.9,
+          -7.699999999999999
+        ]
+      }
+    },
+    {
+      "name": "desktop: rapid preset clicks end on the last preset",
+      "passed": true
+    },
+    {
+      "name": "desktop→mobile resize: exactly one canvas",
+      "passed": true,
+      "detail": 1
+    },
+    {
+      "name": "desktop→mobile resize: no horizontal page overflow",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "name": "desktop→mobile resize: canvas fills its container",
+      "passed": true,
+      "detail": {
+        "viewport": {
+          "width": 364,
+          "height": 635
+        },
+        "canvas": {
+          "width": 364,
+          "height": 635
+        }
+      }
+    },
+    {
+      "name": "desktop→mobile resize: drawing buffer = size × capped pixel ratio",
+      "passed": true,
+      "detail": {
+        "drawingBuffer": {
+          "width": 364,
+          "height": 635
+        },
+        "ratio": 1
+      }
+    },
+    {
+      "name": "desktop→mobile resize: camera aspect matches canvas",
+      "passed": true,
+      "detail": 0.573228346456693
+    },
+    {
+      "name": "desktop→mobile resize: canvas uses most of the screen",
+      "passed": true,
+      "detail": 0.7
+    },
+    {
+      "name": "desktop: hot re-mount leaves one canvas and releases the old context",
+      "passed": true,
+      "detail": {
+        "canvasCount": 1,
+        "oldCanvasAttached": false,
+        "oldContextReleased": true,
+        "appRoots": 1
+      }
+    },
+    {
+      "name": "desktop: controls work after re-mount",
+      "passed": true
+    },
+    {
+      "name": "tablet: /cinema opens directly and reaches \"ready\"",
+      "passed": true,
+      "detail": "ready"
+    },
+    {
+      "name": "tablet: header shows rows and seat total",
+      "passed": true,
+      "detail": "Số hàng10 (A–J)Ghế mỗi hàng11Tổng số ghế110"
+    },
+    {
+      "name": "tablet: exactly one canvas",
+      "passed": true,
+      "detail": 1
+    },
+    {
+      "name": "tablet: no horizontal page overflow",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "name": "tablet: canvas fills its container",
+      "passed": true,
+      "detail": {
+        "viewport": {
+          "width": 785,
+          "height": 1020
+        },
+        "canvas": {
+          "width": 785,
+          "height": 1020
+        }
+      }
+    },
+    {
+      "name": "tablet: drawing buffer = size × capped pixel ratio",
+      "passed": true,
+      "detail": {
+        "drawingBuffer": {
+          "width": 1570,
+          "height": 2040
+        },
+        "ratio": 2
+      }
+    },
+    {
+      "name": "tablet: camera aspect matches canvas",
+      "passed": true,
+      "detail": 0.7696078431372549
+    },
+    {
+      "name": "tablet: canvas uses most of the screen",
+      "passed": true,
+      "detail": 0.83
+    },
+    {
+      "name": "tablet: preset overview applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          0,
+          4.42,
+          8.399999999999999
+        ],
+        "target": [
+          0,
+          1.6953124999999998,
+          -6.2
+        ],
+        "fov": 62.42359128286533,
+        "aspect": 0.7696078431372549
+      }
+    },
+    {
+      "name": "tablet: preset seats applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          1.0531962472667237e-15,
+          4.9,
+          -7.699999999999999
+        ],
+        "target": [
+          0,
+          0.6480000000000001,
+          0.9000000000000002
+        ],
+        "fov": 62.42359128286533,
+        "aspect": 0.7696078431372549
+      }
+    },
+    {
+      "name": "tablet: preset side applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          26.245961923803158,
+          6.9244346693324434,
+          -3.14951543085638
+        ],
+        "target": [
+          0,
+          3.25,
+          0
+        ],
+        "fov": 62.42359128286533,
+        "aspect": 0.7696078431372549
+      }
+    },
+    {
+      "name": "tablet: side view hides the right wall",
+      "passed": true
+    },
+    {
+      "name": "tablet: preset seatEye applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          0,
+          2.05,
+          2.8749999999999996
+        ],
+        "target": [
+          0,
+          2.0557525814152324,
+          2.825332024330952
+        ],
+        "fov": 62.42359128286533,
+        "aspect": 0.7696078431372549
+      }
+    },
+    {
+      "name": "tablet: seat-eye restores the right wall",
+      "passed": true
+    },
+    {
+      "name": "tablet: seat-eye uses look-around mode",
+      "passed": true
+    },
+    {
+      "name": "mobile: /cinema opens directly and reaches \"ready\"",
+      "passed": true,
+      "detail": "ready"
+    },
+    {
+      "name": "mobile: header shows rows and seat total",
+      "passed": true,
+      "detail": "Số hàng10 (A–J)Ghế mỗi hàng11Tổng số ghế110"
+    },
+    {
+      "name": "mobile: exactly one canvas",
+      "passed": true,
+      "detail": 1
+    },
+    {
+      "name": "mobile: no horizontal page overflow",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "name": "mobile: canvas fills its container",
+      "passed": true,
+      "detail": {
+        "viewport": {
+          "width": 364,
+          "height": 635
+        },
+        "canvas": {
+          "width": 364,
+          "height": 635
+        }
+      }
+    },
+    {
+      "name": "mobile: drawing buffer = size × capped pixel ratio",
+      "passed": true,
+      "detail": {
+        "drawingBuffer": {
+          "width": 728,
+          "height": 1270
+        },
+        "ratio": 2
+      }
+    },
+    {
+      "name": "mobile: camera aspect matches canvas",
+      "passed": true,
+      "detail": 0.573228346456693
+    },
+    {
+      "name": "mobile: canvas uses most of the screen",
+      "passed": true,
+      "detail": 0.7
+    },
+    {
+      "name": "mobile: preset overview applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          0,
+          4.42,
+          8.399999999999999
+        ],
+        "target": [
+          0,
+          1.6953124999999998,
+          -6.2
+        ],
+        "fov": 75,
+        "aspect": 0.573228346456693
+      }
+    },
+    {
+      "name": "mobile: preset seats applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          1.0531962472667237e-15,
+          4.9,
+          -7.699999999999999
+        ],
+        "target": [
+          0,
+          0.6480000000000001,
+          0.9000000000000002
+        ],
+        "fov": 75,
+        "aspect": 0.573228346456693
+      }
+    },
+    {
+      "name": "mobile: preset side applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          27.46361314331206,
+          7.094905840063689,
+          -3.2956335771974477
+        ],
+        "target": [
+          0,
+          3.25,
+          0
+        ],
+        "fov": 75,
+        "aspect": 0.573228346456693
+      }
+    },
+    {
+      "name": "mobile: side view hides the right wall",
+      "passed": true
+    },
+    {
+      "name": "mobile: preset seatEye applied",
+      "passed": true,
+      "detail": {
+        "position": [
+          0,
+          2.05,
+          2.8749999999999996
+        ],
+        "target": [
+          0,
+          2.0557525814152324,
+          2.825332024330952
+        ],
+        "fov": 75,
+        "aspect": 0.573228346456693
+      }
+    },
+    {
+      "name": "mobile: seat-eye restores the right wall",
+      "passed": true
+    },
+    {
+      "name": "mobile: seat-eye uses look-around mode",
+      "passed": true
+    },
+    {
+      "name": "context loss is reported to the user",
+      "passed": true,
+      "detail": "Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…"
+    },
+    {
+      "name": "rendering and presets resume after context restore",
+      "passed": true,
+      "detail": "ready"
+    },
+    {
+      "name": "WebGL unavailable: shows an error instead of loading forever",
+      "passed": true,
+      "detail": {
+        "status": "error",
+        "message": "Không thể hiển thị cảnh 3DKhông tạo được ngữ cảnh WebGL. Tăng tốc phần cứng có thể đang bị tắt.Hãy bật tăng tốc phần cứng (WebGL) hoặc mở trang bằng trình duyệt khác."
+      }
+    },
+    {
+      "name": "WebGL unavailable: controls are disabled",
+      "passed": true
+    },
+    {
+      "name": "no unexpected console warnings or errors",
+      "passed": true,
+      "detail": 0
+    }
+  ],
+  "console": [
+    {
+      "page": "webgl-disabled",
+      "type": "error",
+      "text": "THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context.",
+      "expected": true
+    },
+    {
+      "page": "webgl-disabled",
+      "type": "error",
+      "text": "[cinema] Could not start the 3D view: WebGLUnavailableError: Không tạo được ngữ cảnh WebGL. Tăng tốc phần cứng có thể đang bị tắt.\n    at new CinemaView (http://localhost:5199/src/cinema/view.ts:48:10)\n    at mountCinemaPage (http://localhost:5199/src/cinema/page.ts?t=1793077592109:55:10)\n    at http://localhost:5199/src/main.ts?t=1793077592109:11:12",
+      "expected": true
+    }
+  ],
+  "screenshots": [
+    "artifacts/prompt-02/baseline/desktop-1-overview.png",
+    "artifacts/prompt-02/baseline/desktop-2-seats.png",
+    "artifacts/prompt-02/baseline/desktop-3-side.png",
+    "artifacts/prompt-02/baseline/desktop-4-seat-eye.png",
+    "artifacts/prompt-02/baseline/desktop-5-ceiling-back-hidden.png",
+    "artifacts/prompt-02/baseline/desktop-6-plan-from-above.png",
+    "artifacts/prompt-02/baseline/desktop-resized-to-mobile.png",
+    "artifacts/prompt-02/baseline/tablet-1-overview.png",
+    "artifacts/prompt-02/baseline/tablet-2-seats.png",
+    "artifacts/prompt-02/baseline/tablet-3-side.png",
+    "artifacts/prompt-02/baseline/tablet-4-seat-eye.png",
+    "artifacts/prompt-02/baseline/mobile-1-overview.png",
+    "artifacts/prompt-02/baseline/mobile-2-seats.png",
+    "artifacts/prompt-02/baseline/mobile-3-side.png",
+    "artifacts/prompt-02/baseline/mobile-4-seat-eye.png",
+    "artifacts/prompt-02/baseline/webgl-unavailable.png"
+  ],
+  "renderer": [
+    {
+      "preset": "overview",
+      "calls": 31,
+      "triangles": 5786,
+      "geometries": 19,
+      "textures": 0
+    },
+    {
+      "preset": "seats",
+      "calls": 35,
+      "triangles": 5834,
+      "geometries": 19,
+      "textures": 0
+    },
+    {
+      "preset": "side",
+      "calls": 36,
+      "triangles": 5846,
+      "geometries": 19,
+      "textures": 0
+    },
+    {
+      "preset": "seatEye",
+      "calls": 19,
+      "triangles": 5642,
+      "geometries": 19,
+      "textures": 0
+    }
+  ],
+  "summary": {
+    "passed": 67,
+    "failed": 0,
+    "unexpectedConsole": 0,
+    "expectedConsole": 2
+  }
+}
