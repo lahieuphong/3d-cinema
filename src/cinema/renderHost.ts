@@ -11,11 +11,18 @@ export interface RenderHostOptions {
   background: number;
   maxPixelRatio: number;
   ariaLabel: string;
+  /** Frame steps longer than this (seconds) are clamped, so nothing jumps after a pause. */
+  maxDeltaSeconds?: number;
   /** Called with the new CSS size whenever the container resizes (never with 0). */
   onResize(width: number, height: number): void;
-  /** Advances animation and draws one frame. Returns true while another frame is needed. */
-  onFrame(time: number): boolean;
+  /**
+   * Advances animation by `dt` seconds and draws one frame. Returns true while another frame is
+   * needed. `dt` is 0 on the first frame after the loop was idle.
+   */
+  onFrame(time: number, dt: number): boolean;
   onStatus(status: ViewStatus): void;
+  /** The context is gone: stop anything that moves; nothing is drawn until it comes back. */
+  onContextLost?(): void;
   /** After a lost WebGL context comes back: rebuild anything that lived only on the GPU. */
   onContextRestored?(): void;
 }
@@ -23,7 +30,7 @@ export interface RenderHostOptions {
 /**
  * Owns one WebGL renderer and its canvas inside `container`: size and pixel ratio, an on-demand
  * frame loop, context loss reporting and teardown. A frame is scheduled only by `requestRender()`,
- * and frames keep coming only while `onFrame` asks for more.
+ * and frames keep coming only while `onFrame` asks for more; while the context is lost, none are.
  */
 export class RenderHost {
   readonly renderer: WebGLRenderer;
@@ -35,6 +42,9 @@ export class RenderHost {
   private frameId: number | null = null;
   private renderedOnce = false;
   private disposed = false;
+  private contextLost = false;
+  /** Time of the previous frame while the loop keeps running; null once it has gone idle. */
+  private lastFrameTime: number | null = null;
   /** Frames drawn by the on-demand loop; stays put while nothing moves. */
   private framesRendered = 0;
 
@@ -77,7 +87,7 @@ export class RenderHost {
   }
 
   readonly requestRender = (): void => {
-    if (this.disposed || this.frameId !== null) return;
+    if (this.disposed || this.contextLost || this.frameId !== null) return;
     this.frameId = requestAnimationFrame(this.renderFrame);
   };
 
@@ -111,11 +121,14 @@ export class RenderHost {
   private readonly renderFrame = (time: number): void => {
     this.frameId = null;
     this.framesRendered++;
-    const needsAnotherFrame = this.options.onFrame(time);
+    const maxDelta = (this.options.maxDeltaSeconds ?? 0.1) * 1000;
+    const dt = this.lastFrameTime === null ? 0 : Math.min(maxDelta, Math.max(0, time - this.lastFrameTime)) / 1000;
+    const needsAnotherFrame = this.options.onFrame(time, dt);
     if (!this.renderedOnce) {
       this.renderedOnce = true;
       this.options.onStatus({ kind: 'ready' });
     }
+    this.lastFrameTime = needsAnotherFrame ? time : null;
     if (needsAnotherFrame) this.requestRender();
   };
 
@@ -133,10 +146,14 @@ export class RenderHost {
   private readonly handleContextLost = (): void => {
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
     this.frameId = null;
+    this.lastFrameTime = null;
+    this.contextLost = true;
+    this.options.onContextLost?.();
     this.options.onStatus({ kind: 'context-lost' });
   };
 
   private readonly handleContextRestored = (): void => {
+    this.contextLost = false;
     this.options.onContextRestored?.();
     this.options.onStatus({ kind: 'ready' });
     this.requestRender();

@@ -32,6 +32,27 @@ export async function measureCameraPath(
   keyframes: ReadonlyArray<{ position: Vec3; lookAt: Vec3 }>,
   frames: number,
 ): Promise<FrameTiming> {
+  const from = new Vector3();
+  const to = new Vector3();
+  const target = new Vector3();
+  return measurePlacedFrames(renderer, scene, camera, frames, (i) => {
+    const s = (i / Math.max(1, frames - 1)) * (keyframes.length - 1);
+    const k = Math.min(Math.floor(s), keyframes.length - 2);
+    const t = s - k;
+    camera.position.lerpVectors(from.copy(keyframes[k].position), to.copy(keyframes[k + 1].position), t);
+    target.lerpVectors(from.copy(keyframes[k].lookAt), to.copy(keyframes[k + 1].lookAt), t);
+    camera.lookAt(target);
+  });
+}
+
+/** Like measureCameraPath, with `place(i)` putting the camera for frame i (e.g. along the tour). */
+export async function measurePlacedFrames(
+  renderer: WebGLRenderer,
+  scene: Scene,
+  camera: PerspectiveCamera,
+  frames: number,
+  place: (frame: number) => void,
+): Promise<FrameTiming> {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   const timer = gl.getExtension('EXT_disjoint_timer_query_webgl2') as {
     TIME_ELAPSED_EXT: number;
@@ -39,20 +60,9 @@ export async function measureCameraPath(
   } | null;
   const cpu: number[] = [];
   const queries: WebGLQuery[] = [];
-  const position = new Vector3();
-  const target = new Vector3();
-  const from = new Vector3();
-  const to = new Vector3();
 
   for (let i = 0; i < frames; i++) {
-    const s = (i / Math.max(1, frames - 1)) * (keyframes.length - 1);
-    const k = Math.min(Math.floor(s), keyframes.length - 2);
-    const t = s - k;
-    position.lerpVectors(from.copy(keyframes[k].position), to.copy(keyframes[k + 1].position), t);
-    target.lerpVectors(from.copy(keyframes[k].lookAt), to.copy(keyframes[k + 1].lookAt), t);
-    camera.position.copy(position);
-    camera.lookAt(target);
-
+    place(i);
     const query = timer ? gl.createQuery() : null;
     if (timer && query) gl.beginQuery(timer.TIME_ELAPSED_EXT, query);
     const start = performance.now();

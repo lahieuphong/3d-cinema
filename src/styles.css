@@ -37,7 +37,8 @@ body {
 
 .cinema-app {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* Header, toolbar, inspection tools (collapsible), viewport. */
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
   width: 100%;
@@ -212,6 +213,8 @@ body {
 
 .cinema-stage {
   position: relative;
+  /* Always the last (flexible) row, whether or not the inspection tools row is shown. */
+  grid-row: 4;
   min-height: 0;
   margin: 0 var(--gutter) var(--gutter);
   border: 1px solid var(--panel-border);
@@ -389,4 +392,144 @@ body {
 
 .cinema-button--compact {
   padding-inline: 10px;
+}
+
+/* ---------- Inspection tools row (collapsed by default) ---------- */
+
+.cinema-toolbar--inspect {
+  justify-content: flex-start;
+  padding-top: 0;
+}
+
+.cinema-toolbar--inspect[hidden] {
+  display: none;
+}
+
+/* ---------- Tour bar and explore stick, over the viewport ---------- */
+
+.cinema-tourbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  max-width: calc(100% - 20px);
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgb(10 11 14 / 0.8);
+  font-size: 0.82rem;
+}
+
+.cinema-tourbar[hidden],
+.cinema-stick[hidden] {
+  display: none;
+}
+
+.cinema-tourbar__text {
+  padding-inline: 4px;
+}
+
+.cinema-tourbar .cinema-button {
+  min-height: 34px;
+}
+
+/* On-screen stick for walking on touch screens; clear of the safe areas. */
+.cinema-stick {
+  position: absolute;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 124px;
+  height: 124px;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-radius: 50%;
+  background: rgb(10 11 14 / 0.45);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cinema-stick__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border-radius: 50%;
+  background: rgb(216 182 90 / 0.85);
+  pointer-events: none;
+}
+
+/* While exploring, the caption moves to the top so the stick has the lower corner. */
+.cinema-app[data-explore='true'] .cinema-caption {
+  top: 10px;
+  bottom: auto;
+}
+
+@media (max-width: 640px) {
+  .cinema-header {
+    padding-bottom: 2px;
+  }
+
+  .cinema-badge {
+    display: none;
+  }
+
+  .cinema-toolbar {
+    gap: 5px;
+    padding-top: 2px;
+  }
+
+  .cinema-toolbar__group {
+    gap: 5px;
+  }
+
+  .cinema-button,
+  .cinema-switch {
+    min-height: 36px;
+    padding: 5px 9px;
+    font-size: 0.78rem;
+  }
+
+  .cinema-caption {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+  }
+}
+
+/* Phones in landscape: little height, so the chrome gets as small as it can. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .cinema-header {
+    padding-top: 4px;
+    padding-bottom: 0;
+  }
+
+  .cinema-stats {
+    display: none;
+  }
+
+  .cinema-toolbar {
+    gap: 4px 8px;
+    padding-top: 2px;
+    padding-bottom: 4px;
+  }
+
+  .cinema-button,
+  .cinema-switch {
+    min-height: 32px;
+    padding: 3px 8px;
+    font-size: 0.75rem;
+  }
+
+  .cinema-stage {
+    margin-bottom: 6px;
+  }
+
+  .cinema-stick {
+    width: 104px;
+    height: 104px;
+  }
 }

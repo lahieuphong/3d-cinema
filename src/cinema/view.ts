@@ -1,9 +1,27 @@
-import { type Mesh, NeutralToneMapping, type Object3D, PCFShadowMap, Scene } from 'three';
+import {
+  Box3,
+  Box3Helper,
+  BufferGeometry,
+  Color,
+  Group,
+  Line,
+  LineBasicMaterial,
+  type Mesh,
+  NeutralToneMapping,
+  type Object3D,
+  PCFShadowMap,
+  type PerspectiveCamera,
+  Scene,
+  Vector3,
+} from 'three';
 import { buildArchitecture, INTERIOR_MATERIALS, type Architecture, type ToggleablePart } from './architecture.ts';
-import { CameraRig } from './cameraRig.ts';
-import { computePresetPose, type CameraMode, type CameraPose, type CameraPresetId } from './cameraPresets.ts';
+import { planCameraPath } from './cameraPath.ts';
+import { CameraRig, type CameraDriver } from './cameraRig.ts';
+import { computePresetPose, presetInfo, type CameraMode, type CameraPose, type CameraPresetId } from './cameraPresets.ts';
+import { createCollisionWorld, type CollisionWorld } from './collision.ts';
 import { createInteriorEnvironment, type InteriorEnvironment } from './environment.ts';
-import { measureCameraPath } from './frameProbe.ts';
+import { ExploreInput, isMovementKey, keyBelongsToFocus } from './exploreInput.ts';
+import { measureCameraPath, measurePlacedFrames } from './frameProbe.ts';
 import type { AuditoriumLayout, Vec3 } from './layout.ts';
 import { createRoomLighting, type RoomLighting } from './lighting.ts';
 import {
@@ -14,26 +32,71 @@ import {
   type SeatMaterials,
 } from './materials.ts';
 import type { QualityLevel } from './quality.ts';
-import { prefersReducedMotion, RenderHost, type ViewStatus } from './renderHost.ts';
+import { RenderHost, type ViewStatus } from './renderHost.ts';
 import { createCinemaSeatModel, createSeatInstances, type SeatInstances, type SeatModel } from './seats.ts';
+import { createTour, TourPath } from './tour.ts';
+import { chooseWalkStart, stepWalker, turnWalker, type StartPoint, type WalkerState } from './walker.ts';
 
 export { WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
 
+/**
+ * What the camera is doing, for the UI and for checks:
+ * - `preset`: resting at (or orbiting from) an experience view;
+ * - `inspection`: at a technical view (section, plan), free orbit, may be outside the room;
+ * - `transition`: moving to a preset or to where the tour or exploring starts;
+ * - `tour`: the guided tour drives the camera (or, with reduced motion, steps between its stops);
+ * - `explore`: walking with keys, stick and drag-to-look;
+ * - `free`: stopped where the user left it (after stopping the tour or exploring); drag looks around.
+ */
+export type CameraState = 'preset' | 'inspection' | 'transition' | 'tour' | 'explore' | 'free';
+
+export type TourEndReason = 'finished' | 'input' | 'command' | 'hidden' | 'context-lost';
+
+export interface TourStatus {
+  steps: boolean;
+  stopIndex: number;
+  stopCount: number;
+  label: string;
+  elapsed: number;
+  duration: number;
+}
+
 export interface CinemaViewCallbacks {
   onStatus(status: ViewStatus): void;
-  onTransitionChange(active: boolean): void;
-  /** The user started orbiting, zooming or panning by hand. */
+  onCameraState(state: CameraState): void;
+  /** A move (preset, tour start, explore start) reached its end. */
+  onArrive(): void;
+  /** The user grabbed the orbit controls by hand. */
   onManualCamera(): void;
+  onTour(status: TourStatus | null, ended?: TourEndReason): void;
+  /** Exploring started; `relocatedTo` is set when the camera was taken to a start point first. */
+  onExploreStart(relocatedTo: StartPoint | null): void;
 }
 
 /** Room materials that cast shadows from the ceiling downlight (the rest only receive them). */
 const SHADOW_CASTING_MATERIALS = new Set(['panel', 'graphite', 'trim', 'curtain', 'projector', 'stage']);
 
+/** Everything that lives on the GPU; rebuilt from scratch after a lost context comes back. */
+interface SceneContent {
+  materials: BlockoutMaterials;
+  seatMaterials: SeatMaterials;
+  architecture: Architecture;
+  lighting: RoomLighting;
+  environment: InteriorEnvironment;
+  seatModel: SeatModel;
+  seatInstances: SeatInstances;
+}
+
 /**
- * The auditorium viewport: room, 110 seats, lighting and the inspection camera, drawn by a
- * RenderHost. Frames are rendered on demand and keep coming only while a preset transition or
- * orbit damping is still moving the camera. The shadow map is static: it is redrawn only when
- * something it depends on changes (visibility, quality, context restore), never per camera move.
+ * The auditorium viewport: room, 110 seats, lighting and the camera, drawn by a RenderHost.
+ *
+ * Camera: one CameraRig, written by exactly one owner at a time (OrbitControls, a transition, the
+ * tour or the explore walker; see CameraState). Commands (preset, tour, explore) always start from
+ * the current camera and replace whatever was running; nothing is queued.
+ *
+ * Rendering is on demand: frames run only while a transition, orbit damping, the tour or a held
+ * explore input is moving the camera, or after a change to the scene, and stop as soon as all of
+ * that has settled. The shadow map is redrawn only when the scene changes, never per camera move.
  */
 export class CinemaView {
   readonly layout: AuditoriumLayout;
@@ -41,32 +104,50 @@ export class CinemaView {
   private readonly host: RenderHost;
   private readonly scene = new Scene();
   private readonly rig: CameraRig;
-  private readonly materials: BlockoutMaterials;
-  private readonly seatMaterials: SeatMaterials;
-  private readonly architecture: Architecture;
-  private readonly lighting: RoomLighting;
-  private environment: InteriorEnvironment;
-  private seatModel: SeatModel;
-  private seatInstances: SeatInstances;
+  private readonly world: CollisionWorld;
+  private readonly input: ExploreInput;
+  private readonly listeners = new AbortController();
+  private content: SceneContent;
   private quality: QualityLevel;
+  private readonly hiddenParts = new Set<ToggleablePart>();
+  private preset: CameraPresetId | null = null;
+  /** The camera is exactly at the active preset's pose (not orbited away), so it reframes on resize. */
+  private pristine = false;
+  private tour: { path: TourPath; time: number; steps: boolean; stopIndex: number } | null = null;
+  private walker: WalkerState | null = null;
+  private exploring = false;
+  private reducedMotion: boolean;
+  /** Show the on-screen stick in explore mode (touch-first devices). */
+  private readonly touchStick: boolean;
   private shadowRenders = 0;
-  private reportedTransition = false;
+  private reportedState: CameraState | null = null;
+  private debugOverlay: Group | null = null;
   private disposed = false;
 
-  constructor(container: HTMLElement, layout: AuditoriumLayout, callbacks: CinemaViewCallbacks, quality: QualityLevel) {
+  constructor(
+    container: HTMLElement,
+    layout: AuditoriumLayout,
+    callbacks: CinemaViewCallbacks,
+    options: { quality: QualityLevel; reducedMotion: boolean; touchStick: boolean },
+  ) {
     this.layout = layout;
     this.callbacks = callbacks;
-    this.quality = quality;
+    this.quality = options.quality;
+    this.reducedMotion = options.reducedMotion;
+    this.touchStick = options.touchStick;
     const { config } = layout;
-    const settings = config.quality[quality];
+    const settings = config.quality[options.quality];
 
     this.host = new RenderHost(container, {
       background: config.render.background,
       maxPixelRatio: settings.maxPixelRatio,
-      ariaLabel: 'Khung nhìn 3D của phòng chiếu. Kéo để xoay, cuộn hoặc chụm để thu phóng.',
-      onResize: (width, height) => this.rig.setAspect(width / height),
-      onFrame: (time) => this.renderFrame(time),
+      maxDeltaSeconds: config.camera.explore.maxStepSeconds,
+      ariaLabel:
+        'Khung nhìn 3D của phòng chiếu. Kéo để xoay hoặc nhìn quanh; ở chế độ Khám phá dùng W A S D hoặc phím mũi tên để đi.',
+      onResize: (width, height) => this.handleResize(width / height),
+      onFrame: (_time, dt) => this.renderFrame(dt),
       onStatus: (status) => callbacks.onStatus(status),
+      onContextLost: () => this.handleContextLost(),
       onContextRestored: () => this.handleContextRestored(),
     });
     const { renderer } = this.host;
@@ -78,23 +159,9 @@ export class CinemaView {
     renderer.shadowMap.type = PCFShadowMap;
     renderer.shadowMap.autoUpdate = false;
 
-    let environment: InteriorEnvironment | null = null;
     try {
-      this.materials = createBlockoutMaterials();
-      const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      // Read at an angle from most seats.
-      for (const texture of [this.materials.exitSign.map, this.materials.carpet.map]) if (texture) texture.anisotropy = anisotropy;
-      this.seatMaterials = createSeatMaterials();
-      this.architecture = buildArchitecture(layout, this.materials);
-      configureShadows(this.architecture);
-      this.lighting = createRoomLighting(layout);
-      this.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
-      environment = createInteriorEnvironment(renderer);
-      this.environment = environment;
-      this.scene.environment = environment.texture;
-      [this.seatModel, this.seatInstances] = this.buildSeats(quality);
-      this.scene.add(this.architecture.group, this.seatInstances.group, this.lighting.group);
-
+      this.content = this.buildContent(options.quality);
+      this.world = createCollisionWorld(layout);
       const { interior } = layout;
       this.rig = new CameraRig(config.camera, this.host.canvas, {
         x: (interior.x.min + interior.x.max) / 2,
@@ -103,58 +170,223 @@ export class CinemaView {
       });
     } catch (error) {
       // Nothing else holds the renderer yet; release it so a failed mount leaves no canvas or context.
-      environment?.dispose();
       this.host.dispose();
       throw error;
     }
+    this.input = new ExploreInput(this.host.canvas, container, {
+      lookPerPixel: config.camera.explore.lookPerPixel,
+      onInput: this.host.requestRender,
+    });
+
+    const { signal } = this.listeners;
     this.rig.controls.addEventListener('change', this.host.requestRender);
     this.rig.controls.addEventListener('start', this.handleControlsStart);
+    // Capture phase: runs before OrbitControls' own handlers on the canvas, so a drag that stops
+    // the tour is already handed to the controls when they see it.
+    const canvas = this.host.canvas;
+    canvas.addEventListener('pointerdown', this.handleCanvasInput, { capture: true, signal });
+    canvas.addEventListener('wheel', this.handleCanvasInput, { capture: true, passive: true, signal });
+    window.addEventListener('keydown', this.handleKeyDown, { capture: true, signal });
+    document.addEventListener('visibilitychange', this.handleVisibility, { signal });
     renderer.shadowMap.needsUpdate = true;
     this.host.start();
   }
 
-  /** Moves the camera to a preset (animated unless the user prefers reduced motion). */
+  // ---------------------------------------------------------------- commands
+
+  /** Moves to a preset, from wherever the camera is, around obstacles; ends the tour or exploring. */
   setPreset(id: CameraPresetId, animate: boolean): CameraPose {
-    const pose = computePresetPose(id, this.layout, this.rig.camera.aspect);
-    this.rig.moveTo(pose, animate && !prefersReducedMotion());
-    this.reportTransition();
-    this.host.requestRender();
+    this.endActivities('command');
+    const aspect = this.rig.camera.aspect;
+    const pose = computePresetPose(id, this.layout, aspect);
+    this.preset = id;
+    this.pristine = false;
+    this.rig.constraint = null;
+    this.moveCamera(pose, animate, () => {
+      // Resized on the way: frame for the new shape.
+      if (this.rig.camera.aspect !== aspect) this.rig.moveTo(computePresetPose(id, this.layout, this.rig.camera.aspect), false);
+      this.pristine = true;
+      this.rig.constraint = presetInfo(id).space === 'experience' ? this.experienceConstraint : null;
+      this.callbacks.onArrive();
+    });
     return pose;
+  }
+
+  /**
+   * Starts the guided tour from the overview (moving there first if needed). With reduced motion
+   * it steps between the tour's stops instead (`tourStep`), without continuous movement.
+   */
+  startTour(): void {
+    this.endActivities('command');
+    this.preset = null;
+    this.pristine = false;
+    this.rig.constraint = null;
+    const path = new TourPath(createTour(this.layout, computePresetPose('overview', this.layout, this.rig.camera.aspect)));
+    const steps = this.reducedMotion;
+    this.tour = { path, time: 0, steps, stopIndex: 0 };
+    if (steps) {
+      this.showTourStop(0);
+      return;
+    }
+    const first = path.tour.stops[0];
+    this.moveCamera({ position: first.position, lookAt: first.lookAt, mode: 'eye' }, true, () => {
+      if (this.tour?.path !== path) return;
+      this.callbacks.onArrive();
+      this.rig.drive(this.tourDriver);
+      this.reportTour();
+    });
+    this.reportTour();
+  }
+
+  /** Steps mode: shows the previous or next stop; past the last one, the tour ends at the overview. */
+  tourStep(delta: number): void {
+    if (!this.tour?.steps) return;
+    const next = this.tour.stopIndex + delta;
+    if (next >= this.tour.path.tour.stops.length) {
+      this.finishTour();
+      return;
+    }
+    this.showTourStop(Math.max(0, next));
+  }
+
+  stopTour(reason: TourEndReason = 'command'): void {
+    if (!this.tour) return;
+    this.tour = null;
+    this.rig.hold('eye');
+    this.callbacks.onTour(null, reason);
+    this.requestFrame();
+  }
+
+  /**
+   * Starts walking. From a spot where a person could stand below the camera, the camera comes down
+   * to standing eye height there; otherwise it moves (visibly, around obstacles) to the nearest
+   * start point in an aisle, at the front or on the back landing.
+   */
+  startExplore(): void {
+    this.endActivities('command');
+    this.preset = null;
+    this.pristine = false;
+    this.rig.constraint = null;
+    const settings = this.layout.config.camera.explore;
+    const start = chooseWalkStart(this.world, settings, this.rig.camera.position, this.rig.orientation, this.startPoints());
+    this.walker = start.state;
+    this.exploring = true;
+    this.input.setActive(true, this.touchStick);
+    const { state } = start;
+    const position = { x: state.x, y: state.eyeY, z: state.z };
+    const lookAt = {
+      x: state.x - Math.sin(state.yaw) * Math.cos(state.pitch),
+      y: state.eyeY + Math.sin(state.pitch),
+      z: state.z - Math.cos(state.yaw) * Math.cos(state.pitch),
+    };
+    this.moveCamera({ position, lookAt, mode: 'eye' }, true, () => {
+      if (!this.exploring) return;
+      this.rig.drive(this.exploreDriver);
+      this.callbacks.onArrive();
+      this.callbacks.onExploreStart(start.relocatedTo);
+    });
+  }
+
+  /** Stops walking where the camera is; dragging then looks around from there. */
+  stopExplore(): void {
+    if (!this.exploring) return;
+    this.exploring = false;
+    this.walker = null;
+    this.input.setActive(false, false);
+    this.rig.hold('eye');
+    this.requestFrame();
+  }
+
+  /** Reduced motion turned on or off while running: a playing tour switches to steps at its current stop. */
+  setReducedMotion(reduced: boolean): void {
+    this.reducedMotion = reduced;
+    if (reduced && this.tour && !this.tour.steps) {
+      this.tour.steps = true;
+      this.showTourStop(this.tour.stopIndex);
+    }
   }
 
   /** Shows or hides a shell part with everything fixed to it, including its lights and shadows. */
   setPartVisible(part: ToggleablePart, visible: boolean): void {
-    this.architecture.toggleable[part].visible = visible;
-    this.lighting.setPartVisible(part, visible);
+    if (visible) this.hiddenParts.delete(part);
+    else this.hiddenParts.add(part);
+    this.content.architecture.toggleable[part].visible = visible;
+    this.content.lighting.setPartVisible(part, visible);
     this.invalidateShadows();
   }
 
   /**
    * Switches quality: rebuilds the seats at that level of detail and changes the pixel-ratio cap
-   * and shadow map size. Camera, visibility and everything else stay as they are.
+   * and shadow map size. Camera, tour, exploring, visibility and everything else stay as they are.
    */
   setQuality(level: QualityLevel): void {
     if (level === this.quality || this.disposed) return;
     this.quality = level;
     const settings = this.layout.config.quality[level];
-    this.scene.remove(this.seatInstances.group);
-    this.seatInstances.dispose();
-    this.seatModel.dispose();
-    [this.seatModel, this.seatInstances] = this.buildSeats(level);
-    this.scene.add(this.seatInstances.group);
-    this.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
+    const content = this.content;
+    this.scene.remove(content.seatInstances.group);
+    content.seatInstances.dispose();
+    content.seatModel.dispose();
+    [content.seatModel, content.seatInstances] = this.buildSeats(content.seatMaterials, level);
+    this.scene.add(content.seatInstances.group);
+    content.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
     this.host.setMaxPixelRatio(settings.maxPixelRatio);
     this.invalidateShadows();
   }
+
+  // ---------------------------------------------------------------- development hooks
 
   /**
    * Development: puts the camera at an exact pose, e.g. for close-up checks. Orbit mode keeps the
    * camera above its target (it would be moved for upward views); 'eye' keeps it exactly in place.
    */
   debugSetCamera(position: Vec3, target: Vec3, mode: CameraMode = 'orbit'): void {
+    this.endActivities('command');
+    this.preset = null;
+    this.pristine = false;
+    this.rig.constraint = null;
     this.rig.moveTo({ position, lookAt: target, mode }, false);
-    this.reportTransition();
-    this.host.requestRender();
+    this.requestFrame();
+  }
+
+  /** Development: places the camera at tour time `t` (seconds), for frame-by-frame review. */
+  debugTourFrame(t: number): { stopIndex: number; holding: boolean } {
+    const path = new TourPath(createTour(this.layout, computePresetPose('overview', this.layout, this.rig.camera.aspect)));
+    this.debugSetCamera({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, 'eye');
+    const sample = path.sample(t);
+    this.rig.camera.position.copy(sample.position);
+    this.rig.applyOrientation(sample.orientation);
+    this.rig.hold('eye');
+    this.requestFrame();
+    return { stopIndex: sample.stopIndex, holding: sample.holding };
+  }
+
+  /** Development: shows the colliders and the tour path as lines. */
+  debugShowPaths(on: boolean): void {
+    if (this.debugOverlay) {
+      this.scene.remove(this.debugOverlay);
+      this.debugOverlay.traverse((object) => {
+        const line = object as Line;
+        if (line.isLine) {
+          line.geometry.dispose();
+          (line.material as LineBasicMaterial).dispose();
+        }
+      });
+      this.debugOverlay = null;
+    }
+    if (on) {
+      const group = new Group();
+      for (const c of this.world.colliders) {
+        group.add(new Box3Helper(new Box3(new Vector3(c.x.min, c.y.min, c.z.min), new Vector3(c.x.max, c.y.max, c.z.max)), new Color(0x4fd1ff)));
+      }
+      const path = new TourPath(createTour(this.layout, computePresetPose('overview', this.layout, this.rig.camera.aspect)));
+      const points: Vector3[] = [];
+      for (let t = 0; t <= path.tour.duration; t += 0.1) points.push(path.sample(t).position.clone());
+      group.add(new Line(new BufferGeometry().setFromPoints(points), new LineBasicMaterial({ color: 0x7dff6a })));
+      this.debugOverlay = group;
+      this.scene.add(group);
+    }
+    this.requestFrame();
   }
 
   /**
@@ -165,6 +397,7 @@ export class CinemaView {
    */
   measureCost() {
     const { renderer } = this.host;
+    const { seatInstances, architecture, lighting } = this.content;
     const frame = (withShadowUpdate = false) => {
       renderer.shadowMap.needsUpdate = withShadowUpdate;
       renderer.render(this.scene, this.rig.camera);
@@ -176,14 +409,14 @@ export class CinemaView {
       triangles: a.triangles - b.triangles,
     });
     const interiorMeshes: Object3D[] = [];
-    this.architecture.group.traverse((object) => {
+    architecture.group.traverse((object) => {
       if ((object as Mesh).isMesh && object.visible && INTERIOR_MATERIALS.has(object.userData.material)) interiorMeshes.push(object);
     });
 
     const total = frame();
-    this.seatInstances.group.visible = false;
+    seatInstances.group.visible = false;
     const withoutSeats = frame();
-    this.seatInstances.group.visible = true;
+    seatInstances.group.visible = true;
     for (const mesh of interiorMeshes) mesh.visible = false;
     const withoutInterior = frame();
     for (const mesh of interiorMeshes) mesh.visible = true;
@@ -193,7 +426,7 @@ export class CinemaView {
 
     const seats = minus(total, withoutSeats);
     const interior = minus(total, withoutInterior);
-    const mapSize = this.lighting.key.shadow.mapSize.x;
+    const mapSize = lighting.key.shadow.mapSize.x;
     return {
       total,
       seats,
@@ -209,9 +442,7 @@ export class CinemaView {
    * from the screen → seat F06 → overview), then puts the camera back where it was.
    */
   async measureFrames(frames = 120) {
-    const { camera, controls } = this.rig;
-    const saved = { position: camera.position.clone(), quaternion: camera.quaternion.clone(), target: controls.target.clone() };
-    const aspect = camera.aspect;
+    const aspect = this.rig.camera.aspect;
     const pose = (id: CameraPresetId) => computePresetPose(id, this.layout, aspect);
     const keyframes = [
       pose('overview'),
@@ -220,26 +451,53 @@ export class CinemaView {
       pose('seatEye'),
       pose('overview'),
     ];
-    try {
-      return await measureCameraPath(this.host.renderer, this.scene, camera, keyframes, frames);
-    } finally {
-      camera.position.copy(saved.position);
-      camera.quaternion.copy(saved.quaternion);
-      controls.target.copy(saved.target);
-      this.host.requestRender();
-    }
+    return this.withSavedCamera(() => measureCameraPath(this.host.renderer, this.scene, this.rig.camera, keyframes, frames));
+  }
+
+  /** Development: times `frames` frames spread evenly along the whole tour path. */
+  async measureTour(frames = 150) {
+    const path = new TourPath(createTour(this.layout, computePresetPose('overview', this.layout, this.rig.camera.aspect)));
+    const { camera } = this.rig;
+    return this.withSavedCamera(() =>
+      measurePlacedFrames(this.host.renderer, this.scene, camera, frames, (i) => {
+        const sample = path.sample((i / Math.max(1, frames - 1)) * path.tour.duration);
+        camera.position.copy(sample.position);
+        this.rig.applyOrientation(sample.orientation);
+      }),
+    );
   }
 
   /** Snapshot for development tooling and automated checks. */
   getDebugState() {
     const { camera, controls } = this.rig;
-    const shadow = this.lighting.key.shadow;
+    const shadow = this.content.lighting.key.shadow;
+    const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     return {
       quality: this.quality,
+      state: this.cameraState(),
+      owner: this.rig.owner,
+      controlsEnabled: controls.enabled,
+      preset: this.preset,
+      pristine: this.pristine,
       mode: this.rig.mode,
       transitioning: this.rig.isTransitioning,
-      camera: { position: camera.position.toArray(), target: controls.target.toArray(), fov: camera.fov, aspect: camera.aspect },
-      lights: this.lighting.describe(),
+      reducedMotion: this.reducedMotion,
+      camera: {
+        position: camera.position.toArray(),
+        target: controls.target.toArray(),
+        fov: camera.fov,
+        aspect: camera.aspect,
+        near: camera.near,
+        // Roll: how far the camera's right vector tilts out of the horizontal plane (0 = none).
+        rollDeg: (Math.asin(Math.max(-1, Math.min(1, right.y))) * 180) / Math.PI,
+        upY: up.y,
+      },
+      tour: this.tour
+        ? { steps: this.tour.steps, time: this.tour.time, stopIndex: this.tour.stopIndex, duration: this.tour.path.tour.duration }
+        : null,
+      explore: this.exploring ? { walker: this.walker, input: this.input.debugState() } : null,
+      lights: this.content.lighting.describe(),
       shadow: { mapSize: shadow.mapSize.x, radius: shadow.radius, renders: this.shadowRenders },
       ...this.host.getDebugInfo(),
     };
@@ -248,25 +506,287 @@ export class CinemaView {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.listeners.abort();
+    this.input.dispose();
+    this.tour = null;
     this.rig.controls.removeEventListener('change', this.host.requestRender);
     this.rig.controls.removeEventListener('start', this.handleControlsStart);
     this.rig.dispose();
-
-    // Each owner releases what it created; shared materials go last, after every user is gone.
+    this.debugShowPaths(false);
     this.scene.clear();
     this.scene.environment = null;
-    this.seatInstances.dispose();
-    this.seatModel.dispose();
-    this.architecture.dispose();
-    this.lighting.dispose();
-    this.environment.dispose();
-    disposeMaterials(this.materials);
-    disposeMaterials(this.seatMaterials);
+    this.disposeContent(this.content);
     this.host.dispose();
   }
 
-  private buildSeats(level: QualityLevel): [SeatModel, SeatInstances] {
-    const model = createCinemaSeatModel(this.layout.config, this.seatMaterials, this.layout.config.quality[level].seat);
+  // ---------------------------------------------------------------- camera internals
+
+  /** Moves with a planned path (around seats and the stage); cuts straight there if there is none. */
+  private moveCamera(pose: CameraPose, animate: boolean, onArrive: () => void): void {
+    const from = this.rig.camera.position.clone();
+    const insideRoom = this.insideRoom(from) && this.insideRoom(pose.position);
+    // Inspection views from outside fly in through the cut-away part, which stays hidden until arrival.
+    const path = insideRoom ? planCameraPath(this.world, from, pose.position) : [from, pose.position];
+    const smooth = animate && !this.reducedMotion && path !== null;
+    this.rig.moveTo(pose, { animate: smooth, via: path ? path.slice(1, -1) : [], onArrive: () => this.afterMove(onArrive) });
+    this.requestFrame();
+  }
+
+  private afterMove(onArrive: () => void): void {
+    onArrive();
+    this.reportState();
+  }
+
+  private readonly tourDriver: CameraDriver = {
+    update: (camera: PerspectiveCamera, dt: number) => {
+      const tour = this.tour;
+      if (!tour || tour.steps) return false;
+      tour.time += dt;
+      const sample = tour.path.sample(tour.time, camera.position);
+      this.rig.applyOrientation(sample.orientation);
+      if (sample.stopIndex !== tour.stopIndex) {
+        tour.stopIndex = sample.stopIndex;
+      }
+      this.reportTour();
+      if (tour.time >= tour.path.tour.duration) {
+        // Finish after this frame is drawn at the last pose.
+        queueMicrotask(() => this.tour === tour && this.finishTour());
+        return false;
+      }
+      return true;
+    },
+  };
+
+  private readonly exploreDriver: CameraDriver = {
+    update: (camera: PerspectiveCamera, dt: number) => {
+      if (!this.walker) return false;
+      const settings = this.layout.config.camera.explore;
+      const look = this.input.consumeLook();
+      let walker = turnWalker(settings, this.walker, look.yaw, look.pitch);
+      const step = stepWalker(this.world, settings, walker, this.input.intent(), dt, this.reducedMotion);
+      walker = step.state;
+      this.walker = walker;
+      camera.position.set(walker.x, walker.eyeY, walker.z);
+      this.rig.applyOrientation({ yaw: walker.yaw, pitch: walker.pitch });
+      return step.active;
+    },
+  };
+
+  private showTourStop(index: number): void {
+    const tour = this.tour;
+    if (!tour) return;
+    const stop = tour.path.tour.stops[index];
+    tour.stopIndex = index;
+    tour.time = tour.path.stopTimes()[index];
+    this.rig.moveTo({ position: stop.position, lookAt: stop.lookAt, mode: 'eye' }, false);
+    this.reportTour();
+    this.requestFrame();
+  }
+
+  private finishTour(): void {
+    const tour = this.tour;
+    if (!tour) return;
+    this.tour = null;
+    // The tour ends exactly at the overview: hand it back as that preset.
+    const pose = computePresetPose('overview', this.layout, this.rig.camera.aspect);
+    this.preset = 'overview';
+    this.rig.moveTo(pose, false);
+    this.pristine = true;
+    this.rig.constraint = this.experienceConstraint;
+    this.callbacks.onTour(null, 'finished');
+    this.requestFrame();
+  }
+
+  private reportTour(): void {
+    const tour = this.tour;
+    if (!tour) return;
+    const stops = tour.path.tour.stops;
+    this.callbacks.onTour({
+      steps: tour.steps,
+      stopIndex: tour.stopIndex,
+      stopCount: stops.length,
+      label: stops[tour.stopIndex].label,
+      elapsed: tour.time,
+      duration: tour.path.tour.duration,
+    });
+  }
+
+  /** Ends the tour or exploring before another command takes the camera. */
+  private endActivities(reason: TourEndReason): void {
+    if (this.tour) {
+      this.tour = null;
+      this.callbacks.onTour(null, reason);
+    }
+    if (this.exploring) {
+      this.exploring = false;
+      this.walker = null;
+      this.input.setActive(false, false);
+    }
+  }
+
+  private startPoints(): StartPoint[] {
+    const { interior, stage, rows, config } = this.layout;
+    const aisleX = interior.x.max - config.aisles.width / 2;
+    const midRow = rows[Math.floor(rows.length / 2)];
+    return [
+      { id: 'aisle-right', label: 'lối đi bên phải', x: aisleX, z: midRow.treadZ.min + 0.3 },
+      { id: 'aisle-left', label: 'lối đi bên trái', x: -aisleX, z: midRow.treadZ.min + 0.3 },
+      { id: 'back', label: 'sàn phía sau', x: 0, z: interior.z.max - 0.7 },
+      { id: 'front', label: 'khu trước màn', x: 0, z: stage.z.max + 2.2 },
+    ];
+  }
+
+  private insideRoom(p: Vec3): boolean {
+    const { interior } = this.layout;
+    return p.x > interior.x.min && p.x < interior.x.max && p.z > interior.z.min && p.z < interior.z.max && p.y > interior.y.min && p.y < interior.y.max;
+  }
+
+  /**
+   * Orbiting in the experience views: the camera stays inside the room, above the floor, below the
+   * ceiling fixtures and above the seat backs and the stage; the target stays inside the room.
+   */
+  private readonly experienceConstraint = (position: Vector3, target: Vector3): boolean => {
+    const { room } = this.world;
+    const margin = this.layout.config.camera.roomMargin;
+    const before = position.clone();
+    const beforeTarget = target.clone();
+    position.x = clamp(position.x, room.x.min + margin, room.x.max - margin);
+    position.z = clamp(position.z, room.z.min + margin, room.z.max - margin);
+    let floor = this.world.floorAt(position.x, position.z);
+    for (const c of this.world.colliders) {
+      if (position.x > c.x.min - margin && position.x < c.x.max + margin && position.z > c.z.min - margin && position.z < c.z.max + margin) {
+        floor = Math.max(floor, c.y.max);
+      }
+    }
+    // Ceiling beams hang 0.2 m below the ceiling.
+    position.y = clamp(position.y, floor + margin, room.y.max - 0.2 - margin);
+    target.x = clamp(target.x, room.x.min, room.x.max);
+    target.y = clamp(target.y, room.y.min, room.y.max);
+    target.z = clamp(target.z, room.z.min, room.z.max);
+    return !position.equals(before) || !target.equals(beforeTarget);
+  };
+
+  private cameraState(): CameraState {
+    if (this.rig.isTransitioning) return 'transition';
+    if (this.tour) return 'tour';
+    if (this.exploring) return 'explore';
+    if (this.preset) return presetInfo(this.preset).space === 'inspection' ? 'inspection' : 'preset';
+    return 'free';
+  }
+
+  private reportState(): void {
+    const state = this.cameraState();
+    if (state === this.reportedState) return;
+    this.reportedState = state;
+    this.callbacks.onCameraState(state);
+  }
+
+  private requestFrame(): void {
+    this.reportState();
+    this.host.requestRender();
+  }
+
+  // ---------------------------------------------------------------- input and lifecycle
+
+  /** Dragging or scrolling on the canvas stops a playing tour; the camera stays where it is. */
+  private readonly handleCanvasInput = (): void => {
+    if (this.tour && !this.tour.steps) this.stopTour('input');
+  };
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (this.tour && !this.tour.steps && isMovementKey(event) && !keyBelongsToFocus(event)) this.stopTour('input');
+  };
+
+  private readonly handleControlsStart = (): void => {
+    this.pristine = false;
+    if (this.preset === null && !this.tour && !this.exploring) this.reportState();
+    this.callbacks.onManualCamera();
+  };
+
+  /** A hidden tab ends the tour (it would otherwise finish unseen) and drops held input. */
+  private readonly handleVisibility = (): void => {
+    if (!document.hidden) return;
+    if (this.tour && !this.tour.steps) this.stopTour('hidden');
+    this.input.clear();
+  };
+
+  private handleResize(aspect: number): void {
+    this.rig.setAspect(aspect);
+    // A preset the user has not moved away from is framed again for the new shape; a free,
+    // touring or walking camera keeps its position and direction.
+    if (this.preset && this.pristine && this.rig.owner === 'controls') {
+      this.rig.moveTo(computePresetPose(this.preset, this.layout, aspect), false);
+    }
+  }
+
+  private renderFrame(dt: number): boolean {
+    const needsAnotherFrame = this.rig.update(dt);
+    const { renderer } = this.host;
+    if (renderer.shadowMap.needsUpdate) this.shadowRenders++;
+    renderer.render(this.scene, this.rig.camera);
+    this.reportState();
+    return needsAnotherFrame;
+  }
+
+  /** The context is gone: stop the tour and drop held input so nothing moves unseen. */
+  private handleContextLost(): void {
+    if (this.tour && !this.tour.steps) this.stopTour('context-lost');
+    this.input.clear();
+  }
+
+  /**
+   * Rebuilds every GPU resource after a lost context comes back, and drops the old ones without
+   * disposing them. three.js (r186) re-creates its internal WebGL modules on restore, but objects
+   * from before the loss keep dispose listeners from the old modules: disposing them later (a
+   * quality switch, closing the page) makes those listeners delete handles from the dead context
+   * ("object does not belong to this context"). New objects only ever meet the new modules; the old
+   * GPU objects died with the old context, and the old JS objects are garbage-collected.
+   */
+  private handleContextRestored(): void {
+    const old = this.content;
+    this.scene.remove(old.architecture.group, old.seatInstances.group, old.lighting.group);
+    this.content = this.buildContent(this.quality);
+    for (const part of this.hiddenParts) {
+      this.content.architecture.toggleable[part].visible = false;
+      this.content.lighting.setPartVisible(part, false);
+    }
+    this.invalidateShadows();
+  }
+
+  // ---------------------------------------------------------------- scene content
+
+  private buildContent(quality: QualityLevel): SceneContent {
+    const { renderer } = this.host;
+    const settings = this.layout.config.quality[quality];
+    const materials = createBlockoutMaterials();
+    const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    // Read at an angle from most seats.
+    for (const texture of [materials.exitSign.map, materials.carpet.map]) if (texture) texture.anisotropy = anisotropy;
+    const seatMaterials = createSeatMaterials();
+    const architecture = buildArchitecture(this.layout, materials);
+    configureShadows(architecture);
+    const lighting = createRoomLighting(this.layout);
+    lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
+    const environment = createInteriorEnvironment(renderer);
+    const [seatModel, seatInstances] = this.buildSeats(seatMaterials, quality);
+    this.scene.environment = environment.texture;
+    this.scene.add(architecture.group, seatInstances.group, lighting.group);
+    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances };
+  }
+
+  private disposeContent(content: SceneContent): void {
+    // Each owner releases what it created; shared materials go last, after every user is gone.
+    content.seatInstances.dispose();
+    content.seatModel.dispose();
+    content.architecture.dispose();
+    content.lighting.dispose();
+    content.environment.dispose();
+    disposeMaterials(content.materials);
+    disposeMaterials(content.seatMaterials);
+  }
+
+  private buildSeats(materials: SeatMaterials, level: QualityLevel): [SeatModel, SeatInstances] {
+    const model = createCinemaSeatModel(this.layout.config, materials, this.layout.config.quality[level].seat);
     const instances = createSeatInstances(model, this.layout.seats);
     for (const mesh of instances.meshes) {
       mesh.castShadow = true;
@@ -280,36 +800,17 @@ export class CinemaView {
     this.host.requestRender();
   }
 
-  private renderFrame(time: number): boolean {
-    const needsAnotherFrame = this.rig.update(time);
-    const { renderer } = this.host;
-    if (renderer.shadowMap.needsUpdate) this.shadowRenders++;
-    renderer.render(this.scene, this.rig.camera);
-    this.reportTransition();
-    return needsAnotherFrame;
-  }
-
-  /** The prefiltered environment and the shadow map lived on the lost context; rebuild them. */
-  /**
-   * The prefiltered environment was a render target, so its pixels died with the old context:
-   * build it again. The old target is dropped, not disposed: its GL objects are already gone, and
-   * disposing would make three.js delete stale handles on the new context.
-   */
-  private handleContextRestored(): void {
-    this.environment = createInteriorEnvironment(this.host.renderer);
-    this.scene.environment = this.environment.texture;
-    this.invalidateShadows();
-  }
-
-  private readonly handleControlsStart = (): void => {
-    this.callbacks.onManualCamera();
-  };
-
-  private reportTransition(): void {
-    const active = this.rig.isTransitioning;
-    if (active === this.reportedTransition) return;
-    this.reportedTransition = active;
-    this.callbacks.onTransitionChange(active);
+  private async withSavedCamera<T>(run: () => Promise<T>): Promise<T> {
+    const { camera, controls } = this.rig;
+    const saved = { position: camera.position.clone(), quaternion: camera.quaternion.clone(), target: controls.target.clone() };
+    try {
+      return await run();
+    } finally {
+      camera.position.copy(saved.position);
+      camera.quaternion.copy(saved.quaternion);
+      controls.target.copy(saved.target);
+      this.host.requestRender();
+    }
   }
 }
 
@@ -327,3 +828,8 @@ function configureShadows(architecture: Architecture): void {
     }
   }
 }
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+

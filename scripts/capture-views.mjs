@@ -1,11 +1,14 @@
 // Browser acceptance check for the /cinema page and the seat inspector (/cinema?inspect=seat).
 //
 // Starts the Vite dev server, opens the pages in a locally installed Chrome or Edge (driven by
-// playwright-core, no browser download), exercises the camera presets, visibility switches and the
-// lights and shadows that follow them, both quality levels (same views, switching, persistence,
-// resource stability, frame timing), resize, keyboard use, context loss, hot re-mount, the seat
-// inspector's views and lifecycle and a simulated WebGL failure, then writes screenshots and
-// report.json to artifacts/<CAPTURE_DIR or prompt-04>/.
+// playwright-core, no browser download), exercises the camera presets on desktop, tablet and phones
+// in portrait and landscape, the guided tour (path, stops, cancelling by drag/keys/wheel/touch/
+// presets, hidden tab, reduced motion), explore mode (keys, drag-to-look, real touch events on the
+// stick and canvas through CDP, collisions, stairs, focus/blur/pointercancel, slow frames),
+// resize/orientation, visibility switches with their lights and shadows, both quality levels,
+// context loss (also while moving), hot re-mount, the seat inspector (also opened from the page) and
+// a simulated WebGL failure, then writes screenshots, videos and report.json to
+// artifacts/<CAPTURE_DIR or prompt-05>/.
 // When <output folder>/baseline/ exists (a run of the previous code with CAPTURE_DIR=prompt-NN/baseline),
 // its renderer figures are copied into the report and its screenshots are paired with the new ones
 // from the same cameras in compare-*.png.
@@ -23,7 +26,7 @@ import { chromium } from 'playwright-core';
 import { createServer, normalizePath } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-04');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-05');
 
 const BROWSER_CANDIDATES = [
   process.env.BROWSER_PATH,
@@ -40,14 +43,18 @@ const VIEWPORTS = [
   { name: 'desktop', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   { name: 'tablet', viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true },
   { name: 'mobile', viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  { name: 'mobile-landscape', viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
 ];
 
+// File numbers match earlier prompts' artifacts (1–4), so baseline pairs line up.
 const PRESETS = [
-  { id: 'overview', file: 'overview' },
-  { id: 'seats', file: 'seats' },
-  { id: 'side', file: 'side' },
-  { id: 'seatEye', file: 'seat-eye' },
+  { id: 'overview', file: '1-overview' },
+  { id: 'seats', file: '2-seats' },
+  { id: 'side', file: '3-side' },
+  { id: 'seatEye', file: '4-seat-eye' },
+  { id: 'plan', file: '5-plan' },
 ];
+const INSPECTION_PRESETS = new Set(['side', 'plan']);
 
 const report = {
   generatedAt: new Date().toISOString(),
@@ -64,6 +71,10 @@ const report = {
   frameTiming: [],
   // The same view measured at both quality levels, and resources before/after repeated switching.
   quality: {},
+  // Guided tour: samples along the real run, stop order, speeds, cancel checks.
+  tour: {},
+  explore: {},
+  videos: [],
 };
 
 // ANGLE's D3D shader compiler reports float constant folding in three.js's packing code as
@@ -91,7 +102,19 @@ async function waitForStatus(page, timeout = 30_000) {
   return page.evaluate(() => document.querySelector('.cinema-app').dataset.status);
 }
 
+async function openInspectTools(page) {
+  if ((await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) !== 'true') {
+    await page.click('button[data-action="inspect-tools"]');
+  }
+}
+
+async function togglePart(page, part) {
+  await openInspectTools(page);
+  await page.click(`label:has(input[data-toggle="${part}"])`);
+}
+
 async function selectPreset(page, id, { keyboard = false } = {}) {
+  if (INSPECTION_PRESETS.has(id)) await openInspectTools(page);
   if (keyboard) {
     await page.focus(`button[data-preset="${id}"]`);
     await page.keyboard.press('Enter');
@@ -101,7 +124,7 @@ async function selectPreset(page, id, { keyboard = false } = {}) {
   await page.waitForFunction(
     (preset) => {
       const app = document.querySelector('.cinema-app');
-      return app?.dataset.preset === preset && app.dataset.transitioning === 'false';
+      return app?.dataset.preset === preset && app.dataset.transitioning === 'false' && app.dataset.camera !== 'transition';
     },
     id,
     { timeout: 10_000 },
@@ -137,9 +160,9 @@ async function waitForInspectorIdle(page, view) {
   await nextFrames(page);
 }
 
-async function screenshot(page, name) {
+async function screenshot(page, name, options = {}) {
   const file = path.join(outDir, `${name}.png`);
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, ...options });
   report.screenshots.push(path.relative(root, file).replaceAll('\\', '/'));
 }
 
@@ -261,11 +284,11 @@ async function main() {
       check(`${name}: header shows rows and seat total`, /10 \(A–J\)/.test(stats) && /110/.test(stats), stats);
       await layoutChecks(page, name);
 
-      for (const [index, preset] of PRESETS.entries()) {
+      for (const preset of PRESETS) {
         await selectPreset(page, preset.id);
         const s = await state(page);
         check(`${name}: preset ${preset.id} applied`, s.preset === preset.id && s.view.transitioning === false, s.view.camera);
-        await screenshot(page, `${name}-${index + 1}-${preset.file}`);
+        await screenshot(page, `${name}-${preset.file}`);
         if (name === 'desktop') {
           report.renderer.push({ preset: preset.id, ...s.view.render, ...s.view.memory });
           const split = await page.evaluate(() => window.__cinema.measureCost?.() ?? null);
@@ -273,16 +296,33 @@ async function main() {
         }
         if (preset.id === 'side') check(`${name}: side view hides the right wall`, s.visibility.rightWall === false);
         if (preset.id === 'seatEye') {
-          check(`${name}: seat-eye restores the right wall`, s.visibility.rightWall === true);
+          check(`${name}: seat-eye restores the right wall after arriving`, s.visibility.rightWall === true);
           check(`${name}: seat-eye uses look-around mode`, s.view.mode === 'eye');
         }
+        if (preset.id === 'plan') check(`${name}: plan view hides the ceiling`, s.visibility.ceiling === false);
+        check(
+          `${name}: ${preset.id} is ${INSPECTION_PRESETS.has(preset.id) ? 'an inspection view' : 'an experience view inside the room'}`,
+          s.view.state === (INSPECTION_PRESETS.has(preset.id) ? 'inspection' : 'preset') &&
+            (INSPECTION_PRESETS.has(preset.id) || (await clearPoints(page, [s.view.camera.position], 0.2, preset.id === 'seatEye' ? ['seats-F'] : []))[0]),
+          { state: s.view.state, position: s.view.camera.position, fov: s.view.camera.fov },
+        );
       }
+      await selectPreset(page, 'overview');
+      report.framing ??= {};
+      report.framing[name] = {
+        aspect: (await state(page)).view.camera.aspect,
+        fov: (await state(page)).view.camera.fov,
+        overview: (await state(page)).view.camera.position,
+      };
 
       if (name === 'desktop') {
         await interiorShots(page);
         await materialShots(page);
+        await seatViewShots(page);
         await lightingChecks(page);
         await measurePerformance(page, 'desktop high');
+        await tourChecks(page);
+        await exploreChecks(page);
         await qualityChecks(page);
         await seatCloseUp(page);
         await desktopInteractions(page, server);
@@ -294,12 +334,16 @@ async function main() {
         await nextFrames(page);
         await measurePerformance(page, 'tablet high');
       }
+      if (name === 'mobile') await touchChecks(page, context);
       await context.close();
     }
 
     await seatInspector(browser, base);
+    await inspectorFromPage(browser, base);
+    await reducedMotion(browser, base);
     await contextLoss(browser, base);
     await webglFailure(browser, base);
+    await videos(browser, base);
     await comparisons(browser);
   } finally {
     await browser.close();
@@ -335,34 +379,36 @@ async function main() {
 }
 
 async function desktopInteractions(page, server) {
-  // Visibility switches: hide ceiling and back wall, look from the overview.
+  // Experience view: zooming out and orbiting keep the camera inside the room, above the seats.
   await selectPreset(page, 'overview');
-  await page.click('label:has(input[data-toggle="ceiling"])');
-  await page.click('label:has(input[data-toggle="backWall"])');
-  await nextFrames(page);
-  let s = await state(page);
-  check('desktop: ceiling and back wall can be hidden', s.visibility.ceiling === false && s.visibility.backWall === false);
-  // Zoom out through the (hidden) back wall and orbit upwards so the cut-away is actually visible.
   const canvasBox = await page.locator('.cinema-canvas').boundingBox();
   const centre = { x: canvasBox.x + canvasBox.width / 2, y: canvasBox.y + canvasBox.height / 2 };
   await page.mouse.move(centre.x, centre.y);
-  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 300);
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(0, 400);
   await page.mouse.down();
-  await page.mouse.move(centre.x, centre.y + 30, { steps: 6 });
+  await page.mouse.move(centre.x + 200, centre.y + 120, { steps: 8 });
+  await page.mouse.up();
+  await waitForCameraToSettle(page);
+  let s = await state(page);
+  check('desktop: orbiting the overview keeps the camera inside the room, clear of everything', (await clearPoints(page, [s.view.camera.position], 0.25))[0], s.view.camera.position);
+  const freeCaption = await page.textContent('.cinema-caption');
+  check('desktop: caption switches to free camera after manual orbit', freeCaption.startsWith('Camera tự do'), freeCaption);
+
+  // Inspection: with ceiling and back wall hidden, the section view orbits freely, also outside.
+  await selectPreset(page, 'side');
+  await togglePart(page, 'ceiling');
+  await togglePart(page, 'backWall');
+  await nextFrames(page);
+  s = await state(page);
+  check('desktop: ceiling and back wall can be hidden', s.visibility.ceiling === false && s.visibility.backWall === false);
+  await page.mouse.move(centre.x, centre.y);
+  await page.mouse.down();
+  await page.mouse.move(centre.x - 260, centre.y + 60, { steps: 8 });
   await page.mouse.up();
   await waitForCameraToSettle(page);
   s = await state(page);
-  check('desktop: zoom takes the camera outside the hidden back wall', s.view.camera.position[2] > 9.3, s.view.camera.position);
-  const freeCaption = await page.textContent('.cinema-caption');
-  check('desktop: caption switches to free camera after manual orbit', freeCaption.startsWith('Camera tự do'), freeCaption);
-  await screenshot(page, 'desktop-5-ceiling-back-hidden');
-
-  // Keep orbiting up to a plan view: checks symmetry, aisles and the seat block from above.
-  await page.mouse.down();
-  await page.mouse.move(centre.x, centre.y + 260, { steps: 10 });
-  await page.mouse.up();
-  await waitForCameraToSettle(page);
-  await screenshot(page, 'desktop-6-plan-from-above');
+  check('desktop: inspection orbit may leave the room (cut-away)', s.view.state === 'inspection' && Math.abs(s.view.camera.position[0]) > 6.5, s.view.camera.position);
+  await screenshot(page, 'desktop-6-cutaway-orbit');
 
   // Reset restores everything.
   await page.click('button[data-action="reset"]');
@@ -408,7 +454,7 @@ async function desktopInteractions(page, server) {
   );
 
   // Two presets in quick succession: one transition, ending on the last one.
-  await page.click('button[data-preset="side"]');
+  await page.click('button[data-preset="seats"]');
   await page.click('button[data-preset="seatEye"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.transitioning === 'false');
   s = await state(page);
@@ -478,12 +524,12 @@ async function interiorShots(page) {
   }
 
   await selectPreset(page, 'overview');
-  await page.click('label:has(input[data-toggle="ceiling"])');
+  await togglePart(page, 'ceiling');
   await nextFrames(page);
   const s = await state(page);
   check('desktop: hiding the ceiling hides its beams and light slots (fewer draw calls)', s.visibility.ceiling === false, s.view.render);
   await screenshot(page, 'interior-7-overview-ceiling-hidden');
-  await page.click('label:has(input[data-toggle="ceiling"])');
+  await togglePart(page, 'ceiling');
   await nextFrames(page);
 
   const overview = report.rendererSplit.find((entry) => entry.preset === 'overview');
@@ -535,7 +581,7 @@ async function materialShots(page) {
 // scene changes, and the room stays lit for inspection with the ceiling or right wall hidden.
 async function lightingChecks(page) {
   const toggle = async (part) => {
-    await page.click(`label:has(input[data-toggle="${part}"])`);
+    await togglePart(page, part);
     await nextFrames(page);
     return state(page);
   };
@@ -633,7 +679,7 @@ async function qualityChecks(page) {
   await measurePerformance(page, 'desktop economy');
 
   // Visibility and a free camera survive a switch; the choice is stored and saved for the next visit.
-  await page.click('label:has(input[data-toggle="backWall"])');
+  await togglePart(page, 'backWall');
   await page.evaluate(() => window.__cinema.setCamera({ x: -3, y: 3.5, z: 9.5 }, { x: 1, y: 1.5, z: -4 }));
   await nextFrames(page);
   let s = await state(page);
@@ -647,7 +693,7 @@ async function qualityChecks(page) {
   );
   const seatsAtHigh = (await page.evaluate(() => window.__cinema.measureCost())).seats;
   check('quality: seats are rebuilt at the High level after switching back', seatsAtHigh.triangles === cost.high.seats.triangles, seatsAtHigh);
-  await page.click('label:has(input[data-toggle="backWall"])');
+  await togglePart(page, 'backWall');
   await nextFrames(page);
 
   // Resources: switch back and forth; geometries, textures and programs must come back to the same count.
@@ -684,6 +730,644 @@ async function qualityChecks(page) {
     source: s.qualitySource,
   });
   await selectPreset(page, 'overview');
+}
+
+/** True for each point that is clear of the room's colliders, walls, floor and ceiling. */
+function clearPoints(page, points, margin, ignore = []) {
+  return page.evaluate(
+    async ([pts, m, skip]) => {
+      const { createCollisionWorld, pointClear } = await import('/src/cinema/collision.ts');
+      const world = createCollisionWorld(window.__cinema.layout);
+      return pts.map((p) => pointClear(world, { x: p[0], y: p[1], z: p[2] }, m, new Set(skip)));
+    },
+    [points, margin, ignore],
+  );
+}
+
+/** True for each walker state where the body fits (inside walls, clear of seats, stage, curtains). */
+function bodiesFit(page, walkers) {
+  return page.evaluate(async (states) => {
+    const { createCollisionWorld, bodyFits } = await import('/src/cinema/collision.ts');
+    const { layout } = window.__cinema;
+    const world = createCollisionWorld(layout);
+    return states.map((w) => bodyFits(world, layout.config.camera.explore, w.x, w.z, w.floorY));
+  }, walkers);
+}
+
+async function waitForIdleFrames(page, label, ms = 1000) {
+  const before = (await state(page)).view.framesRendered;
+  await page.waitForTimeout(ms);
+  const after = (await state(page)).view.framesRendered;
+  check(`${label}: no new frames while nothing moves (${ms / 1000} s)`, after === before, { before, after });
+}
+
+/** Records state every `every` ms until `until(state)` or `timeout`. */
+async function sampleUntil(page, until, { every = 120, timeout = 40_000 } = {}) {
+  const samples = [];
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const s = await state(page);
+    samples.push({ t: (Date.now() - start) / 1000, ...s });
+    if (until(s)) break;
+    await page.waitForTimeout(every);
+  }
+  return samples;
+}
+
+async function startTour(page) {
+  await page.click('button[data-action="tour"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.tour !== 'off');
+}
+
+// The full tour on the real page: order of stops, roll, clearance of every sampled position, end
+// state; then every way of stopping it.
+async function tourChecks(page) {
+  await selectPreset(page, 'overview');
+  await startTour(page);
+  const samples = await sampleUntil(page, (s) => !s.touring && s.view.state === 'preset');
+  const positions = samples.map((s) => s.view.camera.position);
+  const clear = await clearPoints(page, positions, 0.1);
+  const stops = samples.filter((s) => s.view.tour).map((s) => s.view.tour.stopIndex);
+  const order = stops.filter((stop, i) => stop !== stops[i - 1]);
+  const maxRoll = Math.max(...samples.map((s) => Math.abs(s.view.camera.rollDeg)));
+  const seconds = samples.at(-1).t;
+  report.tour = { seconds, samples: samples.length, stopOrder: order, maxRollDeg: maxRoll, duration: samples.find((s) => s.view.tour)?.view.tour.duration };
+  check('tour: runs through every stop in order and ends at the overview', JSON.stringify(order) === '[0,1,2,3,4]' && samples.at(-1).preset === 'overview', report.tour);
+  check('tour: takes 20–32 s including the move to its start', seconds >= 20 && seconds <= 32, seconds);
+  check('tour: the camera never rolls', maxRoll < 0.01, maxRoll);
+  // One writer at a time: OrbitControls are off whenever the tour or a transition owns the camera.
+  const owners = samples.map((s) => `${s.view.state}/${s.view.owner}/${s.view.controlsEnabled}`);
+  const exclusive = samples.every((s) =>
+    s.view.owner === 'controls' ? s.view.controlsEnabled : !s.view.controlsEnabled && (s.view.state !== 'tour' || ['driver', 'transition'].includes(s.view.owner)),
+  );
+  check('tour: exactly one camera writer at any time (controls off while the tour drives)', exclusive, [...new Set(owners)]);
+  check('tour: every sampled position is clear of seats, stage, curtains and walls', clear.every(Boolean), clear.filter((c) => !c).length);
+  check('tour: caption says it has finished', (await page.textContent('.cinema-caption')).startsWith('Tham quan kết thúc'));
+  await waitForIdleFrames(page, 'tour: after the end');
+
+  // Every way of stopping it: the camera stays where it was and the tour does not come back.
+  const box = await page.locator('.cinema-canvas').boundingBox();
+  const stoppers = {
+    drag: async () => {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2, { steps: 3 });
+      await page.mouse.up();
+    },
+    'movement key': () => page.keyboard.press('KeyW'),
+    wheel: async () => {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, 200);
+    },
+    'stop button': () => page.click('button[data-action="tour-stop"]'),
+    preset: () => page.click('button[data-preset="seatEye"]'),
+    reset: () => page.click('button[data-action="reset"]'),
+  };
+  report.tour.cancel = {};
+  for (const [how, stop] of Object.entries(stoppers)) {
+    await selectPreset(page, 'overview');
+    await startTour(page);
+    await page.waitForTimeout(3500);
+    const before = (await state(page)).view.camera.position;
+    await stop();
+    await nextFrames(page);
+    const after = await state(page);
+    const byCommand = how === 'preset' || how === 'reset';
+    if (!byCommand) await waitForCameraToSettle(page);
+    const settled = (await state(page)).view.camera.position;
+    await page.waitForTimeout(600);
+    const later = await state(page);
+    report.tour.cancel[how] = { state: after.view.state, movedOnStop: distance(before, after.view.camera.position), drift: distance(settled, later.view.camera.position) };
+    check(
+      `tour: ${how} stops it at once${byCommand ? ' and the command takes over' : ', the camera stays and does not drift'}`,
+      !after.touring && (await page.getAttribute('.cinema-app', 'data-tour')) === 'off' &&
+        (byCommand ? ['transition', 'preset'].includes(after.view.state) : after.view.state === 'free' && distance(settled, later.view.camera.position) < 1e-6) &&
+        later.view.tour === null,
+      report.tour.cancel[how],
+    );
+  }
+
+  // A hidden tab ends the tour (rule: it would otherwise finish unseen); coming back does not restart it.
+  await selectPreset(page, 'overview');
+  await startTour(page);
+  await page.waitForTimeout(2000);
+  const setHidden = (hidden) =>
+    page.evaluate((h) => {
+      Object.defineProperty(document, 'hidden', { value: h, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+  await setHidden(true);
+  const hiddenState = await state(page);
+  await setHidden(false);
+  await page.waitForTimeout(800);
+  const back = await state(page);
+  check('tour: a hidden tab stops it and returning does not restart it', !hiddenState.touring && !back.touring && back.view.tour === null, {
+    caption: await page.textContent('.cinema-caption'),
+  });
+  await page.evaluate(() => delete document.hidden);
+
+  // Quality switch mid-tour: the tour carries on.
+  await selectPreset(page, 'overview');
+  await startTour(page);
+  await page.waitForTimeout(2500);
+  await page.click('button[data-quality="economy"]');
+  await page.waitForTimeout(800);
+  const mid = await state(page);
+  check('tour: switching quality during the tour keeps it running', mid.touring && mid.view.tour?.time > 2 && mid.view.quality === 'economy', mid.view.tour);
+  await page.click('button[data-quality="high"]');
+  await page.click('button[data-action="tour"]');
+  await selectPreset(page, 'overview');
+
+  // Collider and tour path overlay (development view), from the plan view.
+  await selectPreset(page, 'plan');
+  await page.evaluate(() => window.__cinema.showPaths(true));
+  await nextFrames(page);
+  await screenshot(page, 'debug-tour-path-colliders');
+  await page.evaluate(() => window.__cinema.showPaths(false));
+
+  // Frame-by-frame review of the tour (deterministic poses every 1.5 s), as a contact sheet.
+  const duration = report.tour.duration;
+  const frames = [];
+  for (let t = 0; t <= duration + 1e-6; t += 1.5) {
+    await page.evaluate((time) => window.__cinema.tourFrame(time), t);
+    await nextFrames(page);
+    frames.push([`${t.toFixed(1)} s`, (await page.locator('.cinema-canvas').screenshot()).toString('base64')]);
+  }
+  report.tour.contactSheetFrames = frames.length;
+  await contactSheet(page.context().browser(), 'tour-frames-contact-sheet', frames, 5);
+
+  // Rendering cost along the whole tour path at both levels (same viewport, same poses).
+  await selectPreset(page, 'overview');
+  // Alternated twice, so warm-up and clock changes show up as a difference between runs of one level.
+  for (const [run, level] of [[1, 'high'], [1, 'economy'], [2, 'high'], [2, 'economy']]) {
+    await page.click(`button[data-quality="${level}"]`);
+    await nextFrames(page);
+    const timing = await page.evaluate(() => window.__cinema.measureTour(150));
+    const s = await state(page);
+    report.frameTiming.push({ label: `desktop tour ${level} (run ${run})`, pixelRatio: s.view.pixelRatio, drawingBuffer: s.view.drawingBuffer, ...timing });
+  }
+  await page.click('button[data-quality="high"]');
+  await selectPreset(page, 'overview');
+}
+
+// Walking with the keyboard and mouse: start rules, collisions (also diagonal and with slow
+// frames), stairs, focus rules, blur and pointercancel, quality switch, render stopping.
+async function exploreChecks(page) {
+  const walker = async () => (await state(page)).view.explore?.walker ?? null;
+  const startExplore = async () => {
+    await page.click('button[data-action="explore"]');
+    await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+  };
+  const hold = async (keys, ms, every = 100) => {
+    for (const key of keys) await page.keyboard.down(key);
+    const seen = [];
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      seen.push(await walker());
+      await page.waitForTimeout(every);
+    }
+    for (const key of keys) await page.keyboard.up(key);
+    await nextFrames(page);
+    seen.push(await walker());
+    return seen;
+  };
+  const { layout } = await page.evaluate(() => ({ layout: { eye: window.__cinema.layout.config.camera.explore.eyeHeight, jBack: window.__cinema.layout.rows.at(-1).seatZ + window.__cinema.layout.config.seat.footprintDepth / 2 } }));
+
+  await selectPreset(page, 'overview');
+  await startExplore();
+  const owned = await state(page);
+  check('explore: the walker is the only camera writer (orbit controls off)', owned.view.owner === 'driver' && !owned.view.controlsEnabled, owned.view.owner);
+  let w = await walker();
+  check('explore: from the overview it starts right below the camera, at standing eye height', Math.abs(w.x) < 1e-6 && Math.abs(w.eyeY - w.floorY - layout.eye) < 1e-6, w);
+  await screenshot(page, 'explore-1-desktop-start');
+
+  const forward = await hold(['KeyW'], 2500);
+  const fitsForward = await bodiesFit(page, forward);
+  check('explore: walking into the last row stops at its seats', forward.at(-1).z >= layout.jBack + 0.25 - 1e-6 && forward.at(-1).z < w.z && fitsForward.every(Boolean), forward.at(-1));
+
+  // Diagonal at 6× CPU slowdown (long frames): still never inside anything.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+  const diagonal = await hold(['KeyW', 'KeyA'], 3000);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  const fitsDiagonal = await bodiesFit(page, diagonal);
+  report.explore.diagonalSlow = { samples: diagonal.length, last: diagonal.at(-1) };
+  check('explore: diagonal walking with slow frames never enters a collider', fitsDiagonal.every(Boolean) && diagonal.at(-1).x < diagonal[0].x, report.explore.diagonalSlow);
+
+  // Keys typed into a text field are not movement.
+  await page.evaluate(() => {
+    const input = document.createElement('input');
+    input.id = 'probe-input';
+    document.body.append(input);
+    input.focus();
+  });
+  const beforeTyping = await walker();
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(400);
+  const typing = await state(page);
+  await page.keyboard.up('KeyD');
+  await page.evaluate(() => document.getElementById('probe-input').remove());
+  check('explore: WASD typed into a text field does not move', typing.view.explore.input.keys.length === 0 && distance([beforeTyping.x, 0, beforeTyping.z], [typing.view.explore.walker.x, 0, typing.view.explore.walker.z]) < 1e-9);
+
+  // Blur while a key is held: nothing stays pressed.
+  await page.locator('.cinema-canvas').focus().catch(() => {});
+  await page.keyboard.down('KeyS');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  const afterBlur = await walker();
+  await page.waitForTimeout(500);
+  const stillAfterBlur = await state(page);
+  await page.keyboard.up('KeyS');
+  check('explore: blur drops held keys, no "stuck" walking', stillAfterBlur.view.explore.input.keys.length === 0 && distance([afterBlur.x, 0, afterBlur.z], [stillAfterBlur.view.explore.walker.x, 0, stillAfterBlur.view.explore.walker.z]) < 1e-9);
+
+  // Drag to look; pointercancel releases the look pointer.
+  const box = await page.locator('.cinema-canvas').boundingBox();
+  const yaw0 = (await walker()).yaw;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 - 40, { steps: 6 });
+  const looking = await state(page);
+  await page.evaluate(() => document.querySelector('.cinema-canvas').dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1, bubbles: true })));
+  const cancelled = await state(page);
+  await page.mouse.up();
+  check('explore: dragging turns the view; pointercancel releases it', looking.view.explore.walker.yaw < yaw0 && looking.view.explore.input.look && !cancelled.view.explore.input.look);
+  await page.waitForTimeout(300);
+  await waitForIdleFrames(page, 'explore: standing still');
+
+  // Stairs: from seat F06 to the aisle (visible move), down to the front and back up.
+  await selectPreset(page, 'seatEye');
+  await startExplore();
+  w = await walker();
+  check('explore: from a seat it moves to the nearest aisle start, with a caption saying so', w.x > 4.5 && (await page.textContent('.cinema-caption')).startsWith('Đã đưa bạn tới'), w);
+  await screenshot(page, 'explore-2-desktop-aisle');
+  const down = await hold(['KeyW'], 4500);
+  const up = await hold(['KeyS'], 6000);
+  await page.waitForTimeout(600);
+  up.push(await walker());
+  const steps = [...down, ...up];
+  const maxRise = Math.max(...steps.slice(1).map((s, i) => Math.abs(s.floorY - steps[i].floorY)));
+  report.explore.stairs = { startFloor: w.floorY, bottomFloor: down.at(-1).floorY, topFloor: up.at(-1).floorY, maxRisePerSample: maxRise };
+  check(
+    'explore: walks down the aisle steps to the front floor and back up, one step at a time, eye at standing height',
+    down.at(-1).floorY === 0 && up.at(-1).floorY > w.floorY && maxRise <= 0.25 + 1e-9 &&
+      Math.abs(up.at(-1).eyeY - up.at(-1).floorY - layout.eye) < 0.02 && (await bodiesFit(page, steps)).every(Boolean),
+    report.explore.stairs,
+  );
+
+  // Quality switch while exploring keeps the walker where it is.
+  await page.waitForTimeout(800);
+  const beforeSwitch = await walker();
+  await page.click('button[data-quality="economy"]');
+  await nextFrames(page);
+  const afterSwitch = await state(page);
+  check('explore: switching quality keeps exploring at the same spot', afterSwitch.view.state === 'explore' && JSON.stringify(afterSwitch.view.explore?.walker) === JSON.stringify(beforeSwitch), {
+    state: afterSwitch.view.state,
+    before: beforeSwitch,
+    after: afterSwitch.view.explore?.walker,
+  });
+  await page.click('button[data-quality="high"]');
+
+  await page.click('button[data-action="explore"]');
+  await nextFrames(page);
+  const stopped = await state(page);
+  check('explore: pressing Khám phá again stops where the camera is', stopped.view.state === 'free' && !stopped.exploring, stopped.view.state);
+  await selectPreset(page, 'overview');
+}
+
+// Views from a sample of seats with the seat-view helper (Prompt 06 uses it for any seat).
+async function seatViewShots(page) {
+  for (const id of ['A01', 'A06', 'F06', 'J06', 'J11']) {
+    const pose = await page.evaluate(async (seatId) => {
+      const { seatViewPose } = await import('/src/cinema/seatView.ts');
+      const { layout } = window.__cinema;
+      return seatViewPose(layout, layout.seatById.get(seatId));
+    }, id);
+    await page.evaluate((p) => window.__cinema.setCamera(p.position, p.lookAt, 'eye'), pose);
+    await nextFrames(page);
+    await screenshot(page, `seat-view-${id}`);
+  }
+  await selectPreset(page, 'overview');
+}
+
+/** Real touch input through the browser's input pipeline (CDP), not synthetic DOM events. */
+async function touch(cdp, type, points) {
+  await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y, id]) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 })) });
+}
+
+/**
+ * A one-finger drag at a human pace, resting before lifting. (An instant synthetic swipe reads as
+ * a fling, and Chrome then spends the next tap on stopping it.)
+ */
+async function touchDrag(cdp, page, [x, y], [dx, dy], steps = 6) {
+  await touch(cdp, 'touchStart', [[x, y, 1]]);
+  for (let i = 1; i <= steps; i++) {
+    await touch(cdp, 'touchMove', [[x + (dx * i) / steps, y + (dy * i) / steps, 1]]);
+    await page.waitForTimeout(30);
+  }
+  await page.waitForTimeout(150);
+  await touch(cdp, 'touchEnd', []);
+}
+
+// Phone: stop the tour with a finger, walk with the stick while looking with a second finger,
+// touchcancel, and rotating the phone (portrait ↔ landscape) during a preset and while walking.
+async function touchChecks(page, context) {
+  const cdp = await context.newCDPSession(page);
+  const canvas = await page.locator('.cinema-canvas').boundingBox();
+  const cx = canvas.x + canvas.width / 2;
+  const cy = canvas.y + canvas.height / 2;
+
+  await startTour(page);
+  await page.waitForTimeout(2500);
+  await touchDrag(cdp, page, [cx, cy], [30, 0]);
+  await nextFrames(page);
+  const afterTouch = await state(page);
+  check('mobile: a finger drag on the canvas stops the tour (real touch events)', !afterTouch.touring && afterTouch.view.state === 'free', afterTouch.view.state);
+
+  await page.tap('button[data-action="explore"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+  const stickVisible = await page.isVisible('.cinema-stick');
+  check('mobile: exploring shows the stick', stickVisible);
+  await screenshot(page, 'mobile-explore-ui');
+
+  const stick = await page.locator('.cinema-stick').boundingBox();
+  const sx = stick.x + stick.width / 2;
+  const sy = stick.y + stick.height / 2;
+  const w0 = (await state(page)).view.explore.walker;
+  // Thumb on the stick pushed forward, a second finger dragging on the canvas at the same time.
+  await touch(cdp, 'touchStart', [[sx, sy, 1]]);
+  await touch(cdp, 'touchMove', [[sx, sy - 45, 1]]);
+  await touch(cdp, 'touchStart', [[sx, sy - 45, 1], [cx + 60, cy - 80, 2]]);
+  for (let i = 1; i <= 10; i++) {
+    await touch(cdp, 'touchMove', [[sx, sy - 45, 1], [cx + 60 + i * 8, cy - 80, 2]]);
+    await page.waitForTimeout(120);
+  }
+  const both = await state(page);
+  await touch(cdp, 'touchEnd', [[sx, sy - 45, 1]]);
+  await touch(cdp, 'touchCancel', []);
+  await nextFrames(page);
+  const released = await state(page);
+  // The eye finishes easing onto the step it stopped on (< 1 s) before the idle check.
+  await page.waitForTimeout(1000);
+  const w1 = released.view.explore.walker;
+  report.explore.touch = { from: w0, to: w1, inputWhileHolding: both.view.explore.input };
+  check(
+    'mobile: stick walks forward while a second finger looks around; touchend/touchcancel release both',
+    both.view.explore.input.stick && both.view.explore.input.look && Math.hypot(w1.x - w0.x, w1.z - w0.z) > 0.3 && w1.yaw !== w0.yaw &&
+      !released.view.explore.input.stick && !released.view.explore.input.look,
+    report.explore.touch,
+  );
+  await waitForIdleFrames(page, 'mobile: exploring, fingers lifted');
+
+  // Rotate while walking: position and heading stay, the frame fits the new shape.
+  const beforeRotation = (await state(page)).view.explore.walker;
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  const rotated = await state(page);
+  const r = await layoutChecks(page, 'mobile → landscape while exploring');
+  check('mobile: rotating keeps the explorer where it was', JSON.stringify(rotated.view.explore.walker) === JSON.stringify(beforeRotation) && r.overflowX <= 0, {
+    before: beforeRotation,
+    after: rotated.view.explore.walker,
+  });
+  await screenshot(page, 'mobile-landscape-explore');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+
+  // Rotate at a preset: it is framed again for the new shape (the portrait overview stands over
+  // the right aisle, the landscape one on the centre line).
+  await page.tap('button[data-action="explore"]');
+  await selectPreset(page, 'overview');
+  const portrait = (await state(page)).view.camera.position;
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(400);
+  const landscape = await state(page);
+  check('mobile: rotating at a preset reframes it', landscape.view.state === 'preset' && landscape.view.pristine && Math.abs(landscape.view.camera.position[0]) < 1e-6 && portrait[0] > 1, {
+    portrait,
+    landscape: landscape.view.camera.position,
+  });
+  await screenshot(page, 'mobile-rotated-to-landscape-overview');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+}
+
+// The seat inspector opened from the page's inspection tools while a tour runs: the auditorium
+// (tour, input, loop) is torn down; closing it brings back a fresh page, no tour.
+async function inspectorFromPage(browser, base) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  attachConsole(page, 'inspector-from-page');
+  await page.goto(`${base}cinema`);
+  await waitForStatus(page);
+  await startTour(page);
+  await page.waitForTimeout(1500);
+  await openInspectTools(page);
+  await page.click('button[data-action="open-inspector"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
+  const opened = await page.evaluate(() => ({
+    url: location.pathname + location.search,
+    auditorium: Boolean(window.__cinema),
+    canvases: document.querySelectorAll('canvas').length,
+  }));
+  check('inspector: opens from the page, replacing the auditorium (no second loop or canvas)', opened.url === '/cinema?inspect=seat' && !opened.auditorium && opened.canvases === 1, opened);
+  await waitForInspectorIdle(page);
+  const frames = (await inspectorState(page)).inspector.framesRendered;
+  await page.waitForTimeout(800);
+  check('inspector: idle while nothing moves', (await inspectorState(page)).inspector.framesRendered === frames);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
+  await page.waitForTimeout(300);
+  const back = await state(page);
+  check('inspector: closing returns to a fresh auditorium at the overview, tour not resumed', back.preset === 'overview' && !back.touring && back.view.tour === null && back.canvasCount === 1, {
+    preset: back.preset,
+    state: back.view.state,
+  });
+  await context.close();
+}
+
+// Reduced motion from the start: presets cut, the tour steps between stops. Then turned on while a
+// tour plays: it switches to steps at its current stop.
+async function reducedMotion(browser, base) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  attachConsole(page, 'reduced-motion');
+  await page.goto(`${base}cinema`);
+  await waitForStatus(page);
+  await page.click('button[data-preset="seats"]');
+  const cut = await state(page);
+  check('reduced motion: presets cut straight to the view (no transition)', cut.view.state === 'preset' && !cut.view.transitioning, cut.view.state);
+
+  await page.click('button[data-action="tour"]');
+  await nextFrames(page);
+  let s = await state(page);
+  check('reduced motion: the tour steps between stops instead of moving', s.view.tour?.steps && (await page.getAttribute('.cinema-app', 'data-tour')) === 'steps' && s.view.state === 'tour');
+  const visited = [s.view.tour.stopIndex];
+  const framesAtStop = s.view.framesRendered;
+  await page.waitForTimeout(800);
+  check('reduced motion: nothing moves while at a stop', (await state(page)).view.framesRendered === framesAtStop);
+  await screenshot(page, 'reduced-motion-tour-steps');
+  for (let i = 0; i < 6; i++) {
+    await page.click('button[data-action="tour-next"]');
+    await nextFrames(page);
+    s = await state(page);
+    if (s.view.tour) visited.push(s.view.tour.stopIndex);
+  }
+  check('reduced motion: Tiếp walks the stops in order and the last one ends at the overview', JSON.stringify(visited) === '[0,1,2,3,4,5]' && s.view.tour === null && s.preset === 'overview', visited);
+
+  // Turned on during a playing tour.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.click('button[data-action="tour"]');
+  await page.waitForTimeout(3000);
+  const playing = await state(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await nextFrames(page);
+  s = await state(page);
+  check('reduced motion: switching it on mid-tour turns the tour into steps at its current stop', !playing.view.tour.steps && s.view.tour?.steps && s.view.tour.stopIndex === playing.view.tour.stopIndex);
+  await page.click('button[data-action="tour-stop"]');
+  await context.close();
+}
+
+/** Lays out base64 PNG frames in a grid with labels and saves it as one screenshot. */
+async function contactSheet(browser, name, frames, columns) {
+  const context = await browser.newContext({ viewport: { width: 1500, height: 400 } });
+  const page = await context.newPage();
+  await page.setContent(
+    `<body style="margin:0;background:#0f1013;color:#e9eaee;font:13px system-ui;display:grid;grid-template-columns:repeat(${columns},1fr);gap:6px;padding:6px">${frames
+      .map(([label, data]) => `<figure style="margin:0"><img style="width:100%;display:block" src="data:image/png;base64,${data}"><figcaption style="padding:2px 4px">${label}</figcaption></figure>`)
+      .join('')}</body>`,
+  );
+  await page.waitForFunction(() => [...document.images].every((image) => image.complete));
+  const file = path.join(outDir, `${name}.png`);
+  await page.screenshot({ path: file, fullPage: true });
+  report.screenshots.push(path.relative(root, file).replaceAll('\\', '/'));
+  await context.close();
+}
+
+/**
+ * Records a page while `run` drives it: CDP screencast frames (the whole page, UI included, as the
+ * browser paints them), re-timed and encoded to WebM in a helper page with MediaRecorder. This needs
+ * no ffmpeg (playwright-core's own recorder wants a separate ffmpeg download).
+ */
+async function recordVideo(browser, page, name, run) {
+  const cdp = await page.context().newCDPSession(page);
+  const frames = [];
+  cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+    frames.push({ data, t: metadata.timestamp });
+    cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+  });
+  await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 80, maxWidth: 960, maxHeight: 960, everyNthFrame: 2 });
+  await run();
+  await page.waitForTimeout(300);
+  await cdp.send('Page.stopScreencast');
+  await cdp.detach();
+  if (frames.length < 2) {
+    check(`video ${name}: recorded`, false, frames.length);
+    return;
+  }
+
+  const context = await browser.newContext();
+  const encoder = await context.newPage();
+  await encoder.setContent('<body style="margin:0"><canvas></canvas></body>');
+  for (let i = 0; i < frames.length; i += 40) {
+    await encoder.evaluate((batch) => (window.recorded ??= []).push(...batch), frames.slice(i, i + 40));
+  }
+  const webm = await encoder.evaluate(async () => {
+    const list = window.recorded;
+    const decode = (data) => createImageBitmap(new Blob([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], { type: 'image/jpeg' }));
+    const first = await decode(list[0].data);
+    const canvas = document.querySelector('canvas');
+    canvas.width = first.width;
+    canvas.height = first.height;
+    const context2d = canvas.getContext('2d');
+    context2d.drawImage(first, 0, 0);
+    const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 4_000_000 });
+    const chunks = [];
+    recorder.ondataavailable = (event) => chunks.push(event.data);
+    const stopped = new Promise((resolve) => (recorder.onstop = resolve));
+    recorder.start(250);
+    const start = performance.now();
+    for (const frame of list) {
+      const image = await decode(frame.data);
+      const wait = (frame.t - list[0].t) * 1000 - (performance.now() - start);
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      context2d.drawImage(image, 0, 0, canvas.width, canvas.height);
+      image.close();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    recorder.stop();
+    await stopped;
+    const bytes = new Uint8Array(await new Blob(chunks, { type: 'video/webm' }).arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binary);
+  });
+  await context.close();
+  const file = path.join(outDir, `${name}.webm`);
+  await writeFile(file, Buffer.from(webm, 'base64'));
+  const seconds = frames.at(-1).t - frames[0].t;
+  report.videos.push({ file: path.relative(root, file).replaceAll('\\', '/'), frames: frames.length, seconds: Number(seconds.toFixed(1)) });
+  check(`video ${name}: recorded and encoded`, webm.length > 10_000, { frames: frames.length, seconds });
+}
+
+// Short videos of the tour, of stopping it in different ways, and of walking with the stick on a phone.
+async function videos(browser, base) {
+  const open = async (label, options) => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    attachConsole(page, label);
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    return { context, page };
+  };
+  {
+    const { context, page } = await open('video-tour', { viewport: { width: 960, height: 600 } });
+    await recordVideo(browser, page, 'video-tour', async () => {
+      await startTour(page);
+      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.tour === 'off', null, { timeout: 40_000 });
+      await page.waitForTimeout(800);
+    });
+    await context.close();
+  }
+  {
+    const { context, page } = await open('video-tour-cancel', { viewport: { width: 960, height: 600 } });
+    const box = await page.locator('.cinema-canvas').boundingBox();
+    const centre = [box.x + box.width / 2, box.y + box.height / 2];
+    await recordVideo(browser, page, 'video-tour-cancel', async () => {
+      await startTour(page);
+      await page.waitForTimeout(5000);
+      await page.mouse.move(...centre);
+      await page.mouse.down();
+      await page.mouse.move(centre[0] + 120, centre[1], { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(1500);
+      await startTour(page);
+      await page.waitForTimeout(4000);
+      await page.keyboard.press('KeyW');
+      await page.waitForTimeout(1500);
+      await startTour(page);
+      await page.waitForTimeout(3000);
+      await page.click('button[data-preset="seatEye"]');
+      await page.waitForTimeout(2000);
+    });
+    await context.close();
+  }
+  {
+    const { context, page } = await open('video-mobile-explore', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const cdp = await context.newCDPSession(page);
+    await recordVideo(browser, page, 'video-mobile-explore', async () => {
+      await page.tap('button[data-action="explore"]');
+      await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+      const stick = await page.locator('.cinema-stick').boundingBox();
+      const [sx, sy] = [stick.x + stick.width / 2, stick.y + stick.height / 2];
+      await touch(cdp, 'touchStart', [[sx, sy, 1]]);
+      for (let i = 0; i < 30; i++) {
+        await touch(cdp, 'touchMove', [[sx + (i > 15 ? 25 : 0), sy - 45, 1]]);
+        await page.waitForTimeout(100);
+      }
+      await page.waitForTimeout(150);
+      await touch(cdp, 'touchEnd', []);
+      await page.waitForTimeout(1000);
+    });
+    await context.close();
+  }
 }
 
 // The on-demand loop must stop once the camera settles; then time a fixed camera path.
@@ -827,9 +1511,50 @@ async function contextLoss(browser, base) {
   attachConsole(page, 'context-loss');
   await page.goto(`${base}cinema`);
   await waitForStatus(page);
+  const lose = () =>
+    page.evaluate(() => {
+      window.__loseContext = document.querySelector('.cinema-canvas').getContext('webgl2').getExtension('WEBGL_lose_context');
+      window.__loseContext.loseContext();
+    });
+  const restore = async () => {
+    await page.evaluate(() => window.__loseContext.restoreContext());
+    await waitForStatus(page);
+    await nextFrames(page);
+  };
+
+  // While the tour plays: it stops (nothing moves unseen), and stays stopped after the restore.
+  await startTour(page);
+  await page.waitForTimeout(2000);
+  await lose();
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.status === 'context-lost');
+  const lostDuringTour = await state(page);
+  await restore();
+  const afterTourRestore = await state(page);
+  check('context loss during the tour stops it; the restore does not restart it', !lostDuringTour.touring && !afterTourRestore.touring && afterTourRestore.view.tour === null);
+
+  // While walking with a key held: input is dropped, nothing moves after the restore.
+  await page.click('button[data-action="explore"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(300);
+  await lose();
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.status === 'context-lost');
+  await page.keyboard.up('KeyW');
+  await restore();
+  const restoredWalker = (await state(page)).view.explore.walker;
+  await page.waitForTimeout(500);
+  const laterWalker = (await state(page)).view.explore.walker;
+  check('context loss while walking drops held input; after the restore nothing moves by itself', JSON.stringify(restoredWalker) === JSON.stringify(laterWalker));
+  await page.click('button[data-action="explore"]');
+  // Resources from before the loss are rebuilt, so a quality switch now deletes nothing stale
+  // (the console check at the end fails on any "does not belong to this context").
+  await page.click('button[data-quality="economy"]');
+  await page.click('button[data-quality="high"]');
+  await nextFrames(page);
+
   // Lose the context after a quality change and a hidden ceiling: both must survive the restore.
   await page.click('button[data-quality="economy"]');
-  await page.click('label:has(input[data-toggle="ceiling"])');
+  await togglePart(page, 'ceiling');
   await nextFrames(page);
   const beforeLoss = await state(page);
   await page.evaluate(() => {
@@ -853,6 +1578,10 @@ async function contextLoss(browser, base) {
   await screenshot(page, 'context-restored-economy');
   await selectPreset(page, 'seats');
   check('rendering and presets resume after context restore', restored === 'ready', restored);
+  // Unmounting after a restore (opening the inspector) used to log ~190 stale-handle warnings.
+  await openInspectTools(page);
+  await page.click('button[data-action="open-inspector"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
   await context.close();
 
   // The seat inspector rebuilds its environment and shadows the same way.
@@ -901,15 +1630,15 @@ async function comparisons(browser) {
   for (const file of [
     'desktop-1-overview',
     'desktop-2-seats',
-    'desktop-3-side',
     'desktop-4-seat-eye',
-    'interior-1-door-wall',
-    'interior-4-curtain-screen',
-    'interior-6-handrail-stairs',
+    'tablet-1-overview',
+    'tablet-2-seats',
     'mobile-1-overview',
+    'mobile-2-seats',
+    'mobile-4-seat-eye',
   ]) {
     const before = path.join(baselineDir, `${file}.png`);
-    if (existsSync(before)) pairs.push([`compare-p03-p04-${file}`, [['Prompt 03 (baseline)', before], ['Prompt 04', path.join(outDir, `${file}.png`)]]]);
+    if (existsSync(before)) pairs.push([`compare-p04-p05-${file}`, [['Prompt 04 (baseline)', before], ['Prompt 05', path.join(outDir, `${file}.png`)]]]);
   }
   for (const name of ['overview', 'seat-eye', 'seat-leather', 'graphite-grazing']) {
     pairs.push([
@@ -923,14 +1652,15 @@ async function comparisons(browser) {
   const context = await browser.newContext({ viewport: { width: 1460, height: 520 } });
   const page = await context.newPage();
   for (const [name, panels] of pairs) {
+    // Portrait screenshots side by side would be very tall: scale them to the same height.
     const images = await Promise.all(panels.map(async ([label, file]) => [label, (await readFile(file)).toString('base64')]));
     await page.setContent(
       `<body style="margin:0;background:#0f1013;color:#e9eaee;font:14px system-ui;display:flex;gap:20px;padding:0">${images
-        .map(([label, data]) => `<figure style="margin:0;width:720px"><img style="width:720px;display:block" src="data:image/png;base64,${data}"><figcaption style="padding:6px 8px">${label}</figcaption></figure>`)
+        .map(([label, data]) => `<figure style="margin:0;max-width:720px"><img style="max-width:720px;max-height:900px;display:block" src="data:image/png;base64,${data}"><figcaption style="padding:6px 8px">${label}</figcaption></figure>`)
         .join('')}</body>`,
     );
     await page.waitForFunction(() => [...document.images].every((image) => image.complete));
-    await screenshot(page, name);
+    await screenshot(page, name, { fullPage: true });
   }
   await context.close();
 }

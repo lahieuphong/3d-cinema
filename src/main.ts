@@ -35,7 +35,7 @@ async function render(): Promise<void> {
     if (current !== generation) return;
     unmount = mountSeatInspector(app, { onClose: () => navigate(CINEMA_PATH) });
   } else {
-    unmount = mountCinemaPage(app);
+    unmount = mountCinemaPage(app, { openInspector: () => navigate(`${CINEMA_PATH}?inspect=seat`) });
   }
 }
 

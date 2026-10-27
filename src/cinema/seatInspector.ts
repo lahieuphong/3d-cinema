@@ -69,23 +69,28 @@ interface InspectorViewCallbacks {
   onTransitionChange(active: boolean): void;
 }
 
+/** Everything the inspector keeps on the GPU; rebuilt from scratch after a lost context comes back. */
+interface InspectorContent {
+  materials: SeatMaterials;
+  model: SeatModel;
+  instances: SeatInstances;
+  modelBounds: Box3;
+  lighting: StudioLighting;
+  environment: InteriorEnvironment;
+  floor: Mesh<CircleGeometry, MeshStandardMaterial>;
+  grid: GridHelper;
+  footprint: LineSegments<BufferGeometry, LineBasicMaterial>;
+  boundsBox: LineSegments<BufferGeometry, LineBasicMaterial>;
+}
+
 class SeatInspectorView {
   private readonly host: RenderHost;
   private readonly scene = new Scene();
   private readonly rig: CameraRig;
   private readonly callbacks: InspectorViewCallbacks;
-  private readonly materials: SeatMaterials;
-  private model: SeatModel;
   private readonly seats = createInspectorSeats();
-  private instances: SeatInstances;
-  private readonly lighting: StudioLighting;
-  private environment: InteriorEnvironment;
-  private modelBounds: Box3;
+  private content: InspectorContent;
   private quality: QualityLevel;
-  private readonly floor: Mesh<CircleGeometry, MeshStandardMaterial>;
-  private readonly grid: GridHelper;
-  private readonly footprint: LineSegments<BufferGeometry, LineBasicMaterial>;
-  private readonly boundsBox: LineSegments<BufferGeometry, LineBasicMaterial>;
   private cluster = false;
   private reportedTransition = false;
   private disposed = false;
@@ -98,7 +103,7 @@ class SeatInspectorView {
       maxPixelRatio: config.quality[quality].maxPixelRatio,
       ariaLabel: 'Khung nhìn 3D của mẫu ghế. Kéo để xoay, cuộn hoặc chụm để thu phóng.',
       onResize: (width, height) => this.rig.setAspect(width / height),
-      onFrame: (time) => this.renderFrame(time),
+      onFrame: (_time, dt) => this.renderFrame(dt),
       onStatus: (status) => callbacks.onStatus(status),
       onContextRestored: () => this.handleContextRestored(),
     });
@@ -109,34 +114,10 @@ class SeatInspectorView {
     renderer.shadowMap.type = PCFShadowMap;
     renderer.shadowMap.autoUpdate = false;
 
-    let environment: InteriorEnvironment | null = null;
     try {
-      this.materials = createSeatMaterials();
-      [this.model, this.instances] = this.buildSeats(quality);
-      this.modelBounds = computeSeatModelBounds(this.model);
-      this.lighting = createStudioLighting();
-      this.lighting.setShadowQuality(config.quality[quality].shadowMapSize, config.quality[quality].shadowRadius);
-      environment = createInteriorEnvironment(renderer);
-      this.environment = environment;
-      this.scene.environment = environment.texture;
-
-      this.floor = new Mesh(
-        new CircleGeometry(inspector.floorRadius, 64),
-        // Pushed back in depth so the grid and footprint lines drawn at floor level stay on top.
-        new MeshStandardMaterial({ color: 0x8b8e94, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
-      );
-      this.floor.rotation.x = -Math.PI / 2;
-      this.floor.receiveShadow = true;
-      this.grid = new GridHelper(inspector.gridSize, inspector.gridDivisions, 0x5b5f66, 0x71757c);
-      this.footprint = new LineSegments(footprintGeometry(this.seats), new LineBasicMaterial({ color: 0xd8b65a }));
-      this.boundsBox = new LineSegments(boxEdgesGeometry(this.modelBounds), new LineBasicMaterial({ color: 0x5ec8e5 }));
-      this.footprint.visible = false;
-      this.boundsBox.visible = false;
-      this.scene.add(this.floor, this.grid, this.footprint, this.boundsBox, this.instances.group, this.lighting.group);
-
+      this.content = this.buildContent(quality);
       this.rig = new CameraRig(inspector.camera, this.host.canvas, this.focusCentre());
     } catch (error) {
-      environment?.dispose();
       this.host.dispose();
       throw error;
     }
@@ -152,7 +133,7 @@ class SeatInspectorView {
     let target: Vector3;
     let distance: number;
     if (id === 'cup') {
-      target = this.model.cupHolder.center.clone();
+      target = this.content.model.cupHolder.center.clone();
       distance = camera.cupDistance;
     } else {
       const sphere = this.visibleBounds().getBoundingSphere(new Sphere());
@@ -172,8 +153,8 @@ class SeatInspectorView {
   setCluster(on: boolean): void {
     this.cluster = on;
     const count = on ? this.seats.length : 1;
-    for (const mesh of this.instances.meshes) mesh.count = count;
-    this.footprint.geometry.setDrawRange(0, 8 * count);
+    for (const mesh of this.content.instances.meshes) mesh.count = count;
+    this.content.footprint.geometry.setDrawRange(0, 8 * count);
     this.invalidateShadows();
   }
 
@@ -181,34 +162,36 @@ class SeatInspectorView {
   setQuality(level: QualityLevel): void {
     if (level === this.quality || this.disposed) return;
     this.quality = level;
-    this.scene.remove(this.instances.group);
-    this.instances.dispose();
-    this.model.dispose();
-    [this.model, this.instances] = this.buildSeats(level);
-    this.modelBounds = computeSeatModelBounds(this.model);
-    this.boundsBox.geometry.dispose();
-    this.boundsBox.geometry = boxEdgesGeometry(this.modelBounds);
-    this.scene.add(this.instances.group);
+    const content = this.content;
+    this.scene.remove(content.instances.group);
+    content.instances.dispose();
+    content.model.dispose();
+    [content.model, content.instances] = this.buildSeats(content.materials, level);
+    content.modelBounds = computeSeatModelBounds(content.model);
+    content.boundsBox.geometry.dispose();
+    content.boundsBox.geometry = boxEdgesGeometry(content.modelBounds);
+    this.scene.add(content.instances.group);
     this.setCluster(this.cluster);
-    this.lighting.setShadowQuality(config.quality[level].shadowMapSize, config.quality[level].shadowRadius);
+    content.lighting.setShadowQuality(config.quality[level].shadowMapSize, config.quality[level].shadowRadius);
     this.host.setMaxPixelRatio(config.quality[level].maxPixelRatio);
     this.invalidateShadows();
   }
 
   setFootprintVisible(visible: boolean): void {
-    this.footprint.visible = visible;
+    this.content.footprint.visible = visible;
     this.host.requestRender();
   }
 
   setBoundsVisible(visible: boolean): void {
-    this.boundsBox.visible = visible;
+    this.content.boundsBox.visible = visible;
     this.host.requestRender();
   }
 
   /** Dimensions measured from the built geometry, in metres. */
   measure() {
-    const size = this.modelBounds.getSize(new Vector3());
-    const component = (name: string) => this.model.components.find((c) => c.name === name)!.bounds;
+    const { model, modelBounds } = this.content;
+    const size = modelBounds.getSize(new Vector3());
+    const component = (name: string) => model.components.find((c) => c.name === name)!.bounds;
     const cushion = component('cushion');
     const armrest = component('armrest-left');
     return {
@@ -228,13 +211,13 @@ class SeatInspectorView {
     const { camera, controls } = this.rig;
     return {
       cluster: this.cluster,
-      footprint: this.footprint.visible,
-      bounds: this.boundsBox.visible,
+      footprint: this.content.footprint.visible,
+      bounds: this.content.boundsBox.visible,
       transitioning: this.rig.isTransitioning,
       camera: { position: camera.position.toArray(), target: controls.target.toArray(), fov: camera.fov, aspect: camera.aspect },
-      seats: this.instances.meshes[0].count,
+      seats: this.content.instances.meshes[0].count,
       quality: this.quality,
-      trianglesPerSeat: this.model.parts.reduce((sum, part) => sum + (part.geometry.index?.count ?? 0) / 3, 0),
+      trianglesPerSeat: this.content.model.parts.reduce((sum, part) => sum + (part.geometry.index?.count ?? 0) / 3, 0),
       measured: this.measure(),
       ...this.host.getDebugInfo(),
     };
@@ -247,16 +230,17 @@ class SeatInspectorView {
     this.rig.dispose();
     this.scene.clear();
     this.scene.environment = null;
-    this.instances.dispose();
-    this.model.dispose();
-    disposeMaterials(this.materials);
-    this.lighting.dispose();
-    this.environment.dispose();
-    for (const object of [this.floor, this.footprint, this.boundsBox]) {
+    const { instances, model, materials, lighting, environment, floor, footprint, boundsBox, grid } = this.content;
+    instances.dispose();
+    model.dispose();
+    disposeMaterials(materials);
+    lighting.dispose();
+    environment.dispose();
+    for (const object of [floor, footprint, boundsBox]) {
       object.geometry.dispose();
       object.material.dispose();
     }
-    this.grid.dispose();
+    grid.dispose();
     this.host.dispose();
   }
 
@@ -264,18 +248,43 @@ class SeatInspectorView {
     const bounds = new Box3();
     const count = this.cluster ? this.seats.length : 1;
     for (const seat of this.seats.slice(0, count)) {
-      bounds.union(this.modelBounds.clone().translate(new Vector3(seat.position.x, seat.position.y, seat.position.z)));
+      bounds.union(this.content.modelBounds.clone().translate(new Vector3(seat.position.x, seat.position.y, seat.position.z)));
     }
     return bounds;
   }
 
   private focusCentre(): Vec3 {
-    const centre = this.modelBounds.getCenter(new Vector3());
+    const centre = this.content.modelBounds.getCenter(new Vector3());
     return { x: centre.x, y: centre.y, z: centre.z };
   }
 
-  private buildSeats(level: QualityLevel): [SeatModel, SeatInstances] {
-    const model = createCinemaSeatModel(config, this.materials, config.quality[level].seat);
+  private buildContent(quality: QualityLevel): InspectorContent {
+    const materials = createSeatMaterials();
+    const [model, instances] = this.buildSeats(materials, quality);
+    const modelBounds = computeSeatModelBounds(model);
+    const lighting = createStudioLighting();
+    lighting.setShadowQuality(config.quality[quality].shadowMapSize, config.quality[quality].shadowRadius);
+    const environment = createInteriorEnvironment(this.host.renderer);
+    this.scene.environment = environment.texture;
+
+    const floor = new Mesh(
+      new CircleGeometry(inspector.floorRadius, 64),
+      // Pushed back in depth so the grid and footprint lines drawn at floor level stay on top.
+      new MeshStandardMaterial({ color: 0x8b8e94, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    const grid = new GridHelper(inspector.gridSize, inspector.gridDivisions, 0x5b5f66, 0x71757c);
+    const footprint = new LineSegments(footprintGeometry(this.seats), new LineBasicMaterial({ color: 0xd8b65a }));
+    const boundsBox = new LineSegments(boxEdgesGeometry(modelBounds), new LineBasicMaterial({ color: 0x5ec8e5 }));
+    footprint.visible = false;
+    boundsBox.visible = false;
+    this.scene.add(floor, grid, footprint, boundsBox, instances.group, lighting.group);
+    return { materials, model, instances, modelBounds, lighting, environment, floor, grid, footprint, boundsBox };
+  }
+
+  private buildSeats(materials: SeatMaterials, level: QualityLevel): [SeatModel, SeatInstances] {
+    const model = createCinemaSeatModel(config, materials, config.quality[level].seat);
     const instances = createSeatInstances(model, this.seats);
     for (const mesh of instances.meshes) {
       mesh.castShadow = true;
@@ -284,11 +293,17 @@ class SeatInspectorView {
     return [model, instances];
   }
 
-  /** Rebuilds the environment lost with the old context (see CinemaView.handleContextRestored). */
+  /**
+   * Rebuilds every GPU resource after a lost context comes back and drops the old ones without
+   * disposing them (see CinemaView.handleContextRestored for why), keeping cluster and overlays.
+   */
   private handleContextRestored(): void {
-    this.environment = createInteriorEnvironment(this.host.renderer);
-    this.scene.environment = this.environment.texture;
-    this.invalidateShadows();
+    const old = this.content;
+    this.scene.remove(old.floor, old.grid, old.footprint, old.boundsBox, old.instances.group, old.lighting.group);
+    this.content = this.buildContent(this.quality);
+    this.content.footprint.visible = old.footprint.visible;
+    this.content.boundsBox.visible = old.boundsBox.visible;
+    this.setCluster(this.cluster);
   }
 
   private invalidateShadows(): void {
@@ -296,8 +311,8 @@ class SeatInspectorView {
     this.host.requestRender();
   }
 
-  private renderFrame(time: number): boolean {
-    const needsAnotherFrame = this.rig.update(time);
+  private renderFrame(dt: number): boolean {
+    const needsAnotherFrame = this.rig.update(dt);
     this.host.renderer.render(this.scene, this.rig.camera);
     this.reportTransition();
     return needsAnotherFrame;

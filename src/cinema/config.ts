@@ -183,12 +183,20 @@ export const AUDITORIUM_CONFIG = {
   camera: {
     /** Vertical field of view on landscape screens. */
     fov: 50,
-    /** Narrow (portrait) screens widen the vertical FOV up to this value... */
-    maxFov: 75,
-    /** ...trying to keep at least this horizontal FOV. */
-    minHorizontalFov: 50,
+    /** Portrait screens widen the vertical FOV up to this value (wider would distort the room)... */
+    maxFov: 65,
+    /** ...to keep at least this horizontal FOV, */
+    minHorizontalFov: 42,
+    /** and very wide screens (phones in landscape) narrow it to keep the horizontal FOV under this. */
+    maxHorizontalFov: 90,
+    /**
+     * Near plane 5 cm: in explore mode the eye stays at least the body radius (0.25 m) from walls,
+     * seats and rails, so nothing is clipped, and depth precision stays good up to `far`, which
+     * covers the inspection views from outside the room.
+     */
     near: 0.05,
-    far: 200,
+    far: 80,
+    /** Base duration of a preset transition; longer moves and turns take up to twice as long. */
     transitionSeconds: 0.9,
     /** Inspection orbit limits. The target is kept within `maxTargetRadius` of the room centre. */
     orbit: {
@@ -200,14 +208,43 @@ export const AUDITORIUM_CONFIG = {
     },
     /** Look-around at a seat: the camera rotates about a point just ahead of the eye. */
     eye: { pivotDistance: 0.05, minPolarAngleDeg: 25, maxPolarAngleDeg: 150, rotateSpeed: 0.45 },
+    /**
+     * Orbiting in the experience views keeps the camera this far inside the walls, ceiling and floor
+     * and above the seat backs (inspection views orbit freely).
+     */
+    roomMargin: 0.3,
+    /** Walking through the room ("Khám phá"). */
+    explore: {
+      /** Body: a cylinder of this radius standing on the floor. */
+      radius: 0.25,
+      /** Standing eye height above the floor; top of the head. */
+      eyeHeight: 1.6,
+      height: 1.8,
+      /** Largest floor change taken in one step: aisle steps (0.18 m) yes, the stage (0.5 m) no. */
+      maxStep: 0.25,
+      walkSpeed: 1.4,
+      /** The eye follows steps up and down with this time constant instead of jumping. */
+      eyeSmoothingSeconds: 0.12,
+      minPitchDeg: -60,
+      maxPitchDeg: 60,
+      /** Turn per CSS pixel dragged, in radians. */
+      lookPerPixel: 0.0045,
+      /** Frame steps longer than this (slow frames, returning to a hidden tab) are clamped. */
+      maxStepSeconds: 0.1,
+    },
     presets: {
       overview: {
         /** Distance from the back wall's inner face. */
         backWallInset: 0.6,
         /** Height above the back landing floor. */
         heightAboveLanding: 2.8,
-        /** Look-at point: 0 = screen centre, 1 = floor at the front edge of row A. */
-        targetBlend: 0.5,
+        /** The top of the screen frame sits this share of the vertical FOV below the frame's top edge. */
+        topMargin: 0.12,
+        /**
+         * Portrait screens: from above the right aisle instead of the centre line, still aimed at the
+         * screen centre, so the narrow frame shows the screen, the seats and an aisle running to the front.
+         */
+        portraitOffsetX: 4.9,
       },
       seats: {
         /** Distance in front of the screen surface. */
@@ -216,6 +253,20 @@ export const AUDITORIUM_CONFIG = {
         depthBelowCeiling: 1.6,
         /** Look-at point on the stepped floor: 0 = front edge of row A, 1 = back edge of the last row. */
         targetBlend: 0.4,
+        /** Below this aspect ratio the head-on view cannot show the block; look along its diagonal. */
+        diagonalBelowAspect: 1,
+        diagonal: {
+          /** Camera position: from the right wall, the ceiling and the stage front. */
+          wallInset: 0.9,
+          depthBelowCeiling: 1.4,
+          stageInset: 0.5,
+          /** Look-at: share of the block's half-width towards the left aisle, and of row A → last row. */
+          targetAcross: 0.45,
+          targetAlong: 0.62,
+        },
+      },
+      seatEye: {
+        seatId: 'F06',
       },
       side: {
         /** View direction from the target towards the camera (normalised in code); nearly level. */
@@ -223,8 +274,12 @@ export const AUDITORIUM_CONFIG = {
         /** Margin added around the room section when fitting it into the frame. */
         fitMargin: 0.6,
       },
-      seatEye: {
-        seatId: 'F06',
+      plan: {
+        fitMargin: 0.6,
+        /** Height of the point looked at (about the seat tops). */
+        targetHeight: 0.8,
+        /** Off vertical, so the orbit has a defined up direction. */
+        tiltDeg: 3,
       },
     },
   },
@@ -383,6 +438,7 @@ export const AUDITORIUM_CONFIG = {
       fov: 35,
       maxFov: 60,
       minHorizontalFov: 35,
+      maxHorizontalFov: 80,
       near: 0.01,
       far: 50,
       transitionSeconds: 0.6,
