@@ -284,6 +284,33 @@ export const AUDITORIUM_CONFIG = {
     },
   },
 
+  /** Seat selection (demo data only: no prices, holds or payment). */
+  selection: {
+    /** Most seats one selection may hold. */
+    maxSeats: 8,
+    /**
+     * Largest pointer movement, in CSS pixels, between press and release that still counts as a
+     * tap or click (anything more is a camera drag). Fingers wobble more than mice.
+     */
+    tapSlopPx: { mouse: 5, pen: 8, touch: 12 },
+    /** Presses held longer than this, in milliseconds, are not taps. */
+    tapMaxMs: 700,
+    /** While exploring, seats further than this (metres) cannot be picked. */
+    exploreReach: 8,
+    highlight: {
+      /**
+       * Instance colour factors (linear RGB) multiplied with the leather's base colour: selected is
+       * a brighter, warmer red; reserved a dimmer, cooler one. Emphasis (hover, active seat) only
+       * brightens, so each state keeps its hue.
+       */
+      selected: [2.1, 6, 1.4] as [number, number, number],
+      reserved: [0.55, 1.6, 1.9] as [number, number, number],
+      emphasis: 1.3,
+      /** Amber tag on the backrest top of selected seats (one instanced mesh). */
+      marker: { radius: 0.02, length: 0.24, color: 0x2a1d0c, emissive: 0xffb04a, emissiveIntensity: 1.1 },
+    },
+  },
+
   render: {
     maxPixelRatio: 2,
     background: 0x16181c,

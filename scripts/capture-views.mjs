@@ -6,9 +6,10 @@
 // presets, hidden tab, reduced motion), explore mode (keys, drag-to-look, real touch events on the
 // stick and canvas through CDP, collisions, stairs, focus/blur/pointercancel, slow frames),
 // resize/orientation, visibility switches with their lights and shadows, both quality levels,
-// context loss (also while moving), hot re-mount, the seat inspector (also opened from the page) and
-// a simulated WebGL failure, then writes screenshots, videos and report.json to
-// artifacts/<CAPTURE_DIR or prompt-05>/.
+// context loss (also while moving), hot re-mount, the seat inspector (also opened from the page),
+// seat selection (3D picking with mouse and real touch, the 2D map with keyboard, highlights,
+// limits, seat views, occlusion, lifecycle across context restores) and a simulated WebGL failure,
+// then writes screenshots, videos and report.json to artifacts/<CAPTURE_DIR or prompt-06>/.
 // When <output folder>/baseline/ exists (a run of the previous code with CAPTURE_DIR=prompt-NN/baseline),
 // its renderer figures are copied into the report and its screenshots are paired with the new ones
 // from the same cameras in compare-*.png.
@@ -26,7 +27,7 @@ import { chromium } from 'playwright-core';
 import { createServer, normalizePath } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-05');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-06');
 
 const BROWSER_CANDIDATES = [
   process.env.BROWSER_PATH,
@@ -166,7 +167,7 @@ async function screenshot(page, name, options = {}) {
   report.screenshots.push(path.relative(root, file).replaceAll('\\', '/'));
 }
 
-async function layoutChecks(page, label) {
+async function layoutChecks(page, label, { minShare = 0.5 } = {}) {
   const result = await page.evaluate(() => {
     const viewport = document.querySelector('.cinema-viewport');
     const canvas = viewport?.querySelector('canvas');
@@ -205,7 +206,7 @@ async function layoutChecks(page, label) {
     s.view.camera.aspect,
   );
   const share = (result.viewport.width * result.viewport.height) / (result.window.width * result.window.height);
-  check(`${label}: canvas uses most of the screen`, share > 0.5, Number(share.toFixed(2)));
+  check(`${label}: canvas uses ${minShare === 0.5 ? 'most' : `at least ${minShare * 100} %`} of the screen`, share > minShare, Number(share.toFixed(2)));
   return result;
 }
 
@@ -280,6 +281,16 @@ async function main() {
         });
       }
 
+      // Seat panel: open by default on wide desktops, closed on phones and tablets. Closed for the
+      // preset shots, so they stay comparable with the baseline's framing.
+      {
+        const open = (await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) === 'true';
+        const expected = name === 'desktop';
+        check(`${name}: seat panel ${expected ? 'open' : 'closed'} by default`, open === expected, open);
+        if (open) await page.click('button[data-action="seat-panel"]');
+        await nextFrames(page);
+      }
+
       const stats = await page.textContent('.cinema-stats');
       check(`${name}: header shows rows and seat total`, /10 \(A–J\)/.test(stats) && /110/.test(stats), stats);
       await layoutChecks(page, name);
@@ -324,6 +335,7 @@ async function main() {
         await tourChecks(page);
         await exploreChecks(page);
         await qualityChecks(page);
+        await seatChecks(page);
         await seatCloseUp(page);
         await desktopInteractions(page, server);
       }
@@ -334,7 +346,10 @@ async function main() {
         await nextFrames(page);
         await measurePerformance(page, 'tablet high');
       }
-      if (name === 'mobile') await touchChecks(page, context);
+      if (name === 'mobile') {
+        await touchChecks(page, context);
+        await mobileSeatChecks(page, context);
+      }
       await context.close();
     }
 
@@ -342,6 +357,7 @@ async function main() {
     await inspectorFromPage(browser, base);
     await reducedMotion(browser, base);
     await contextLoss(browser, base);
+    await lifecycleChecks(browser, base);
     await webglFailure(browser, base);
     await videos(browser, base);
     await comparisons(browser);
@@ -755,6 +771,8 @@ function bodiesFit(page, walkers) {
 }
 
 async function waitForIdleFrames(page, label, ms = 1000) {
+  // Let a frame already requested by the last action land first.
+  await nextFrames(page);
   const before = (await state(page)).view.framesRendered;
   await page.waitForTimeout(ms);
   const after = (await state(page)).view.framesRendered;
@@ -1350,6 +1368,64 @@ async function videos(browser, base) {
     await context.close();
   }
   {
+    const { context, page } = await open('video-select-3d-map-seat-view', { viewport: { width: 1280, height: 760 } });
+    await recordVideo(browser, page, 'video-select-3d-map-seat-view', async () => {
+      await page.waitForTimeout(600);
+      for (const id of ['F05', 'F06', 'G08']) {
+        const p = await seatPoint(page, id);
+        if (!p.visible) continue;
+        await page.mouse.move(p.x, p.y, { steps: 10 });
+        await page.waitForTimeout(250);
+        await page.mouse.click(p.x, p.y);
+        await page.waitForTimeout(700);
+      }
+      await page.click('button[data-seat="F06"]');
+      await page.click('button[data-seat="F06"]');
+      await page.waitForTimeout(500);
+      await page.click('button[data-action="view-from-seat"]');
+      await page.waitForFunction(() => window.__cinema.getState().view.state === 'seat', null, { timeout: 8000 });
+      await page.waitForTimeout(1500);
+      await page.click('button[data-action="return"]');
+      await page.waitForTimeout(1600);
+    });
+    await context.close();
+  }
+  {
+    const { context, page } = await open('video-drag-without-selecting', { viewport: { width: 1280, height: 760 } });
+    let finalClick = null;
+    await recordVideo(browser, page, 'video-drag-without-selecting', async () => {
+      await page.waitForTimeout(500);
+      for (const id of ['E05', 'H08']) {
+        const p = await seatPoint(page, id);
+        if (!p.visible) continue;
+        await page.mouse.move(p.x, p.y, { steps: 8 });
+        await page.mouse.down();
+        await page.mouse.move(p.x + 160, p.y + 20, { steps: 20 });
+        await page.mouse.up();
+        await page.waitForTimeout(900);
+      }
+      // Wherever the drags left the camera: the first seat that can be clicked from there.
+      await page.waitForTimeout(600);
+      const target = await page.evaluate(() => {
+        for (const seat of window.__cinema.layout.seats) {
+          if (document.querySelector(`button[data-seat="${seat.id}"]`)?.getAttribute('aria-disabled') === 'true') continue;
+          const point = window.__cinema.seatScreenPoint(seat.id);
+          if (point.visible) return { id: seat.id, ...point };
+        }
+        return null;
+      });
+      if (target) {
+        await page.mouse.move(target.x, target.y, { steps: 8 });
+        await page.mouse.click(target.x, target.y);
+        finalClick = target.id;
+      }
+      await page.waitForTimeout(1200);
+    });
+    const selected = (await state(page)).seats.selected;
+    check('video: dragging from seats selected nothing; the final click selected one seat', finalClick && JSON.stringify(selected) === JSON.stringify([finalClick]), { finalClick, selected });
+    await context.close();
+  }
+  {
     const { context, page } = await open('video-mobile-explore', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
     const cdp = await context.newCDPSession(page);
     await recordVideo(browser, page, 'video-mobile-explore', async () => {
@@ -1368,6 +1444,560 @@ async function videos(browser, base) {
     });
     await context.close();
   }
+}
+
+// ---------------------------------------------------------------- Prompt 06: seat selection
+
+const seatsState = async (page) => (await state(page)).seats;
+const seatLook = (page, id) => page.evaluate((seatId) => window.__cinema.seatLook(seatId), id);
+const seatPoint = (page, id) => page.evaluate((seatId) => window.__cinema.seatScreenPoint(seatId), id);
+
+async function openSeatPanel(page) {
+  if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') {
+    await page.click('button[data-action="seat-panel"]');
+  }
+  await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+}
+
+async function closeSeatPanel(page) {
+  if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) === 'true') {
+    await page.click('button[data-action="seat-panel"]');
+  }
+}
+
+/** Clicks the first of `ids` that is visible in the 3D view; returns its id or null. */
+async function clickFirstVisible(page, ids) {
+  for (const id of ids) if (await clickSeat3d(page, id)) return id;
+  return null;
+}
+
+/** Clicks seat `id` in the 3D view with the mouse, at a point where it is visible. */
+async function clickSeat3d(page, id, options = {}) {
+  const p = await seatPoint(page, id);
+  if (!p.visible) return false;
+  await page.mouse.click(p.x, p.y, options);
+  await nextFrames(page);
+  return true;
+}
+
+// Desktop: selecting in 3D and in the map, hover, drags and other non-taps, keyboard, the limit,
+// removing, the active seat, the tour's first click, seat views, panel resize, quality, occlusion,
+// idle rendering, resource stability, picking cost and the inspector round trip.
+async function seatChecks(page) {
+  report.seats = {};
+  await selectPreset(page, 'overview');
+  await openSeatPanel(page);
+  await nextFrames(page);
+  const reservedCount = (await seatsState(page)).reserved;
+
+  // 3D → map.
+  const picked = [];
+  for (const id of ['F06', 'B03', 'H08']) if (await clickSeat3d(page, id)) picked.push(id);
+  let s = await seatsState(page);
+  const pressed = await Promise.all(picked.map((id) => page.getAttribute(`button[data-seat="${id}"]`, 'aria-pressed')));
+  const looks = await Promise.all(picked.map((id) => seatLook(page, id)));
+  check(
+    'seats: clicking seats in 3D selects them, presses them in the map and tags them in 3D',
+    picked.length === 3 && JSON.stringify(s.selected) === JSON.stringify(['B03', 'F06', 'H08']) && pressed.every((v) => v === 'true') && looks.every((l) => l.tag),
+    { picked, selected: s.selected, pressed },
+  );
+  await screenshot(page, 'seats-1-auditorium-selected-reserved');
+
+  // Reserved in 3D: refused, nothing changes, the reason is shown.
+  await clickSeat3d(page, 'H04');
+  s = await seatsState(page);
+  const notice = await page.textContent('.cinema-notice');
+  check('seats: a reserved seat cannot be selected from 3D (the notice says why)', s.selected.length === 3 && s.active === 'H04' && /đã được đặt/.test(notice), { notice });
+
+  // Map → 3D.
+  await page.click('button[data-seat="C02"]');
+  await nextFrames(page);
+  const c02 = await seatLook(page, 'C02');
+  check('seats: selecting in the map tags and tints the seat in 3D', (await seatsState(page)).selected.includes('C02') && c02.tag && c02.tint[0] > 1.5, c02);
+  await page.click('button[data-seat="C02"]');
+  const c02off = await seatLook(page, 'C02');
+  check('seats: deselecting in the map clears the 3D state', !(await seatsState(page)).selected.includes('C02') && !c02off.tag);
+
+  // Hover follows the mouse and leaves with it.
+  const hoverPoint = await seatPoint(page, 'D07');
+  await page.mouse.move(hoverPoint.x, hoverPoint.y);
+  await nextFrames(page);
+  const hovered = (await seatsState(page)).hovered;
+  const cursor = await page.evaluate(() => document.querySelector('.cinema-canvas').style.cursor);
+  await page.mouse.move(5, 5);
+  await nextFrames(page);
+  check('seats: hover marks the seat under the mouse and clears when the mouse leaves', hovered === 'D07' && cursor === 'pointer' && (await seatsState(page)).hovered === null, {
+    hovered,
+    cursor,
+  });
+
+  // Not taps: a drag starting on a seat, the right button, the wheel.
+  const before = JSON.stringify((await seatsState(page)).selected);
+  const dragFrom = await seatPoint(page, 'G05');
+  await page.mouse.move(dragFrom.x, dragFrom.y);
+  await page.mouse.down();
+  await page.mouse.move(dragFrom.x + 40, dragFrom.y + 6, { steps: 5 });
+  await page.mouse.up();
+  await waitForCameraToSettle(page);
+  await selectPreset(page, 'overview');
+  const right = await seatPoint(page, 'G05');
+  await page.mouse.click(right.x, right.y, { button: 'right' });
+  await page.mouse.move(right.x, right.y);
+  await page.mouse.wheel(0, 120);
+  await waitForCameraToSettle(page);
+  check('seats: dragging from a seat, right-clicking and scrolling never select', JSON.stringify((await seatsState(page)).selected) === before);
+  await selectPreset(page, 'overview');
+
+  // Keyboard in the map: roving focus, arrows, Home/End, Enter/Space, reserved seats.
+  await page.focus('button[data-seat][tabindex="0"]');
+  const focused = () => page.evaluate(() => document.activeElement?.dataset?.seat ?? null);
+  await page.click('button[data-seat="E02"]');
+  await page.click('button[data-seat="E02"]');
+  const moves = [];
+  for (const key of ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'End', 'Home', 'Control+End', 'Control+Home']) {
+    await page.keyboard.press(key);
+    moves.push(await focused());
+  }
+  const tabStops = await page.$$eval('button[data-seat]', (buttons) => buttons.filter((b) => b.tabIndex === 0).length);
+  check('seats: the map is one Tab stop; arrows, Home/End and Ctrl+Home/End move focus by row and column', JSON.stringify(moves) === '["E03","F03","F02","E02","E11","E01","J11","A01"]' && tabStops === 1, { moves, tabStops });
+  await page.keyboard.press('Enter');
+  const afterEnter = (await seatsState(page)).selected.includes('A01');
+  await page.keyboard.press('Space');
+  const afterSpace = (await seatsState(page)).selected.includes('A01');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  const reservedFocus = await focused();
+  await page.keyboard.press('Enter');
+  const reservedLabel = await page.getAttribute('button[data-seat="A04"]', 'aria-label');
+  const reservedDisabled = await page.getAttribute('button[data-seat="A04"]', 'aria-disabled');
+  const live = await page.textContent('[data-seat-announcer]');
+  check(
+    'seats: Enter selects, Space deselects; a reserved seat is announced and cannot be toggled',
+    afterEnter && !afterSpace && reservedFocus === 'A04' && !(await seatsState(page)).selected.includes('A04') &&
+      /đã đặt/.test(reservedLabel) && reservedDisabled === 'true' && /A04 đã được đặt/.test(live),
+    { reservedLabel, live },
+  );
+  await screenshot(page, 'seats-2-keyboard-focus');
+
+  // Arrow keys in the map never move the camera, even while exploring.
+  await page.click('button[data-action="explore"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+  const walkerBefore = (await state(page)).view.explore.walker;
+  await page.focus('button[data-seat][tabindex="0"]');
+  for (const key of ['ArrowUp', 'ArrowLeft', 'KeyW']) {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(250);
+    await page.keyboard.up(key);
+  }
+  const walkerAfter = (await state(page)).view.explore.walker;
+  check('seats: keys pressed in the map do not move the explorer', JSON.stringify(walkerBefore) === JSON.stringify(walkerAfter));
+  await page.click('button[data-action="explore"]');
+  await selectPreset(page, 'overview');
+
+  // The limit: 8 seats, the 9th is refused with a message, nothing is lost.
+  await page.click('button[data-action="clear-selection"]');
+  const eight = ['A01', 'A02', 'A03', 'A06', 'A07', 'A08', 'A09', 'A10'];
+  for (const id of eight) await page.click(`button[data-seat="${id}"]`);
+  await page.click('button[data-seat="A11"]');
+  s = await seatsState(page);
+  const limitText = await page.textContent('.cinema-seats__limit');
+  check('seats: the 9th seat is refused with a message and the 8 stay selected', JSON.stringify(s.selected) === JSON.stringify(eight) && /tối đa|Đã đủ 8/.test(limitText), { limitText });
+  await page.evaluate(() => document.querySelector('.cinema-seats__limit').scrollIntoView({ block: 'nearest' }));
+  await screenshot(page, 'seats-3-limit-reached');
+  await page.click('button[data-remove-seat="A03"]');
+  const afterRemove = (await seatsState(page)).selected;
+  await page.click('button[data-action="clear-selection"]');
+  s = await seatsState(page);
+  check('seats: removing one and clearing all work, reservations unchanged', !afterRemove.includes('A03') && afterRemove.length === 7 && s.selected.length === 0 && s.reserved === reservedCount);
+
+  // Looking at a reserved seat makes it active without selecting it. (aria-disabled seats stay
+  // clickable for users; Playwright treats them as disabled, hence `force`.)
+  await page.click('button[data-seat="C08"]', { force: true });
+  const infoStatus = await page.textContent('[data-seat-status]');
+  s = await seatsState(page);
+  check('seats: a reserved seat can be the active one (details, view) but is never selected', s.active === 'C08' && s.selected.length === 0 && /Đã đặt/.test(infoStatus), { infoStatus });
+
+  // While the tour plays, the first click only stops it; the next one selects.
+  await startTour(page);
+  await page.waitForTimeout(1500);
+  const duringTour = await seatPoint(page, 'G03');
+  await page.mouse.click(duringTour.x, duringTour.y);
+  await nextFrames(page);
+  const firstClick = await state(page);
+  await waitForCameraToSettle(page);
+  const target = ['G03', 'G04', 'G05', 'H07', 'I05'];
+  let selectedAfterSecond = null;
+  for (const id of target) {
+    if (await clickSeat3d(page, id)) {
+      selectedAfterSecond = id;
+      break;
+    }
+  }
+  check('seats: the first click during the tour only stops it; the next click selects', !firstClick.touring && firstClick.seats.selected.length === 0 && selectedAfterSecond && (await seatsState(page)).selected.includes(selectedAfterSecond), {
+    selectedAfterSecond,
+  });
+  await page.click('button[data-action="clear-selection"]');
+  await selectPreset(page, 'overview');
+
+  // Seat views from the panel: pose from seatViewPose, caption with the ID, selection kept; back.
+  await page.click('button[data-seat="D09"]');
+  const keep = (await seatsState(page)).selected;
+  report.seats.views = {};
+  for (const id of ['A01', 'A06', 'F06', 'J06', 'J11']) {
+    await page.focus(`button[data-seat="${id}"]`);
+    await page.click('button[data-action="view-from-seat"]');
+    await page.waitForFunction(() => window.__cinema.getState().view.state === 'seat', null, { timeout: 8000 });
+    await nextFrames(page);
+    const view = (await state(page)).view;
+    const pose = await page.evaluate(async (seatId) => {
+      const { seatViewPose } = await import('/src/cinema/seatView.ts');
+      const { layout } = window.__cinema;
+      return seatViewPose(layout, layout.seatById.get(seatId));
+    }, id);
+    const caption = await page.textContent('.cinema-caption');
+    report.seats.views[id] = { position: view.camera.position, caption };
+    check(
+      `seats: "Xem từ ghế này" at ${id}: eye at seatViewPose, caption names the seat, selection kept`,
+      distance(view.camera.position, [pose.position.x, pose.position.y, pose.position.z]) < 1e-6 && caption.includes(`Ghế ${id}`) &&
+        JSON.stringify((await seatsState(page)).selected) === JSON.stringify(keep) && view.seatView === id,
+      { caption },
+    );
+    await screenshot(page, `seat-view-from-${id}`);
+  }
+  // Looking around keeps the eye where it is.
+  const eye = (await state(page)).view.camera.position;
+  const box = await page.locator('.cinema-canvas').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await waitForCameraToSettle(page);
+  const looked = await state(page);
+  check('seats: dragging in a seat view turns the head; the eye stays within 5 cm and the state stays "seat"', distance(eye, looked.view.camera.position) < 0.06 && looked.view.state === 'seat', {
+    moved: distance(eye, looked.view.camera.position),
+  });
+  await page.click('button[data-action="return"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.state === 'preset', null, { timeout: 8000 });
+  const back = await state(page);
+  check('seats: "Trở về" goes back to the view the seat view was opened from (overview), no tour', back.preset === 'overview' && !back.touring && (await page.isHidden('button[data-action="return"]')));
+
+  // Closing and opening the panel resizes the canvas; picking follows the new rect.
+  await page.click('button[data-action="clear-selection"]');
+  await closeSeatPanel(page);
+  await page.waitForTimeout(300);
+  const wide = (await state(page)).view.drawingBuffer.width;
+  const pickedWide = await clickSeat3d(page, 'E09');
+  await openSeatPanel(page);
+  await page.waitForTimeout(300);
+  const narrow = (await state(page)).view.drawingBuffer.width;
+  const pickedNarrow = await clickSeat3d(page, 'G04');
+  s = await seatsState(page);
+  check('seats: picking stays exact after the panel resizes the canvas', pickedWide && pickedNarrow && wide > narrow && s.selected.includes('E09') && s.selected.includes('G04'), { wide, narrow, selected: s.selected });
+
+  // Quality switch: same selection, same look, picking still maps to the right seats.
+  await page.click('button[data-quality="economy"]');
+  await nextFrames(page);
+  const economyLook = await seatLook(page, 'E09');
+  const pickedEconomy = await clickFirstVisible(page, ['F08', 'E05', 'D06', 'C06', 'G07']);
+  s = await seatsState(page);
+  check('seats: after switching to Economy the selection and its tags remain and picking maps correctly', economyLook.tag && pickedEconomy && s.selected.includes(pickedEconomy) && s.selected.length === 3, {
+    pickedEconomy,
+    selected: s.selected,
+  });
+  await page.click('button[data-quality="high"]');
+  await nextFrames(page);
+
+  // Occlusion: from the section view, a visible right wall blocks every seat; hidden, it does not.
+  await selectPreset(page, 'side');
+  await togglePart(page, 'rightWall');
+  await nextFrames(page);
+  // The helper finds no point that picks D11 (the wall is in front) and returns its projection.
+  const blocked = await seatPoint(page, 'D11');
+  const beforeWall = JSON.stringify((await seatsState(page)).selected);
+  if (blocked.x && blocked.y) await page.mouse.click(blocked.x, blocked.y);
+  await nextFrames(page);
+  const throughWall = JSON.stringify((await seatsState(page)).selected) !== beforeWall;
+  await togglePart(page, 'rightWall');
+  await nextFrames(page);
+  const pickedCut = await clickSeat3d(page, 'D11');
+  check('seats: no picking through a visible wall; with the wall hidden the seat is picked', !blocked.visible && !throughWall && pickedCut && (await seatsState(page)).selected.includes('D11'), {
+    blocked,
+  });
+  await selectPreset(page, 'overview');
+
+  // Idle: selection changes render once, then nothing.
+  await page.click('button[data-seat="B10"]');
+  await waitForIdleFrames(page, 'seats: after a selection change');
+
+  // Resources after many select/deselect rounds and quality switches.
+  const memoryBefore = (await state(page)).view.memory;
+  for (let round = 0; round < 15; round++) {
+    await page.click('button[data-seat="B09"]');
+    await page.click('button[data-seat="B09"]');
+  }
+  for (const level of ['economy', 'high', 'economy', 'high']) {
+    await page.click(`button[data-quality="${level}"]`);
+    await nextFrames(page);
+  }
+  const memoryAfter = (await state(page)).view.memory;
+  report.seats.memory = { before: memoryBefore, after: memoryAfter };
+  check('seats: 30 selection changes and 4 quality switches leave geometries, textures and programs unchanged', JSON.stringify(memoryBefore) === JSON.stringify(memoryAfter), report.seats.memory);
+
+  // Rendering cost with seats selected (one extra draw call for the tags) and picking cost.
+  report.seats.costWithSelection = await page.evaluate(() => window.__cinema.measureCost());
+  report.seats.picking = await page.evaluate(() => window.__cinema.measurePicking(300));
+  check('seats: picking stays under 2 ms (p95) per query', report.seats.picking.p95Ms < 2, report.seats.picking);
+
+  // Seat inspector and back: the selection outlives the page; no duplicated subscriptions.
+  const keepIds = (await seatsState(page)).selected;
+  const listeners = (await seatsState(page)).listeners;
+  await openInspectTools(page);
+  await page.click('button[data-action="open-inspector"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
+  await nextFrames(page);
+  s = await seatsState(page);
+  const keptLook = await seatLook(page, keepIds[0]);
+  check('seats: selection survives opening and closing the seat inspector, painted again, same subscriber count', JSON.stringify(s.selected) === JSON.stringify(keepIds) && keptLook.tag && s.listeners === listeners, {
+    selected: s.selected,
+    listeners: s.listeners,
+  });
+  await page.click('button[data-action="clear-selection"]');
+  await closeSeatPanel(page);
+}
+
+// Phone: the bottom sheet, real taps in 3D and in the map, two-finger and cancelled touches,
+// the stick with a second finger, rotation with the sheet open, Escape/close returning focus.
+async function mobileSeatChecks(page, context) {
+  const cdp = await context.newCDPSession(page);
+  await selectPreset(page, 'overview');
+  // The inspection row is still open from the preset checks; a visitor would not have it open.
+  if ((await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) === 'true') {
+    await page.click('button[data-action="inspect-tools"]');
+  }
+  await page.tap('button[data-action="seat-panel"]');
+  await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+  await page.waitForTimeout(300);
+  const tapAt = async (p) => {
+    await touch(cdp, 'touchStart', [[p.x, p.y, 1]]);
+    await page.waitForTimeout(60);
+    await touch(cdp, 'touchEnd', []);
+    await page.waitForTimeout(100);
+  };
+  let p = await seatPoint(page, 'F05');
+  await tapAt(p);
+  let s = await seatsState(page);
+  check('mobile: a real tap on a seat in 3D selects it', p.visible && s.selected.includes('F05'), { p, selected: s.selected });
+  await page.tap('button[data-seat="B07"]');
+  s = await seatsState(page);
+  check('mobile: tapping a seat in the map selects it', s.selected.includes('B07'));
+  const overflow = await page.evaluate(() => {
+    const map = document.querySelector('.cinema-map');
+    const seat = document.querySelector('.cinema-seat').getBoundingClientRect();
+    return { scrolls: map.scrollWidth > map.clientWidth, seat: { width: seat.width, height: seat.height }, page: document.documentElement.scrollWidth - innerWidth };
+  });
+  check('mobile: seats stay ≥ 36 px; the map scrolls sideways instead of shrinking, the page does not', overflow.seat.width >= 36 && overflow.page <= 0, overflow);
+  await screenshot(page, 'seats-4-mobile-sheet');
+
+  const before = JSON.stringify((await seatsState(page)).selected);
+  // Two fingers, one on a seat, lifted one after the other.
+  p = await seatPoint(page, 'G06');
+  await touch(cdp, 'touchStart', [[p.x, p.y, 1]]);
+  await touch(cdp, 'touchStart', [[p.x, p.y, 1], [p.x + 80, p.y - 40, 2]]);
+  await page.waitForTimeout(80);
+  await touch(cdp, 'touchEnd', [[p.x, p.y, 1]]);
+  await page.waitForTimeout(80);
+  await touch(cdp, 'touchEnd', []);
+  await page.waitForTimeout(150);
+  const twoFingers = JSON.stringify((await seatsState(page)).selected) === before;
+  // A touch that is cancelled.
+  await touch(cdp, 'touchStart', [[p.x, p.y, 1]]);
+  await touch(cdp, 'touchCancel', []);
+  await page.waitForTimeout(100);
+  const cancelled = JSON.stringify((await seatsState(page)).selected) === before;
+  // A drag that starts on a seat.
+  await touchDrag(cdp, page, [p.x, p.y], [60, 10]);
+  await waitForCameraToSettle(page);
+  const dragged = JSON.stringify((await seatsState(page)).selected) === before;
+  check('mobile: two-finger, cancelled and dragging touches never select', twoFingers && cancelled && dragged, { twoFingers, cancelled, dragged });
+  await selectPreset(page, 'overview');
+
+  // Exploring: a thumb on the stick and a second finger on a seat does not select.
+  await page.tap('button[data-action="explore"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+  const stick = await page.locator('.cinema-stick').boundingBox();
+  const sx = stick.x + stick.width / 2;
+  const sy = stick.y + stick.height / 2;
+  const near = await page.evaluate(() => {
+    for (const id of ['J07', 'J08', 'I07', 'I08', 'J09', 'H07']) {
+      const point = window.__cinema.seatScreenPoint(id);
+      if (point.visible) return { id, ...point };
+    }
+    return null;
+  });
+  if (near) {
+    await touch(cdp, 'touchStart', [[sx, sy, 1]]);
+    await touch(cdp, 'touchStart', [[sx, sy, 1], [near.x, near.y, 2]]);
+    await page.waitForTimeout(80);
+    await touch(cdp, 'touchEnd', [[sx, sy, 1]]);
+    await page.waitForTimeout(80);
+    await touch(cdp, 'touchEnd', []);
+    await page.waitForTimeout(150);
+  }
+  check('mobile: stick + a finger on a seat (walk and look) does not select', near && JSON.stringify((await seatsState(page)).selected) === before, near);
+  await page.tap('button[data-action="explore"]');
+  await selectPreset(page, 'overview');
+
+  // Rotate with the sheet open: it becomes a side panel; selection and picking still right.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(400);
+  // With the panel open beside it, the view has less room by design.
+  const landscape = await layoutChecks(page, 'mobile landscape with the seat panel', { minShare: 0.35 });
+  const lp = await seatPoint(page, 'E10');
+  if (lp.visible) await tapAt(lp);
+  check('mobile: in landscape with the panel beside the view, tapping still picks the right seat', lp.visible && (await seatsState(page)).selected.includes('E10') && landscape.overflowX <= 0, lp);
+  await screenshot(page, 'seats-5-mobile-landscape');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+
+  // Escape inside the sheet closes it and focus goes back to its button.
+  await page.focus('button[data-seat][tabindex="0"]');
+  await page.keyboard.press('Escape');
+  const closed = await page.isHidden('#cinema-seat-panel');
+  const focusBack = await page.evaluate(() => document.activeElement?.dataset?.action ?? null);
+  check('mobile: Escape in the sheet closes it and returns focus to "Sơ đồ ghế" (non-modal, no trap)', closed && focusBack === 'seat-panel', { focusBack });
+  await page.tap('button[data-action="seat-panel"]');
+  await page.click('button[data-action="clear-selection"]');
+  await page.tap('button[data-action="seat-panel"]');
+}
+
+// Several context loss/restore cycles with seats selected: state kept and repainted, and nothing
+// from the old contexts piling up: live three.js objects after GC, page listeners, renderer
+// resources, JS heap. (CDP counts objects by prototype; it cannot see GPU memory.)
+async function lifecycleChecks(browser, base) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  attachConsole(page, 'lifecycle');
+  await page.goto(`${base}cinema`);
+  await waitForStatus(page);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('HeapProfiler.enable');
+  const count = async () => {
+    await cdp.send('HeapProfiler.collectGarbage');
+    await cdp.send('HeapProfiler.collectGarbage');
+    const objects = {};
+    for (const type of ['BufferGeometry', 'Material', 'Texture', 'Object3D', 'WebGLRenderTarget']) {
+      const { result: proto } = await cdp.send('Runtime.evaluate', { expression: `window.__cinema.types.${type}.prototype` });
+      const { objects: list } = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.objectId });
+      const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: list.objectId, functionDeclaration: 'function () { return this.length; }', returnByValue: true });
+      objects[type] = result.value;
+      await cdp.send('Runtime.releaseObject', { objectId: list.objectId });
+      await cdp.send('Runtime.releaseObject', { objectId: proto.objectId });
+    }
+    const listeners = {};
+    for (const [name, expression] of [['window', 'window'], ['document', 'document'], ['canvas', "document.querySelector('.cinema-canvas')"]]) {
+      const { result } = await cdp.send('Runtime.evaluate', { expression });
+      listeners[name] = (await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId })).listeners.length;
+      await cdp.send('Runtime.releaseObject', { objectId: result.objectId });
+    }
+    const heap = await cdp.send('Runtime.getHeapUsage');
+    const s = await state(page);
+    return {
+      objects,
+      listeners,
+      heapMiB: Number((heap.usedSize / 2 ** 20).toFixed(2)),
+      memory: s.view.memory,
+      subscribers: s.seats.listeners,
+      pageTextureListeners: s.view.pageTextureListeners,
+    };
+  };
+  await page.click('button[data-seat="C03"]').catch(async () => {
+    await openSeatPanel(page);
+    await page.click('button[data-seat="C03"]');
+  });
+  await openSeatPanel(page);
+  for (const id of ['D05', 'H09']) await page.click(`button[data-seat="${id}"]`);
+  // Warm up: every preset and both levels once, so later counts are steady state.
+  for (const id of ['overview', 'seats', 'seatEye', 'overview']) await selectPreset(page, id);
+  const cycle = async () => {
+    await page.evaluate(() => {
+      window.__lose = document.querySelector('.cinema-canvas').getContext('webgl2').getExtension('WEBGL_lose_context');
+      window.__lose.loseContext();
+    });
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.status === 'context-lost');
+    await page.evaluate(() => window.__lose.restoreContext());
+    await waitForStatus(page);
+    await nextFrames(page);
+  };
+  await cycle();
+  // Warm-up also covers a quality round trip: the first switch compiles 3 more shader variants
+  // (after a restore only what is drawn is compiled); from then on the count stays put.
+  await page.click('button[data-quality="economy"]');
+  await nextFrames(page);
+  await page.click('button[data-quality="high"]');
+  await nextFrames(page);
+  const first = await count();
+  const selectedBefore = (await seatsState(page)).selected;
+  for (let i = 0; i < 4; i++) {
+    await cycle();
+    await page.click('button[data-quality="economy"]');
+    await nextFrames(page);
+    await page.click('button[data-quality="high"]');
+    await nextFrames(page);
+  }
+  const last = await count();
+  const selectedAfter = (await seatsState(page)).selected;
+  const look = await seatLook(page, 'D05');
+  report.lifecycle = { afterFirstRestore: first, afterFiveRestores: last };
+  check('lifecycle: selection survives 5 loss/restore cycles and is painted on the rebuilt seats', JSON.stringify(selectedBefore) === JSON.stringify(selectedAfter) && look.tag);
+  await page.click('button[data-seat="D05"]');
+  check('lifecycle: deselecting after the restores updates the new instances', !(await seatLook(page, 'D05')).tag);
+  check('lifecycle: no growth in live geometries, materials, textures, objects or render targets after 4 more restores (GC)', JSON.stringify(first.objects) === JSON.stringify(last.objects), report.lifecycle);
+  check('lifecycle: no growth in window/document/canvas listeners or selection subscribers', JSON.stringify(first.listeners) === JSON.stringify(last.listeners) && first.subscribers === last.subscribers, {
+    first: first.listeners,
+    last: last.listeners,
+  });
+  check('lifecycle: renderer resources steady after warm-up', JSON.stringify(first.memory) === JSON.stringify(last.memory), { first: first.memory, last: last.memory });
+  check(
+    'lifecycle: page-wide three.js textures keep one dispose listener (the live context), none from lost ones',
+    last.pageTextureListeners.length >= 4 && last.pageTextureListeners.every((n) => n <= 1),
+    last.pageTextureListeners,
+  );
+  check('lifecycle: JS heap after GC grows less than 1 MiB over 4 restores (it grew 0.37 MiB per restore before the fix)', last.heapMiB - first.heapMiB < 1, {
+    first: first.heapMiB,
+    last: last.heapMiB,
+  });
+  await waitForIdleFrames(page, 'lifecycle: after the restores');
+
+  // Remounts (seat inspector and back) dispose the renderer: nothing of it may stay reachable.
+  const go = async (url, selector) => {
+    await page.evaluate((u) => {
+      history.pushState(null, '', u);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, url);
+    await page.waitForFunction((sel) => document.querySelector(sel)?.dataset.status === 'ready', selector);
+    await nextFrames(page);
+  };
+  await go('/cinema?inspect=seat', '.cinema-app--inspector');
+  await go('/cinema', '.cinema-app');
+  const beforeRemounts = await count();
+  for (let i = 0; i < 6; i++) {
+    await go('/cinema?inspect=seat', '.cinema-app--inspector');
+    await go('/cinema', '.cinema-app');
+  }
+  const afterRemounts = await count();
+  report.lifecycle.remounts = { before: beforeRemounts, afterSixRoundTrips: afterRemounts };
+  check(
+    'lifecycle: 6 inspector round trips leave live three.js objects, listeners and subscribers unchanged; heap +< 1 MiB',
+    JSON.stringify(beforeRemounts.objects) === JSON.stringify(afterRemounts.objects) &&
+      JSON.stringify(beforeRemounts.listeners) === JSON.stringify(afterRemounts.listeners) &&
+      beforeRemounts.subscribers === afterRemounts.subscribers && afterRemounts.heapMiB - beforeRemounts.heapMiB < 1,
+    report.lifecycle.remounts,
+  );
+  check('lifecycle: selection kept across the round trips', JSON.stringify((await seatsState(page)).selected) === JSON.stringify(selectedAfter.filter((id) => id !== 'D05')));
+  await context.close();
 }
 
 // The on-demand loop must stop once the camera settles; then time a fixed camera path.
@@ -1616,9 +2246,20 @@ async function webglFailure(browser, base) {
   await page.goto(`${base}cinema`);
   const status = await waitForStatus(page, 10_000).catch(() => 'timeout');
   const message = await page.textContent('.cinema-status').catch(() => '');
-  const disabled = await page.$$eval('button', (buttons) => buttons.every((b) => b.disabled));
+  // Camera and display controls go; the seat panel and its map stay.
+  const disabled = await page.$$eval('.cinema-toolbar button:not([data-action="seat-panel"])', (buttons) => buttons.every((b) => b.disabled));
   check('WebGL unavailable: shows an error instead of loading forever', status === 'error', { status, message });
-  check('WebGL unavailable: controls are disabled', disabled);
+  check('WebGL unavailable: camera and display controls are disabled', disabled);
+  const panelOpen = await page.isVisible('#cinema-seat-panel');
+  await page.click('button[data-seat="F04"]');
+  await page.click('button[data-seat="F05"]');
+  const selected = await page.evaluate(() => window.__cinema.getState().seats.selected);
+  const viewDisabled = await page.isDisabled('button[data-action="view-from-seat"]');
+  const hint = await page.textContent('.cinema-seats__info .cinema-seats__muted:not([hidden]):last-child').catch(() => '');
+  check('WebGL unavailable: the seat map is open and works; "Xem từ ghế này" is disabled with the reason', panelOpen && JSON.stringify(selected) === '["F04","F05"]' && viewDisabled && /3D không khả dụng/.test(hint), {
+    selected,
+    hint,
+  });
   await screenshot(page, 'webgl-unavailable');
   await context.close();
 }
@@ -1638,7 +2279,7 @@ async function comparisons(browser) {
     'mobile-4-seat-eye',
   ]) {
     const before = path.join(baselineDir, `${file}.png`);
-    if (existsSync(before)) pairs.push([`compare-p04-p05-${file}`, [['Prompt 04 (baseline)', before], ['Prompt 05', path.join(outDir, `${file}.png`)]]]);
+    if (existsSync(before)) pairs.push([`compare-p05-p06-${file}`, [['Prompt 05 (baseline)', before], ['Prompt 06', path.join(outDir, `${file}.png`)]]]);
   }
   for (const name of ['overview', 'seat-eye', 'seat-leather', 'graphite-grazing']) {
     pairs.push([

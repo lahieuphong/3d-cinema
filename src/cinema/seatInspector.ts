@@ -106,6 +106,7 @@ class SeatInspectorView {
       onFrame: (_time, dt) => this.renderFrame(dt),
       onStatus: (status) => callbacks.onStatus(status),
       onContextRestored: () => this.handleContextRestored(),
+      textureProbe: () => this.content?.materials.upholstery,
     });
     const { renderer } = this.host;
     renderer.toneMapping = NeutralToneMapping;

@@ -21,10 +21,12 @@ export function isMovementKey(event: KeyboardEvent): boolean {
  * widgets that use arrow keys themselves. Modifier combinations are left to the browser too.
  */
 export function keyBelongsToFocus(event: KeyboardEvent): boolean {
-  if (event.ctrlKey || event.metaKey || event.altKey) return true;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return true;
   const target = event.target as HTMLElement | null;
   if (!target || !(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
+  // Composite widgets that move focus with arrow keys themselves (the seat map is a grid).
+  if (target.closest('[role="grid"], [role="listbox"], [role="tablist"], [role="radiogroup"], [role="menu"]')) return true;
   if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
   if (target instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset'].includes(target.type)) return true;
   const role = target.getAttribute('role');

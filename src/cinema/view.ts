@@ -11,13 +11,15 @@ import {
   type Object3D,
   PCFShadowMap,
   type PerspectiveCamera,
+  Raycaster,
   Scene,
+  Vector2,
   Vector3,
 } from 'three';
 import { buildArchitecture, INTERIOR_MATERIALS, type Architecture, type ToggleablePart } from './architecture.ts';
 import { planCameraPath } from './cameraPath.ts';
 import { CameraRig, type CameraDriver } from './cameraRig.ts';
-import { computePresetPose, presetInfo, type CameraMode, type CameraPose, type CameraPresetId } from './cameraPresets.ts';
+import { computePresetPose, presetInfo, resolveEyeSeat, type CameraMode, type CameraPose, type CameraPresetId } from './cameraPresets.ts';
 import { createCollisionWorld, type CollisionWorld } from './collision.ts';
 import { createInteriorEnvironment, type InteriorEnvironment } from './environment.ts';
 import { ExploreInput, isMovementKey, keyBelongsToFocus } from './exploreInput.ts';
@@ -33,7 +35,12 @@ import {
 } from './materials.ts';
 import type { QualityLevel } from './quality.ts';
 import { RenderHost, type ViewStatus } from './renderHost.ts';
-import { createCinemaSeatModel, createSeatInstances, type SeatInstances, type SeatModel } from './seats.ts';
+import { SeatHighlighter } from './seatHighlight.ts';
+import { pickSeat, SeatPicker, visibleMeshes, type SeatHit } from './seatPicking.ts';
+import { createCinemaSeatModel, createSeatInstances, seatPivotMatrix, type SeatInstances, type SeatModel } from './seats.ts';
+import { seatViewPose } from './seatView.ts';
+import type { SeatSelection } from './selection.ts';
+import { TapTracker } from './tapTracker.ts';
 import { createTour, TourPath } from './tour.ts';
 import { chooseWalkStart, stepWalker, turnWalker, type StartPoint, type WalkerState } from './walker.ts';
 
@@ -46,9 +53,10 @@ export { WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
  * - `transition`: moving to a preset or to where the tour or exploring starts;
  * - `tour`: the guided tour drives the camera (or, with reduced motion, steps between its stops);
  * - `explore`: walking with keys, stick and drag-to-look;
+ * - `seat`: at the eye of a chosen seat ("Xem từ ghế này"); drag looks around, the eye stays;
  * - `free`: stopped where the user left it (after stopping the tour or exploring); drag looks around.
  */
-export type CameraState = 'preset' | 'inspection' | 'transition' | 'tour' | 'explore' | 'free';
+export type CameraState = 'preset' | 'inspection' | 'transition' | 'tour' | 'explore' | 'seat' | 'free';
 
 export type TourEndReason = 'finished' | 'input' | 'command' | 'hidden' | 'context-lost';
 
@@ -71,6 +79,8 @@ export interface CinemaViewCallbacks {
   onTour(status: TourStatus | null, ended?: TourEndReason): void;
   /** Exploring started; `relocatedTo` is set when the camera was taken to a start point first. */
   onExploreStart(relocatedTo: StartPoint | null): void;
+  /** A tap or click (not a drag) landed on a seat that is not hidden behind anything. */
+  onSeatTap(seatId: string): void;
 }
 
 /** Room materials that cast shadows from the ceiling downlight (the rest only receive them). */
@@ -85,6 +95,9 @@ interface SceneContent {
   environment: InteriorEnvironment;
   seatModel: SeatModel;
   seatInstances: SeatInstances;
+  /** Seat states drawn onto the instances, and picking proxies for the same model. */
+  highlighter: SeatHighlighter;
+  picker: SeatPicker;
 }
 
 /**
@@ -106,6 +119,15 @@ export class CinemaView {
   private readonly rig: CameraRig;
   private readonly world: CollisionWorld;
   private readonly input: ExploreInput;
+  private readonly selection: SeatSelection;
+  private readonly unsubscribeSelection: () => void;
+  private readonly taps: TapTracker;
+  private readonly raycaster = new Raycaster();
+  private readonly pointer = new Vector2();
+  /** Seat whose eye the camera is at ("Xem từ ghế này"), or null. */
+  private seatView: string | null = null;
+  /** Durations of the last picks (ms), for the development hook. */
+  private readonly pickTimes: number[] = [];
   private readonly listeners = new AbortController();
   private content: SceneContent;
   private quality: QualityLevel;
@@ -128,10 +150,12 @@ export class CinemaView {
     container: HTMLElement,
     layout: AuditoriumLayout,
     callbacks: CinemaViewCallbacks,
-    options: { quality: QualityLevel; reducedMotion: boolean; touchStick: boolean },
+    options: { quality: QualityLevel; reducedMotion: boolean; touchStick: boolean; selection: SeatSelection },
   ) {
     this.layout = layout;
     this.callbacks = callbacks;
+    this.selection = options.selection;
+    this.taps = new TapTracker({ slopPx: layout.config.selection.tapSlopPx, maxMs: layout.config.selection.tapMaxMs });
     this.quality = options.quality;
     this.reducedMotion = options.reducedMotion;
     this.touchStick = options.touchStick;
@@ -143,12 +167,13 @@ export class CinemaView {
       maxPixelRatio: settings.maxPixelRatio,
       maxDeltaSeconds: config.camera.explore.maxStepSeconds,
       ariaLabel:
-        'Khung nhìn 3D của phòng chiếu. Kéo để xoay hoặc nhìn quanh; ở chế độ Khám phá dùng W A S D hoặc phím mũi tên để đi.',
+        'Khung nhìn 3D của phòng chiếu. Nhấn vào một ghế để chọn; với bàn phím hoặc trình đọc màn hình, dùng Sơ đồ ghế. Kéo để xoay hoặc nhìn quanh; ở chế độ Khám phá dùng W A S D hoặc phím mũi tên để đi.',
       onResize: (width, height) => this.handleResize(width / height),
       onFrame: (_time, dt) => this.renderFrame(dt),
       onStatus: (status) => callbacks.onStatus(status),
       onContextLost: () => this.handleContextLost(),
       onContextRestored: () => this.handleContextRestored(),
+      textureProbe: () => this.content?.materials.wall,
     });
     const { renderer } = this.host;
     // Colour pipeline: sRGB textures decoded to linear, lit in linear, tone-mapped once in the
@@ -181,13 +206,27 @@ export class CinemaView {
     const { signal } = this.listeners;
     this.rig.controls.addEventListener('change', this.host.requestRender);
     this.rig.controls.addEventListener('start', this.handleControlsStart);
-    // Capture phase: runs before OrbitControls' own handlers on the canvas, so a drag that stops
-    // the tour is already handed to the controls when they see it.
+    // Capture phase: runs before OrbitControls' and the explore input's own handlers on the canvas,
+    // so a press that stops the tour is already handed to the controls when they see it. These
+    // listeners only observe (tap detection, hover); they never capture or cancel a pointer.
     const canvas = this.host.canvas;
-    canvas.addEventListener('pointerdown', this.handleCanvasInput, { capture: true, signal });
-    canvas.addEventListener('wheel', this.handleCanvasInput, { capture: true, passive: true, signal });
+    canvas.addEventListener('pointerdown', this.handlePointerDown, { capture: true, signal });
+    canvas.addEventListener('pointermove', this.handlePointerMove, { capture: true, passive: true, signal });
+    canvas.addEventListener('pointerup', this.handlePointerUp, { capture: true, signal });
+    canvas.addEventListener('pointercancel', (event) => this.taps.cancel(event.pointerId), { capture: true, signal });
+    canvas.addEventListener('pointerleave', this.clearHover, { signal });
+    canvas.addEventListener('wheel', this.handleWheel, { capture: true, passive: true, signal });
+    // Every pointer on the page, so a finger on the stick or a second finger anywhere spoils a tap.
+    window.addEventListener('pointerdown', (event) => this.taps.anyDown(event.pointerId), { capture: true, signal });
+    for (const type of ['pointerup', 'pointercancel'] as const) {
+      window.addEventListener(type, (event) => this.taps.anyUp(event.pointerId), { capture: true, signal });
+    }
+    window.addEventListener('blur', this.dropPointers, { signal });
     window.addEventListener('keydown', this.handleKeyDown, { capture: true, signal });
     document.addEventListener('visibilitychange', this.handleVisibility, { signal });
+    this.unsubscribeSelection = this.selection.subscribe((change) => {
+      if (this.content.highlighter.apply(this.selection, change.seats)) this.host.requestRender();
+    });
     renderer.shadowMap.needsUpdate = true;
     this.host.start();
   }
@@ -287,6 +326,21 @@ export class CinemaView {
     });
   }
 
+  /**
+   * Moves to the eye of `seatId` (seatViewPose), around obstacles, ending the tour or exploring.
+   * Dragging then turns the head; the eye stays put. Selection is untouched.
+   */
+  viewFromSeat(seatId: string): CameraPose {
+    this.endActivities('command');
+    this.preset = null;
+    this.pristine = false;
+    this.rig.constraint = null;
+    const pose = seatViewPose(this.layout, this.layout.seatById.get(seatId)!);
+    this.seatView = seatId;
+    this.moveCamera(pose, true, () => this.callbacks.onArrive());
+    return pose;
+  }
+
   /** Stops walking where the camera is; dragging then looks around from there. */
   stopExplore(): void {
     if (!this.exploring) return;
@@ -329,6 +383,10 @@ export class CinemaView {
     content.seatModel.dispose();
     [content.seatModel, content.seatInstances] = this.buildSeats(content.seatMaterials, level);
     this.scene.add(content.seatInstances.group);
+    // Same seats, same state: repaint the new instances from the selection, new proxies for picking.
+    content.highlighter.attach(content.seatInstances, content.seatModel);
+    content.highlighter.apply(this.selection);
+    content.picker = new SeatPicker(this.layout.seats, content.seatModel);
     content.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
     this.host.setMaxPixelRatio(settings.maxPixelRatio);
     this.invalidateShadows();
@@ -347,6 +405,54 @@ export class CinemaView {
     this.rig.constraint = null;
     this.rig.moveTo({ position, lookAt: target, mode }, false);
     this.requestFrame();
+  }
+
+  /**
+   * Development: a point on the page (client CSS px) where seat `seatId` can be clicked from the
+   * current camera: the first of its backrest top, headrest, cushion and armrest centres that is
+   * on screen and actually picks this seat (not hidden behind the seat in front, a wall…).
+   * `visible` is false when none of them does.
+   */
+  debugSeatScreenPoint(seatId: string): { x: number; y: number; visible: boolean } {
+    const seat = this.layout.seatById.get(seatId)!;
+    const rect = this.host.canvas.getBoundingClientRect();
+    const pivot = seatPivotMatrix(seat);
+    const centre = (name: string, top = false) => {
+      const box = this.content.seatModel.components.find((c) => c.name === name)!.bounds;
+      return new Vector3((box.min.x + box.max.x) / 2, top ? box.max.y - 0.01 : (box.min.y + box.max.y) / 2, (box.min.z + box.max.z) / 2);
+    };
+    let first: { x: number; y: number } | null = null;
+    for (const local of [centre('backrest-shell', true), centre('headrest'), centre('cushion', true), centre('upper-back'), centre('armrest-right', true)]) {
+      const ndc = local.applyMatrix4(pivot).project(this.rig.camera);
+      if (Math.abs(ndc.x) > 0.98 || Math.abs(ndc.y) > 0.98 || ndc.z > 1) continue;
+      const point = { x: rect.left + ((ndc.x + 1) / 2) * rect.width, y: rect.top + ((1 - ndc.y) / 2) * rect.height };
+      first ??= point;
+      if (this.pickAt(point.x, point.y)?.seat.id === seatId) return { ...point, visible: true };
+    }
+    return { ...(first ?? { x: 0, y: 0 }), visible: false };
+  }
+
+  /** Development: the colour factor and tag drawn on a seat. */
+  debugSeatLook(seatId: string) {
+    const index = this.layout.seatById.get(seatId)!.index;
+    return { tint: this.content.highlighter.tintOf(index), shell: this.content.highlighter.tintOf(index, 'shell'), tag: this.content.highlighter.tagShown(index) };
+  }
+
+  /** Development: times `samples` picks spread over the canvas (proxies plus occluders), in ms. */
+  measurePicking(samples = 200) {
+    const rect = this.host.canvas.getBoundingClientRect();
+    const times: number[] = [];
+    let hits = 0;
+    for (let i = 0; i < samples; i++) {
+      const x = rect.left + (((i * 37) % samples) / samples) * rect.width;
+      const y = rect.top + (((i * 61) % samples) / samples) * rect.height;
+      const start = performance.now();
+      if (this.pickAt(x, y)) hits++;
+      times.push(performance.now() - start);
+    }
+    times.sort((a, b) => a - b);
+    const at = (q: number) => Math.round(times[Math.min(times.length - 1, Math.floor(q * times.length))] * 1000) / 1000;
+    return { samples, hits, medianMs: at(0.5), p95Ms: at(0.95), maxMs: at(1) };
   }
 
   /** Development: places the camera at tour time `t` (seconds), for frame-by-frame review. */
@@ -496,6 +602,8 @@ export class CinemaView {
       tour: this.tour
         ? { steps: this.tour.steps, time: this.tour.time, stopIndex: this.tour.stopIndex, duration: this.tour.path.tour.duration }
         : null,
+      seatView: this.seatView,
+      lastPickMs: this.pickTimes.at(-1) ?? null,
       explore: this.exploring ? { walker: this.walker, input: this.input.debugState() } : null,
       lights: this.content.lighting.describe(),
       shadow: { mapSize: shadow.mapSize.x, radius: shadow.radius, renders: this.shadowRenders },
@@ -507,6 +615,8 @@ export class CinemaView {
     if (this.disposed) return;
     this.disposed = true;
     this.listeners.abort();
+    this.unsubscribeSelection();
+    this.selection.setHovered(null);
     this.input.dispose();
     this.tour = null;
     this.rig.controls.removeEventListener('change', this.host.requestRender);
@@ -611,8 +721,10 @@ export class CinemaView {
     });
   }
 
-  /** Ends the tour or exploring before another command takes the camera. */
+  /** Ends the tour, exploring or a seat view before another command takes the camera. */
   private endActivities(reason: TourEndReason): void {
+    this.seatView = null;
+    this.selection.setHovered(null);
     if (this.tour) {
       this.tour = null;
       this.callbacks.onTour(null, reason);
@@ -670,6 +782,7 @@ export class CinemaView {
     if (this.rig.isTransitioning) return 'transition';
     if (this.tour) return 'tour';
     if (this.exploring) return 'explore';
+    if (this.seatView) return 'seat';
     if (this.preset) return presetInfo(this.preset).space === 'inspection' ? 'inspection' : 'preset';
     return 'free';
   }
@@ -688,14 +801,79 @@ export class CinemaView {
 
   // ---------------------------------------------------------------- input and lifecycle
 
-  /** Dragging or scrolling on the canvas stops a playing tour; the camera stays where it is. */
-  private readonly handleCanvasInput = (): void => {
+  /**
+   * A press on the canvas: stops a playing tour (that press is then used up and never selects a
+   * seat), and starts tap tracking. The camera controls see the same event right after.
+   */
+  private readonly handlePointerDown = (event: PointerEvent): void => {
+    const stopsTour = Boolean(this.tour && !this.tour.steps);
+    if (stopsTour) this.stopTour('input');
+    this.taps.down(event.pointerId, event.pointerType, event.button, event.clientX, event.clientY, event.timeStamp, stopsTour);
+  };
+
+  private readonly handlePointerMove = (event: PointerEvent): void => {
+    this.taps.move(event.pointerId, event.clientX, event.clientY);
+    // Hover for mice and pens only, while no button is held and the camera is not moving by itself.
+    if (event.pointerType === 'touch' || event.buttons !== 0 || this.taps.pressing) return;
+    if (this.rig.isTransitioning || (this.tour && !this.tour.steps)) return;
+    const hit = this.pickAt(event.clientX, event.clientY);
+    const id = hit?.seat.id ?? null;
+    this.selection.setHovered(id);
+    this.host.canvas.style.cursor = id ? (this.selection.isReserved(id) ? 'not-allowed' : 'pointer') : '';
+  };
+
+  /** A press that ends as a tap selects (or deselects) the seat under it, if any. */
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    if (!this.taps.up(event.pointerId, event.clientX, event.clientY, event.timeStamp)) return;
+    const hit = this.pickAt(event.clientX, event.clientY);
+    if (hit) this.callbacks.onSeatTap(hit.seat.id);
+  };
+
+  /** Scrolling on the canvas stops a playing tour; it never selects. */
+  private readonly handleWheel = (): void => {
     if (this.tour && !this.tour.steps) this.stopTour('input');
   };
 
-  private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (this.tour && !this.tour.steps && isMovementKey(event) && !keyBelongsToFocus(event)) this.stopTour('input');
+  private readonly clearHover = (): void => {
+    this.selection.setHovered(null);
+    this.host.canvas.style.cursor = '';
   };
+
+  /** Blur, hidden tab or lost context: nothing in progress may turn into a tap. */
+  private readonly dropPointers = (): void => {
+    this.taps.cancelAll();
+    this.clearHover();
+  };
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented || keyBelongsToFocus(event)) return;
+    if (this.tour && !this.tour.steps && isMovementKey(event)) this.stopTour('input');
+  };
+
+  /**
+   * The seat under a client point, from what the camera shows: pointer → normalised device
+   * coordinates from the canvas' current bounding rect (so panels, resizes and pixel ratio do not
+   * matter), then proxies and visible occluders. Exploring limits the reach; the seat the camera sits
+   * in (seat view, F06 preset) is skipped so it cannot block everything around it.
+   */
+  private pickAt(clientX: number, clientY: number): SeatHit | null {
+    const rect = this.host.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const start = performance.now();
+    this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const { camera } = this.rig;
+    camera.updateMatrixWorld();
+    this.raycaster.setFromCamera(this.pointer, camera);
+    const occupied = this.seatView ?? (this.preset === 'seatEye' ? resolveEyeSeat(this.layout).id : null);
+    const hit = pickSeat(this.content.picker, this.raycaster.ray, {
+      occluders: visibleMeshes(this.content.architecture.group),
+      maxDistance: this.exploring ? this.layout.config.selection.exploreReach : Infinity,
+      ignoreSeat: occupied ? this.layout.seatById.get(occupied)!.index : -1,
+    });
+    this.pickTimes.push(performance.now() - start);
+    if (this.pickTimes.length > 50) this.pickTimes.shift();
+    return hit;
+  }
 
   private readonly handleControlsStart = (): void => {
     this.pristine = false;
@@ -708,6 +886,7 @@ export class CinemaView {
     if (!document.hidden) return;
     if (this.tour && !this.tour.steps) this.stopTour('hidden');
     this.input.clear();
+    this.dropPointers();
   };
 
   private handleResize(aspect: number): void {
@@ -732,6 +911,7 @@ export class CinemaView {
   private handleContextLost(): void {
     if (this.tour && !this.tour.steps) this.stopTour('context-lost');
     this.input.clear();
+    this.dropPointers();
   }
 
   /**
@@ -744,7 +924,7 @@ export class CinemaView {
    */
   private handleContextRestored(): void {
     const old = this.content;
-    this.scene.remove(old.architecture.group, old.seatInstances.group, old.lighting.group);
+    this.scene.remove(old.architecture.group, old.seatInstances.group, old.lighting.group, old.highlighter.markers);
     this.content = this.buildContent(this.quality);
     for (const part of this.hiddenParts) {
       this.content.architecture.toggleable[part].visible = false;
@@ -769,9 +949,14 @@ export class CinemaView {
     lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
     const environment = createInteriorEnvironment(renderer);
     const [seatModel, seatInstances] = this.buildSeats(seatMaterials, quality);
+    // Seat states come from the selection, which outlives every rebuild: paint them straight away.
+    const highlighter = new SeatHighlighter(this.layout.config.selection.maxSeats, this.layout.config.selection.highlight);
+    highlighter.attach(seatInstances, seatModel);
+    highlighter.apply(this.selection);
+    const picker = new SeatPicker(this.layout.seats, seatModel);
     this.scene.environment = environment.texture;
-    this.scene.add(architecture.group, seatInstances.group, lighting.group);
-    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances };
+    this.scene.add(architecture.group, seatInstances.group, lighting.group, highlighter.markers);
+    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances, highlighter, picker };
   }
 
   private disposeContent(content: SceneContent): void {
@@ -781,6 +966,7 @@ export class CinemaView {
     content.architecture.dispose();
     content.lighting.dispose();
     content.environment.dispose();
+    content.highlighter.dispose();
     disposeMaterials(content.materials);
     disposeMaterials(content.seatMaterials);
   }

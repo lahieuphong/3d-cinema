@@ -1,5 +1,7 @@
 import './styles.css';
-import { mountCinemaPage } from './cinema/page.ts';
+import { createAuditoriumLayout } from './cinema/layout.ts';
+import { mountCinemaPage, type CinemaSession } from './cinema/page.ts';
+import { DEMO_RESERVED_SEAT_IDS, SeatSelection } from './cinema/selection.ts';
 
 const CINEMA_PATH = '/cinema';
 
@@ -8,6 +10,11 @@ if (!host) throw new Error('Missing #app element.');
 const app = host;
 
 let unmount: (() => void) | undefined;
+// Seat selection lives for the whole visit: it survives opening the seat inspector and coming back.
+const session: CinemaSession = (() => {
+  const { seats, config } = createAuditoriumLayout();
+  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null };
+})();
 // Bumped on every render so a slow lazy import cannot mount over a newer page.
 let generation = 0;
 
@@ -35,7 +42,7 @@ async function render(): Promise<void> {
     if (current !== generation) return;
     unmount = mountSeatInspector(app, { onClose: () => navigate(CINEMA_PATH) });
   } else {
-    unmount = mountCinemaPage(app, { openInspector: () => navigate(`${CINEMA_PATH}?inspect=seat`) });
+    unmount = mountCinemaPage(app, { openInspector: () => navigate(`${CINEMA_PATH}?inspect=seat`), session });
   }
 }
 

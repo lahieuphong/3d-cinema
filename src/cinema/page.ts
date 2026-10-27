@@ -1,8 +1,11 @@
+import { BufferGeometry, Material, Object3D, Texture, WebGLRenderTarget } from 'three';
 import type { ToggleablePart } from './architecture.ts';
-import { DEFAULT_PRESET, describePreset, presetInfo, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
+import { DEFAULT_PRESET, describePreset, formatMetres, presetInfo, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
 import { createAuditoriumLayout, type Vec3 } from './layout.ts';
 import { loadQuality, saveQuality } from './quality.ts';
 import { prefersReducedMotion } from './renderHost.ts';
+import { createSeatPanel } from './seatPanel.ts';
+import type { SeatSelection } from './selection.ts';
 import { createCinemaUi, TOGGLEABLE_PARTS } from './ui.ts';
 import { validateLayout } from './validation.ts';
 import { CinemaView, WebGLUnavailableError, type TourEndReason } from './view.ts';
@@ -19,13 +22,26 @@ declare global {
       measureCost(): unknown;
       measureFrames(frames?: number): Promise<unknown>;
       measureTour(frames?: number): Promise<unknown>;
+      seatScreenPoint(seatId: string): { x: number; y: number; visible: boolean } | null;
+      seatLook(seatId: string): unknown;
+      measurePicking(samples?: number): unknown;
+      /** Constructors whose live instances the lifecycle check counts after garbage collection. */
+      types: Record<string, unknown>;
     };
   }
+}
+
+/** State that outlives one mount of the page (opening the inspector, hot updates of this module). */
+export interface CinemaSession {
+  selection: SeatSelection;
+  /** null until the user opens or closes the seat panel; then their choice. */
+  seatPanelOpen: boolean | null;
 }
 
 export interface CinemaPageOptions {
   /** Opens the seat inspector (a separate route; this page is unmounted first). */
   openInspector(): void;
+  session: CinemaSession;
 }
 
 const FREE_CAMERA_CAPTION = 'Camera tự do: kéo để xoay, cuộn hoặc chụm để thu phóng. Chọn một góc để quay lại.';
@@ -55,6 +71,9 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   let touring = false;
   let exploring = false;
   let view: CinemaView | null = null;
+  const { selection } = options.session;
+  // The view a seat view returns to: the preset it was opened from, else the overview.
+  let returnPreset: CameraPresetId | null = null;
   const touch = window.matchMedia?.('(any-pointer: coarse)').matches ?? false;
 
   const setPartVisible = (part: ToggleablePart, visible: boolean) => {
@@ -77,9 +96,15 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     ui.setExploring(active);
   };
 
+  const leaveSeatView = () => {
+    returnPreset = null;
+    ui.setReturn(null);
+  };
+
   const applyPreset = (id: CameraPresetId, animate: boolean) => {
     touring = false;
     setExploring(false);
+    leaveSeatView();
     for (const part of presetInfo(id).hides) {
       if (!visibility[part]) continue;
       setPartVisible(part, false);
@@ -111,6 +136,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         return;
       }
       setExploring(false);
+      leaveSeatView();
       leavePreset();
       touring = true;
       view.startTour();
@@ -125,6 +151,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         return;
       }
       touring = false;
+      leaveSeatView();
       leavePreset();
       setExploring(true);
       ui.setCaption('Đang tới điểm bắt đầu khám phá…');
@@ -140,7 +167,36 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       ui.setQuality(level);
     },
     onOpenInspector: () => options.openInspector(),
+    onSeatPanel: () => panel.setOpen(!panel.open, { returnFocus: ui.seatPanelButton }),
+    onReturn: () => applyPreset(returnPreset ?? DEFAULT_PRESET, true),
   });
+
+  const viewFromSeat = (id: string) => {
+    const seat = selection.seat(id);
+    if (!view || !seat) return;
+    // Seat to seat keeps the original way back.
+    returnPreset ??= activePreset ?? DEFAULT_PRESET;
+    touring = false;
+    setExploring(false);
+    leavePreset();
+    view.viewFromSeat(id);
+    ui.setCaption(
+      `Ghế ${seat.id}: hàng ${seat.rowLabel}, ghế số ${seat.seatNumber}, mắt cao ${formatMetres(layout.config.viewer.eyeHeight)} trên sàn hàng. Kéo để nhìn quanh.`,
+    );
+    ui.setReturn(`Trở về ${presetInfo(returnPreset).label.toLowerCase()}`);
+  };
+
+  const panel = createSeatPanel(ui.main, ui.root, layout, selection, {
+    onViewFromSeat: viewFromSeat,
+    onOpenChange: (open) => {
+      ui.setSeatPanelOpen(open);
+      options.session.seatPanelOpen = open;
+    },
+  });
+  // Open by default on wide screens; on phones it would take half the screen, so it waits for the button.
+  const panelOpen = options.session.seatPanelOpen ?? (window.matchMedia?.('(min-width: 1100px)').matches ?? false);
+  panel.setOpen(panelOpen, { returnFocus: ui.seatPanelButton });
+  ui.setSeatPanelOpen(panelOpen);
 
   // The user's stored choice, else a conservative default from device capabilities.
   const quality = loadQuality();
@@ -188,8 +244,21 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
             : 'W A S D hoặc phím mũi tên để đi, kéo để nhìn quanh.';
           ui.setCaption(`${relocatedTo ? `Đã đưa bạn tới ${relocatedTo.label}. ` : ''}Khám phá: ${how} Bấm Khám phá lần nữa để dừng.`);
         },
+        onSeatTap: (id) => {
+          // Same rules as the map: the seat becomes the active one, and its selection toggles.
+          selection.setActive(id);
+          const result = selection.toggle(id);
+          const max = selection.maxSelected;
+          ui.setNotice(
+            result.ok
+              ? `${result.selected ? 'Đã chọn' : 'Đã bỏ chọn'} ${id} · ${selection.selectedCount}/${max} ghế`
+              : result.reason === 'reserved'
+                ? `${id} đã được đặt — không chọn được`
+                : `Đã đủ ${max} ghế — bỏ bớt để chọn ${id}`,
+          );
+        },
       },
-      { quality: quality.level, reducedMotion: prefersReducedMotion(), touchStick: touch },
+      { quality: quality.level, reducedMotion: prefersReducedMotion(), touchStick: touch, selection },
     );
     applyPreset(DEFAULT_PRESET, false);
   } catch (error) {
@@ -197,6 +266,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     const message =
       error instanceof WebGLUnavailableError ? error.message : 'Đã xảy ra lỗi khi dựng cảnh. Xem chi tiết trong console.';
     ui.setStatus({ kind: 'error', message });
+    // Seat selection does not need the renderer: the map stays usable, only the seat views are gone.
+    ui.seatPanelButton.disabled = false;
+    panel.setOpen(true, { returnFocus: ui.seatPanelButton });
+    panel.setViewAvailable(false, 'Không xem được góc nhìn từ ghế: cảnh 3D không khả dụng trên trình duyệt này. Sơ đồ vẫn dùng được.');
   }
 
   if (import.meta.env.DEV) {
@@ -208,6 +281,14 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         exploring,
         qualitySource: quality.source,
         visibility: { ...visibility },
+        seats: {
+          selected: selection.selectedIds,
+          active: selection.active,
+          hovered: selection.hovered,
+          reserved: selection.reservedIds.length,
+          listeners: selection.listenerCount,
+          panelOpen: panel.open,
+        },
         canvasCount: document.querySelectorAll('canvas').length,
         view: view?.getDebugState() ?? null,
       }),
@@ -229,6 +310,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       measureCost: () => view?.measureCost() ?? null,
       measureFrames: async (frames) => (view ? view.measureFrames(frames) : null),
       measureTour: async (frames) => (view ? view.measureTour(frames) : null),
+      seatScreenPoint: (id) => view?.debugSeatScreenPoint(id) ?? null,
+      seatLook: (id) => view?.debugSeatLook(id) ?? null,
+      measurePicking: (samples) => view?.measurePicking(samples) ?? null,
+      types: { BufferGeometry, Material, Texture, Object3D, WebGLRenderTarget },
     };
   }
 
@@ -236,6 +321,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     motionQuery?.removeEventListener('change', onMotionChange);
     view?.dispose();
     view = null;
+    panel.dispose();
     ui.dispose();
     if (import.meta.env.DEV) delete window.__cinema;
   };

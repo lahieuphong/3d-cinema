@@ -22,6 +22,10 @@ export interface CinemaUiHandlers {
   onToggle(part: ToggleablePart, visible: boolean): void;
   onQuality(level: QualityLevel): void;
   onOpenInspector(): void;
+  /** Opens or closes the seat panel (map, details, selected list). */
+  onSeatPanel(): void;
+  /** Leaves a seat view for the view it was opened from. */
+  onReturn(): void;
 }
 
 export type UiStatus = ViewStatus | { kind: 'loading' };
@@ -37,6 +41,17 @@ export interface UiTourStatus {
 export interface CinemaUi {
   /** Element the 3D canvas (and the explore stick) is mounted into. */
   viewport: HTMLElement;
+  /** The row holding the viewport; the seat panel goes in here next to (or under) it. */
+  main: HTMLElement;
+  /** Root of the page, for page-wide live regions. */
+  root: HTMLElement;
+  /** The toolbar button that opens the seat panel (focus returns here when it closes). */
+  seatPanelButton: HTMLButtonElement;
+  setSeatPanelOpen(open: boolean): void;
+  /** A short visual notice over the viewport (screen readers get the panel's live region). */
+  setNotice(text: string): void;
+  /** Shows the "back" button over the viewport with this label, or hides it (null). */
+  setReturn(label: string | null): void;
   setActivePreset(id: CameraPresetId | null): void;
   setCameraState(state: string): void;
   setTour(status: UiTourStatus | null): void;
@@ -105,10 +120,15 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   exploreButton.dataset.action = 'explore';
   exploreButton.setAttribute('aria-pressed', 'false');
   exploreButton.addEventListener('click', () => handlers.onExplore(), { signal });
+  const seatPanelButton = button('Sơ đồ ghế');
+  seatPanelButton.dataset.action = 'seat-panel';
+  seatPanelButton.setAttribute('aria-expanded', 'false');
+  seatPanelButton.setAttribute('aria-controls', 'cinema-seat-panel');
+  seatPanelButton.addEventListener('click', () => handlers.onSeatPanel(), { signal });
   const resetButton = button('Về góc ban đầu');
   resetButton.dataset.action = 'reset';
   resetButton.addEventListener('click', () => handlers.onReset(), { signal });
-  modeGroup.append(tourButton, exploreButton, resetButton);
+  modeGroup.append(tourButton, exploreButton, seatPanelButton, resetButton);
 
   const qualityGroup = group('Chất lượng hiển thị');
   qualityGroup.classList.add('cinema-toolbar__group--quality');
@@ -180,11 +200,21 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   stopTour.addEventListener('click', () => handlers.onTour(), { signal });
   tourBar.append(tourText, previousStop, nextStop, stopTour);
 
+  const notice = el('p', 'cinema-notice');
+  notice.setAttribute('aria-hidden', 'true');
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  const returnButton = button('', 'cinema-button cinema-button--compact cinema-return');
+  returnButton.dataset.action = 'return';
+  returnButton.hidden = true;
+  returnButton.addEventListener('click', () => handlers.onReturn(), { signal });
+
   const status = el('div', 'cinema-status');
   status.setAttribute('role', 'status');
-  stage.append(viewport, caption, tourBar, status);
+  stage.append(viewport, caption, tourBar, returnButton, notice, status);
+  const main = el('div', 'cinema-main');
+  main.append(stage);
 
-  root.append(header, toolbar, inspectPanel, stage);
+  root.append(header, toolbar, inspectPanel, main);
   host.replaceChildren(root);
 
   const controls = [
@@ -199,11 +229,29 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     previousStop,
     nextStop,
     stopTour,
+    returnButton,
   ];
   let announced = '';
 
   const ui: CinemaUi = {
     viewport,
+    main,
+    root,
+    seatPanelButton,
+    setSeatPanelOpen(open) {
+      seatPanelButton.setAttribute('aria-expanded', String(open));
+      seatPanelButton.setAttribute('aria-pressed', String(open));
+      root.dataset.seatPanel = String(open);
+    },
+    setNotice(text) {
+      clearTimeout(noticeTimer);
+      notice.textContent = text;
+      if (text) noticeTimer = setTimeout(() => (notice.textContent = ''), 3500);
+    },
+    setReturn(label) {
+      returnButton.hidden = label === null;
+      returnButton.textContent = label ? `← ${label}` : '';
+    },
     setActivePreset(id) {
       root.dataset.preset = id ?? '';
       for (const [presetId, element] of presetButtons) element.setAttribute('aria-pressed', String(presetId === id));
@@ -213,8 +261,8 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     },
     setTour(next) {
       root.dataset.tour = next ? (next.steps ? 'steps' : 'playing') : 'off';
+      // Same label either way (pressed shows it is on), so the toolbar never re-wraps and resizes the view.
       tourButton.setAttribute('aria-pressed', String(next !== null));
-      tourButton.textContent = next ? 'Dừng tham quan' : 'Tham quan';
       tourBar.hidden = next === null;
       if (!next) {
         announced = '';
@@ -249,12 +297,14 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     },
     setStatus(next) {
       renderStatus(root, status, next);
+      // Without 3D every camera and display control goes; the seat panel (2D map) stays usable.
       if (next.kind === 'error') for (const control of controls) control.disabled = true;
     },
     setTransitioning(active) {
       root.dataset.transitioning = String(active);
     },
     dispose() {
+      clearTimeout(noticeTimer);
       listeners.abort();
       root.remove();
     },

@@ -39,6 +39,8 @@ body {
   display: grid;
   /* Header, toolbar, inspection tools (collapsible), viewport. */
   grid-template-rows: auto auto auto minmax(0, 1fr);
+  /* Never wider than the screen, whatever a child's minimum width (the seat map scrolls instead). */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
   width: 100%;
@@ -531,5 +533,375 @@ body {
   .cinema-stick {
     width: 104px;
     height: 104px;
+  }
+}
+
+/* ---------- Main area: viewport and seat panel ---------- */
+
+.cinema-main {
+  grid-row: 4;
+  display: flex;
+  gap: var(--gutter);
+  min-width: 0;
+  min-height: 0;
+  margin: 0 var(--gutter) var(--gutter);
+}
+
+.cinema-main > .cinema-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Seat notices and the way back from a seat view, over the viewport. */
+.cinema-notice {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  max-width: calc(100% - 20px);
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgb(10 11 14 / 0.82);
+  font-size: 0.82rem;
+  pointer-events: none;
+}
+
+.cinema-notice:empty {
+  display: none;
+}
+
+.cinema-return {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+
+.cinema-return[hidden] {
+  display: none;
+}
+
+/* ---------- Seat panel ---------- */
+
+.cinema-seats {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 392px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: 0.86rem;
+}
+
+.cinema-seats[hidden] {
+  display: none;
+}
+
+.cinema-seats__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cinema-seats__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.cinema-seats__demo {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 3px solid var(--accent);
+  background: rgb(216 182 90 / 0.08);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.cinema-seats__muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.cinema-seats__details {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 2px 12px;
+  margin: 0 0 8px;
+}
+
+.cinema-seats__details[hidden],
+.cinema-seats__actions[hidden],
+.cinema-seats__muted[hidden],
+.cinema-seats__limit[hidden] {
+  display: none;
+}
+
+.cinema-seats__details dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.cinema-seats__details dd {
+  margin: 0;
+  font-weight: 650;
+}
+
+.cinema-seats__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cinema-seats__count {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.cinema-seats__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.cinema-seats__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 10px;
+  border: 1px solid #8a6a2e;
+  border-radius: 999px;
+  background: rgb(216 182 90 / 0.14);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cinema-seats__remove {
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.cinema-seats__remove:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.cinema-seats__remove:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.cinema-seats__limit {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgb(255 138 128 / 0.12);
+  color: #ffb4ab;
+}
+
+/* ---------- 2D seat map ---------- */
+
+.cinema-map {
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  /* A horizontal scrollbar shows when the rows do not fit (narrow phones). */
+  scrollbar-gutter: stable;
+}
+
+.cinema-map__screen {
+  width: calc(11 * 26px + 10 * 3px);
+  margin: 0 auto 10px;
+  padding: 3px 0;
+  border-radius: 0 0 40% 40% / 0 0 10px 10px;
+  background: linear-gradient(#dfe5ec, #9aa3ad);
+  color: #1b1d22;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.cinema-map__grid {
+  display: grid;
+  gap: 3px;
+  /* Centred with auto margins, which (unlike justify-content: center) never push the first
+     column out of reach when the map is wider than its box and scrolls. */
+  width: max-content;
+  margin-inline: auto;
+}
+
+.cinema-map__row {
+  display: grid;
+  grid-template-columns: 16px repeat(11, 26px) 16px;
+  gap: 3px;
+  align-items: center;
+}
+
+.cinema-map__label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.cinema-seat {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #a33a4a;
+  border-radius: 6px 6px 3px 3px;
+  background: #5c1424;
+  color: #f1d9dd;
+  font: inherit;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.cinema-seat[data-status='selected'] {
+  border-color: #f3cd74;
+  background: #d8b65a;
+  color: #17130a;
+  font-weight: 700;
+}
+
+.cinema-seat[data-status='selected']::after {
+  content: '✓';
+  margin-left: 1px;
+  font-size: 0.6rem;
+}
+
+.cinema-seat[data-status='reserved'] {
+  border-color: #3a3d45;
+  background: #24262b;
+  color: #6f737c;
+  cursor: not-allowed;
+}
+
+.cinema-seat[data-status='reserved']::after {
+  content: '✕';
+  margin-left: 1px;
+  font-size: 0.6rem;
+}
+
+.cinema-seat[data-hover='true'] {
+  filter: brightness(1.25);
+}
+
+.cinema-seat[data-active='true'] {
+  box-shadow: 0 0 0 2px #0f1013, 0 0 0 4px #eaeef3;
+}
+
+.cinema-seat:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cinema-seat--swatch {
+  width: 18px;
+  height: 18px;
+  font-size: 0.55rem;
+  vertical-align: middle;
+  cursor: default;
+}
+
+.cinema-map__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+/* Touch screens: larger seats; the map scrolls sideways if the rows do not fit. */
+@media (pointer: coarse) {
+  .cinema-map__row {
+    grid-template-columns: 20px repeat(11, 36px) 20px;
+    gap: 4px;
+  }
+
+  .cinema-map__grid {
+    gap: 4px;
+  }
+
+  .cinema-seat {
+    width: 36px;
+    height: 36px;
+    font-size: 0.78rem;
+  }
+
+  .cinema-map__screen {
+    width: calc(11 * 36px + 10 * 4px);
+  }
+}
+
+.cinema-map__swipe {
+  display: none;
+}
+
+/* Narrow touch screens: say that the map scrolls sideways. */
+@media (pointer: coarse) and (max-width: 520px) {
+  .cinema-map__swipe {
+    display: block;
+    margin: 0 0 4px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+}
+
+/* Phones in portrait: the panel is a bottom sheet under the viewport (not modal). */
+@media (max-width: 700px) and (orientation: portrait) {
+  .cinema-main {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cinema-seats {
+    width: auto;
+    max-height: 48vh;
+    max-height: 48dvh;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Phones in landscape: a narrow side panel. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .cinema-seats {
+    width: 270px;
+    padding-right: calc(10px + env(safe-area-inset-right, 0px));
   }
 }
