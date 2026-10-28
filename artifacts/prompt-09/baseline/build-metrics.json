@@ -1,0 +1,364 @@
+{
+  "generatedAt": "2026-10-28T04:30:08.198Z",
+  "checks": [
+    {
+      "name": "bundle: dev fixtures are not in dist/",
+      "passed": true
+    },
+    {
+      "name": "routes: /cinema opens directly and after a refresh; no failed request",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "failed": []
+      }
+    },
+    {
+      "name": "routes: assets load from /assets/ with JS and CSS types",
+      "passed": true,
+      "detail": {
+        "/assets/index-DQe-JNBH.css": "text/css",
+        "/assets/index-DxnZCBXk.js": "text/javascript",
+        "/assets/view-BXJOnfVJ.js": "text/javascript",
+        "/assets/seats-DE3FvkGO.js": "text/javascript"
+      }
+    },
+    {
+      "name": "routes: the film is video/mp4 and answers range requests (206)",
+      "passed": true,
+      "detail": {
+        "status": 206,
+        "type": "video/mp4",
+        "range": "bytes 1000-1999/8347668",
+        "length": 1000
+      }
+    },
+    {
+      "name": "routes: ?film= is ignored in production (demo film shown, no dev hook, fixture not served as video)",
+      "passed": true,
+      "detail": {
+        "title": "Big Buck Bunny (trailer)",
+        "hook": false,
+        "fixture": [
+          200,
+          "text/html"
+        ]
+      }
+    },
+    {
+      "name": "routes: / lands on /cinema",
+      "passed": true,
+      "detail": "http://localhost:4317/cinema"
+    },
+    {
+      "name": "routes: the seat inspector loads in production",
+      "passed": true
+    },
+    {
+      "name": "routes: an unknown path shows the not-found page",
+      "passed": true
+    },
+    {
+      "name": "film: before Play only the poster and the start of the film are fetched (≤ 2 requests, ≤ 20 % of the file)",
+      "passed": true,
+      "detail": {
+        "requests": 1,
+        "bytes": 1441792,
+        "poster": 1
+      }
+    },
+    {
+      "name": "film: its duration is known before Play",
+      "passed": true,
+      "detail": "0:00 / 0:33"
+    },
+    {
+      "name": "film: watching to the end downloads the file about once (≤ 1,2 × its size)",
+      "passed": true,
+      "detail": {
+        "requests": 2,
+        "bytes": 8347668,
+        "poster": 1,
+        "fileBytes": 8347668
+      }
+    }
+  ],
+  "bundle": {
+    "files": [
+      {
+        "name": "index-DQe-JNBH.css",
+        "raw": 22598,
+        "gzip": 5010,
+        "brotli": 4440
+      },
+      {
+        "name": "index-DxnZCBXk.js",
+        "raw": 63981,
+        "gzip": 22509,
+        "brotli": 20043
+      },
+      {
+        "name": "seatInspector-gQ10ELE9.js",
+        "raw": 10249,
+        "gzip": 4221,
+        "brotli": 3780
+      },
+      {
+        "name": "seats-DE3FvkGO.js",
+        "raw": 884853,
+        "gzip": 265081,
+        "brotli": 207736
+      },
+      {
+        "name": "view-BXJOnfVJ.js",
+        "raw": 55113,
+        "gzip": 18633,
+        "brotli": 16810
+      }
+    ],
+    "entry": "index-DxnZCBXk.js",
+    "css": [
+      "index-DQe-JNBH.css"
+    ],
+    "html": {
+      "raw": 1772,
+      "gzip": 1022
+    },
+    "initial": {
+      "files": [
+        "index-DQe-JNBH.css",
+        "index-DxnZCBXk.js"
+      ],
+      "raw": 88351,
+      "gzip": 28541
+    },
+    "toScene": {
+      "raw": 1028317,
+      "gzip": 312255
+    },
+    "jsTotal": {
+      "raw": 1014196,
+      "gzip": 310444
+    },
+    "media": [
+      {
+        "name": "big-buck-bunny-trailer-720p.mp4",
+        "bytes": 8347668
+      },
+      {
+        "name": "big-buck-bunny-trailer-poster.jpg",
+        "bytes": 100075
+      }
+    ],
+    "fixturesInDist": false
+  },
+  "routes": {
+    "assets": {
+      "/assets/index-DQe-JNBH.css": "text/css",
+      "/assets/index-DxnZCBXk.js": "text/javascript",
+      "/assets/view-BXJOnfVJ.js": "text/javascript",
+      "/assets/seats-DE3FvkGO.js": "text/javascript"
+    },
+    "film": {
+      "status": 206,
+      "type": "video/mp4",
+      "range": "bytes 1000-1999/8347668",
+      "length": 1000
+    },
+    "fixture": {
+      "title": "Big Buck Bunny (trailer)",
+      "hook": false
+    }
+  },
+  "timing": [
+    {
+      "network": "máy cục bộ, không giới hạn",
+      "run": 0,
+      "usableMs": 38,
+      "sceneReadyMs": 285,
+      "bytesToUsable": 48498,
+      "bytesToReady": 415132,
+      "requestsToReady": [
+        "/assets/index-DxnZCBXk.js 22854",
+        "/assets/index-DQe-JNBH.css 5347",
+        "/assets/view-BXJOnfVJ.js 18975",
+        "/assets/seats-DE3FvkGO.js 266259",
+        "/media/big-buck-bunny-trailer-poster.jpg 100375"
+      ]
+    },
+    {
+      "network": "máy cục bộ, không giới hạn",
+      "run": 1,
+      "usableMs": 39,
+      "sceneReadyMs": 285,
+      "bytesToUsable": 48498,
+      "bytesToReady": 415132,
+      "requestsToReady": [
+        "/assets/index-DxnZCBXk.js 22854",
+        "/assets/index-DQe-JNBH.css 5347",
+        "/assets/view-BXJOnfVJ.js 18975",
+        "/assets/seats-DE3FvkGO.js 266259",
+        "/media/big-buck-bunny-trailer-poster.jpg 100375"
+      ]
+    },
+    {
+      "network": "máy cục bộ, không giới hạn",
+      "run": 2,
+      "usableMs": 37,
+      "sceneReadyMs": 285,
+      "bytesToUsable": 48498,
+      "bytesToReady": 415132,
+      "requestsToReady": [
+        "/assets/index-DxnZCBXk.js 22854",
+        "/assets/index-DQe-JNBH.css 5347",
+        "/assets/view-BXJOnfVJ.js 18975",
+        "/assets/seats-DE3FvkGO.js 266259",
+        "/media/big-buck-bunny-trailer-poster.jpg 100375"
+      ]
+    },
+    {
+      "network": "1,6 Mbit/s xuống, 0,75 Mbit/s lên, RTT 150 ms (giả lập CDP)",
+      "run": 0,
+      "usableMs": 501,
+      "sceneReadyMs": 2320,
+      "bytesToUsable": 29523,
+      "bytesToReady": 314757,
+      "requestsToReady": [
+        "/assets/index-DxnZCBXk.js 22854",
+        "/assets/index-DQe-JNBH.css 5347",
+        "/assets/view-BXJOnfVJ.js 18975",
+        "/assets/seats-DE3FvkGO.js 266259"
+      ]
+    },
+    {
+      "network": "1,6 Mbit/s xuống, 0,75 Mbit/s lên, RTT 150 ms (giả lập CDP)",
+      "run": 1,
+      "usableMs": 514,
+      "sceneReadyMs": 2356,
+      "bytesToUsable": 29523,
+      "bytesToReady": 314757,
+      "requestsToReady": [
+        "/assets/index-DxnZCBXk.js 22854",
+        "/assets/index-DQe-JNBH.css 5347",
+        "/assets/view-BXJOnfVJ.js 18975",
+        "/assets/seats-DE3FvkGO.js 266259"
+      ]
+    },
+    {
+      "network": "1,6 Mbit/s xuống, 0,75 Mbit/s lên, RTT 150 ms (giả lập CDP)",
+      "run": 2,
+      "usableMs": 507,
+      "sceneReadyMs": 2319,
+      "bytesToUsable": 29523,
+      "bytesToReady": 314757,
+      "requestsToReady": [
+        "/assets/index-DxnZCBXk.js 22854",
+        "/assets/index-DQe-JNBH.css 5347",
+        "/assets/view-BXJOnfVJ.js 18975",
+        "/assets/seats-DE3FvkGO.js 266259"
+      ]
+    }
+  ],
+  "network": {
+    "fileBytes": 8347668,
+    "durationShownBeforePlay": "0:00 / 0:33",
+    "beforePlay": {
+      "requests": 1,
+      "bytes": 1441792,
+      "poster": 1
+    },
+    "afterPlay4s": {
+      "requests": 2,
+      "bytes": 5242880,
+      "poster": 1
+    },
+    "afterEnd": {
+      "requests": 2,
+      "bytes": 8347668,
+      "poster": 1
+    },
+    "requests": {
+      "before": [
+        {
+          "path": "/media/big-buck-bunny-trailer-poster.jpg",
+          "range": null,
+          "status": 200,
+          "bytes": 100075,
+          "state": "finished"
+        },
+        {
+          "path": "/media/big-buck-bunny-trailer-720p.mp4",
+          "range": "bytes=0-",
+          "status": 206,
+          "bytes": 1441792,
+          "state": "cancelled"
+        }
+      ],
+      "playing": [
+        {
+          "path": "/media/big-buck-bunny-trailer-poster.jpg",
+          "range": null,
+          "status": 200,
+          "bytes": 100075,
+          "state": "finished"
+        },
+        {
+          "path": "/media/big-buck-bunny-trailer-720p.mp4",
+          "range": "bytes=0-",
+          "status": 206,
+          "bytes": 1441792,
+          "state": "cancelled"
+        },
+        {
+          "path": "/media/big-buck-bunny-trailer-720p.mp4",
+          "range": "bytes=1441792-",
+          "status": 206,
+          "bytes": 3801088,
+          "state": "open"
+        }
+      ],
+      "ended": [
+        {
+          "path": "/media/big-buck-bunny-trailer-poster.jpg",
+          "range": null,
+          "status": 200,
+          "bytes": 100075,
+          "state": "finished"
+        },
+        {
+          "path": "/media/big-buck-bunny-trailer-720p.mp4",
+          "range": "bytes=0-",
+          "status": 206,
+          "bytes": 1441792,
+          "state": "cancelled"
+        },
+        {
+          "path": "/media/big-buck-bunny-trailer-720p.mp4",
+          "range": "bytes=1441792-",
+          "status": 206,
+          "bytes": 6905876,
+          "state": "finished"
+        }
+      ]
+    }
+  },
+  "browser": {
+    "executablePath": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "version": "156.0.8078.47",
+    "server": "vite preview (gzip/brotli on)"
+  },
+  "summary": {
+    "máy cục bộ, không giới hạn": {
+      "usableMs": 38,
+      "sceneReadyMs": 285,
+      "bytesToUsable": 48498,
+      "bytesToReady": 415132
+    },
+    "1,6 Mbit/s xuống, 0,75 Mbit/s lên, RTT 150 ms (giả lập CDP)": {
+      "usableMs": 507,
+      "sceneReadyMs": 2320,
+      "bytesToUsable": 29523,
+      "bytesToReady": 314757
+    }
+  }
+}

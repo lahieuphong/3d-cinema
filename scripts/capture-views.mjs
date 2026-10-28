@@ -13,8 +13,10 @@
 // hidden tab, inspector, quality, context loss, phones, 2D fallback, lifecycle, render rate), a
 // simulated WebGL failure, and the page's three tasks (Khám phá, Chọn ghế, Xem phim): layouts and
 // measured canvas share per viewport, the seat sheet and its full-screen dialog, focus and keyboard,
-// zoom 200 %, loading and failure states, end-to-end flows, then writes screenshots, videos and
-// report.json to artifacts/<CAPTURE_DIR or prompt-08>/.
+// zoom 200 %, loading and failure states, end-to-end flows; and the landing page at / with the way
+// in and out of /cinema (layouts, what it downloads, intent preloading, history, new tabs, keyboard,
+// slow or failing code, many visits, reduced motion), then writes screenshots, videos and
+// report.json to artifacts/<CAPTURE_DIR or prompt-09>/.
 //
 // Controls are reached the way a visitor would: switching to their task, opening "Cài đặt" (with
 // its inspection tools), "Góc khác" or the seat panel first (see `reveal`).
@@ -36,7 +38,7 @@ import { chromium } from 'playwright-core';
 import { createServer, normalizePath } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-08');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-09');
 
 const BROWSER_CANDIDATES = [
   process.env.BROWSER_PATH,
@@ -319,14 +321,15 @@ async function main() {
   const only = new Set((process.env.CAPTURE_ONLY ?? '').split(',').filter(Boolean));
   const run = (section) => only.size === 0 || only.has(section);
   try {
-    // "/" lands on /cinema.
+    // "/" is the landing page now (Prompt 07–08 redirected it to /cinema).
     if (run('viewports')) {
       const context = await browser.newContext();
       const page = await context.newPage();
-      attachConsole(page, 'root-redirect');
+      attachConsole(page, 'root');
       await page.goto(base);
-      await waitForStatus(page);
-      check('"/" redirects to /cinema', new URL(page.url()).pathname === '/cinema', page.url());
+      await waitForLanding(page);
+      const root = await landingState(page);
+      check('"/" shows the landing page (no redirect, no canvas, a real link to /cinema)', root.path === '/' && root.landing && root.canvases === 0 && (await page.getAttribute('.hero a[data-cta]', 'href')) === '/cinema', root);
       await context.close();
     }
 
@@ -450,6 +453,9 @@ async function main() {
       ['ui-states', () => uiStates(browser, base)],
       ['ui-flows', () => uiFlows(browser, base)],
       ['ui-zoom', () => uiZoom(browser, base)],
+      ['landing-layouts', () => landingLayouts(browser, base)],
+      ['landing-network', () => landingNetwork(browser, base)],
+      ['landing-flows', () => landingFlows(browser, base)],
       ['videos', () => videos(browser, base)],
       ['comparisons', async () => {
         await comparisons(browser);
@@ -469,6 +475,7 @@ async function main() {
     entry.expected =
       entry.page === 'webgl-disabled' ||
       (entry.page === 'ui-3d-download-fails' && /Could not load the 3D part|Failed to fetch dynamically imported module|Failed to load resource/.test(entry.text)) ||
+      (entry.page === 'landing-code-fails' && /Could not load the page|Failed to fetch dynamically imported module|Failed to load resource/.test(entry.text)) ||
       (entry.type === 'warning' && KNOWN_DRIVER_WARNING.test(entry.text));
   }
   const unexpected = report.console.filter((entry) => !entry.expected);
@@ -2418,7 +2425,7 @@ async function comparisons(browser) {
     'mobile-4-seat-eye',
   ]) {
     const before = path.join(baselineDir, `${file}.png`);
-    if (existsSync(before)) pairs.push([`compare-p07-p08-${file}`, [['Prompt 07 (baseline)', before], ['Prompt 08', path.join(outDir, `${file}.png`)]]]);
+    if (existsSync(before)) pairs.push([`compare-p08-p09-${file}`, [['Prompt 08 (baseline)', before], ['Prompt 09', path.join(outDir, `${file}.png`)]]]);
   }
   for (const name of ['overview', 'seat-eye', 'seat-leather', 'graphite-grazing']) {
     pairs.push([
@@ -3571,12 +3578,12 @@ async function uiFocus(browser, base) {
     await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
     await page.evaluate(() => document.activeElement?.blur());
     const order = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 13; i++) {
       await page.keyboard.press('Tab');
       order.push(await focusedName(page));
     }
     report.ui.focus.exploreOrder = order;
-    check('keyboard: Tab goes tasks → settings → the Khám phá controls; nothing hidden is reached', order.slice(0, 4).join() === 'task:explore,task:seats,task:watch,settings' && order.includes('overview') && order.includes('tour') && order.includes('explore') && !order.some((n) => n.startsWith('seat:') || n === 'media-primary'), order);
+    check('keyboard: Tab goes brand link (home) → tasks → settings → the Khám phá controls; nothing hidden is reached', order.slice(0, 5).join() === 'home,task:explore,task:seats,task:watch,settings' && order.includes('overview') && order.includes('tour') && order.includes('explore') && !order.some((n) => n.startsWith('seat:') || n === 'media-primary'), order);
     await page.focus('button[data-task="explore"]');
     await screenshot(page, 'focus-1-task-button');
     const outline = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
@@ -3658,7 +3665,7 @@ async function uiFocus(browser, base) {
     await page.click('button[data-task="explore"]');
     await page.waitForTimeout(600);
     const after = await state(page);
-    check('keyboard: walking with W held, switching task stops the walker; nothing moves afterwards', !after.exploring && after.view.owner !== 'driver' && JSON.stringify(after.view.camera.position) === JSON.stringify(left), { left, after: after.view.camera.position });
+    check('keyboard: walking with W held, switching task stops the walker; nothing moves afterwards', !after.exploring && after.view.owner !== 'driver' && distance(after.view.camera.position, left) < 1e-6, { left, after: after.view.camera.position });
     await context.close();
   }
   {
@@ -3753,9 +3760,11 @@ async function uiStates(browser, base) {
   // The 3D part fails to download: the page says so, keeps the map and the flat film, offers "Thử lại".
   {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    // Since Prompt 09 the app asks for the 3D part twice at once (an early start and the page's own
+    // import); a single failed request is simply retried by the second. Both fail here.
     let failed = 0;
     await context.route(/\/src\/cinema\/view\.ts/, async (route) => {
-      if (failed++ === 0) await route.abort('connectionreset');
+      if (failed++ < 2) await route.abort('connectionreset');
       else await route.continue();
     });
     const page = await context.newPage();
@@ -4168,6 +4177,533 @@ async function uiComparisons(browser) {
     }
   }
   await context.close();
+}
+
+// ---------------------------------------------------------------- Prompt 09: landing page and the way in
+
+const LANDING_VIEWPORTS = [
+  { name: 'desktop-1440x900', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+  { name: 'laptop-1280x720', viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+  { name: 'tablet-portrait-820x1180', viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true },
+  { name: 'tablet-landscape-1180x820', viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true },
+  { name: 'mobile-390x844', viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  { name: 'mobile-narrow-360x640', viewport: { width: 360, height: 640 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  { name: 'mobile-landscape-844x390', viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  // Zoom 200 % of the two desktop windows: what the browser lays out.
+  { name: 'zoom200-1440x900', viewport: { width: 720, height: 450 }, deviceScaleFactor: 2 },
+  { name: 'zoom200-1280x720', viewport: { width: 640, height: 360 }, deviceScaleFactor: 2 },
+];
+
+/** Counts WebGL contexts, animation frames, video elements and media requests from the first script on. */
+const LANDING_PROBE = () => {
+  window.__probe = { webgl: 0, frames: 0, videos: 0 };
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+    if (/webgl/.test(type)) window.__probe.webgl++;
+    return getContext.call(this, type, ...args);
+  };
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (callback) => raf((t) => {
+    window.__probe.frames++;
+    callback(t);
+  });
+  const create = Document.prototype.createElement;
+  Document.prototype.createElement = function (tag, ...args) {
+    if (String(tag).toLowerCase() === 'video') window.__probe.videos++;
+    return create.call(this, tag, ...args);
+  };
+};
+
+const probe = (page) => page.evaluate(() => ({ ...window.__probe }));
+const landingState = (page) =>
+  page.evaluate(() => ({
+    path: location.pathname + location.search,
+    route: document.documentElement.dataset.route,
+    title: document.title,
+    canvases: document.querySelectorAll('canvas').length,
+    cinema: document.querySelector('.cinema-app')?.dataset.status ?? null,
+    landing: Boolean(document.querySelector('[data-landing]')),
+    history: history.length,
+    focus: document.activeElement === document.body ? 'body' : `${document.activeElement?.tagName.toLowerCase()}${document.activeElement?.id ? `#${document.activeElement.id}` : ''}${document.activeElement?.classList.contains('cinema-title') ? '.cinema-title' : ''}`,
+  }));
+const waitForCinema = (page, timeout = 30_000) => page.waitForFunction(() => document.querySelector('.cinema-app')?.dataset.status === 'ready', null, { timeout });
+const waitForLanding = (page) => page.waitForFunction(() => document.documentElement.dataset.route === 'landing' && Boolean(document.querySelector('[data-landing] .hero')), null, { timeout: 10_000 });
+
+// Every size: the hero's words and the way in on the first screen, nothing overflowing, words clear
+// of the screen in the picture, a short header, the right picture (16:9 or portrait).
+async function landingLayouts(browser, base) {
+  report.landing ??= {};
+  report.landing.layouts = {};
+  for (const { name, ...options } of LANDING_VIEWPORTS) {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    attachConsole(page, `landing-${name}`);
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.waitForFunction(() => document.querySelector('.hero__image')?.complete && document.querySelector('.hero__image').naturalWidth > 0);
+    await page.waitForTimeout(900);
+    const layout = await page.evaluate(() => {
+      const rect = (s) => {
+        const r = document.querySelector(s)?.getBoundingClientRect();
+        return r ? { x: Math.round(r.x), y: Math.round(r.y), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) } : null;
+      };
+      const image = document.querySelector('.hero__image');
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        overflowX: document.documentElement.scrollWidth - innerWidth,
+        header: rect('.site-header'),
+        cta: rect('.hero a[data-cta]'),
+        headerCta: rect('.site-header a[data-cta]'),
+        title: rect('.hero h1'),
+        content: rect('.hero__content'),
+        media: rect('.hero__media'),
+        picture: image.currentSrc.replace(location.origin, ''),
+        // Where the words' lines actually end (not their boxes), and where the screen is drawn: the
+        // render is drawn with object-fit: cover at the image's object-position; in both renders the
+        // screen spans these fractions of the picture.
+        text: (() => {
+          let right = 0;
+          let top = Infinity;
+          for (const s of ['.hero h1', '.hero__lead', '.hero .eyebrow']) {
+            const range = document.createRange();
+            range.selectNodeContents(document.querySelector(s));
+            for (const r of range.getClientRects()) {
+              right = Math.max(right, r.right);
+              top = Math.min(top, r.top);
+            }
+          }
+          return { right: Math.round(right), top: Math.round(top) };
+        })(),
+        screenInPicture: (() => {
+          const box = image.getBoundingClientRect();
+          const scale = Math.max(box.width / image.naturalWidth, box.height / image.naturalHeight);
+          const w = image.naturalWidth * scale;
+          const h = image.naturalHeight * scale;
+          const [px, py] = getComputedStyle(image).objectPosition.split(' ').map((v) => parseFloat(v) / 100);
+          const x = box.x + (box.width - w) * px;
+          const y = box.y + (box.height - h) * py;
+          const portraitRender = image.naturalHeight > image.naturalWidth;
+          const frac = portraitRender ? { left: 0.2, right: 0.9, top: 0.26, bottom: 0.54 } : { left: 0.47, right: 0.83, top: 0.2, bottom: 0.57 };
+          return { left: Math.round(x + frac.left * w), right: Math.round(x + frac.right * w), top: Math.round(y + frac.top * h), bottom: Math.round(y + frac.bottom * h) };
+        })(),
+        h1Size: getComputedStyle(document.querySelector('.hero h1')).fontSize,
+        smallTargets: [...document.querySelectorAll('.landing a, .landing button')]
+          .filter((e) => e.getClientRects().length > 0 && !e.classList.contains('skip-link') && !e.closest('.site-footer') && !e.closest('.section__lead'))
+          .map((e) => ({ text: e.textContent.trim().slice(0, 24), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height) }))
+          .filter((t) => t.h < 43.5),
+        headings: [...document.querySelectorAll('.landing h1, .landing h2, .landing h3')].map((h) => h.tagName),
+      };
+    });
+    const portrait = layout.viewport.width / layout.viewport.height <= 0.8;
+    // Landscape layouts keep the words in the left part; the screen in the picture is right of centre.
+    // The words never cover the screen in the picture: beside it on wide layouts, under it in portrait.
+    const s = layout.screenInPicture;
+    const clear = portrait ? layout.text.top >= s.bottom : layout.text.right <= s.left;
+    report.landing.layouts[name] = layout;
+    check(`landing ${name}: "Bước vào rạp" on the first screen, no horizontal overflow, header ≤ 80 px`, layout.cta.bottom <= layout.viewport.height && layout.overflowX <= 0 && layout.header.height <= 80, { cta: layout.cta, header: layout.header.height, overflowX: layout.overflowX });
+    check(`landing ${name}: the words stay clear of the screen in the picture; the ${portrait ? 'portrait' : '16:9'} render is used`, clear && (portrait ? /hero-portrait/.test(layout.picture) : /\/hero-\d+/.test(layout.picture)), { text: layout.text, screen: layout.screenInPicture, picture: layout.picture });
+    check(`landing ${name}: main links and buttons are at least 44 px tall; headings h1 → h2 → h3`, layout.smallTargets.length === 0 && layout.headings[0] === 'H1' && layout.headings.filter((h) => h === 'H1').length === 1, { small: layout.smallTargets, headings: layout.headings.join(' ') });
+    await screenshot(page, `landing-${name}-1-top`);
+    if (!name.startsWith('zoom')) await screenshot(page, `landing-${name}-2-page`, { fullPage: true });
+    await context.close();
+  }
+  // The pictures on their own (desktop render and portrait render).
+  {
+    const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+    const page = await context.newPage();
+    for (const [file, src] of [
+      ['landing-hero-render-16x9', '/brand/hero-1920.webp'],
+      ['landing-hero-render-portrait', '/brand/hero-portrait-1080.webp'],
+      ['landing-share-card', '/brand/share-1200.jpg'],
+    ]) {
+      await page.setContent(`<body style="margin:0;background:#14110f"><img src="${base.replace(/\/$/, '')}${src}" style="display:block;max-width:1200px;max-height:900px"></body>`);
+      await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
+      await screenshot(page, file, { fullPage: true });
+    }
+    await context.close();
+  }
+}
+
+// What the landing page costs before anyone asks for more, and what intent fetches (development
+// server: modules arrive one by one; byte counts are in measure-build.mjs on the production build).
+async function landingNetwork(browser, base) {
+  report.landing ??= {};
+  report.landing.network = {};
+  const run = async (label, { saveData = false, hover = false } = {}) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await context.addInitScript(LANDING_PROBE);
+    if (saveData) await context.addInitScript(() => Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true }));
+    const page = await context.newPage();
+    attachConsole(page, `landing-network-${label}`);
+    const requests = [];
+    page.on('request', (r) => requests.push(new URL(r.url()).pathname));
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.waitForTimeout(1500);
+    const idle = await probe(page);
+    await page.waitForTimeout(2000);
+    const idleAfter = await probe(page);
+    const before = [...requests];
+    if (hover) {
+      await page.hover('.hero a[data-cta]');
+      await page.waitForTimeout(2500);
+    }
+    const after = [...requests];
+    const result = {
+      before: { cinemaCode: before.filter((p) => p.startsWith('/src/cinema/')).length, three: before.filter((p) => /three/.test(p)).length, media: before.filter((p) => p.startsWith('/media/')).length, brand: before.filter((p) => p.startsWith('/brand/')) },
+      idle: { framesIn2s: idleAfter.frames - idle.frames, webgl: idleAfter.webgl, videos: idleAfter.videos },
+      after: { page: after.includes('/src/cinema/page.ts'), view: after.includes('/src/cinema/view.ts'), three: after.some((p) => /three/.test(p)), media: after.filter((p) => p.startsWith('/media/')).length, canvases: await page.evaluate(() => document.querySelectorAll('canvas').length), webgl: (await probe(page)).webgl, videos: (await probe(page)).videos },
+    };
+    report.landing.network[label] = result;
+    await context.close();
+    return result;
+  };
+  const cold = await run('opened');
+  // The step pictures are loading="lazy"; Chrome still fetches lazy images within a distance of the
+  // viewport, so they may come early. The film and the auditorium's code never do.
+  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy step pictures', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /hero/.test(p)).length === 1 && cold.before.brand.every((p) => /hero|step-/.test(p)), cold.before);
+  check('landing idle: no WebGL context, no video element, no animation frames once the entrance animation is over', cold.idle.webgl === 0 && cold.idle.videos === 0 && cold.idle.framesIn2s === 0, cold.idle);
+  const hover = await run('hover', { hover: true });
+  check('landing intent: hovering "Bước vào rạp" fetches the auditorium code (page and 3D part) but builds nothing — no canvas, no WebGL, no video, no film request', hover.after.page && hover.after.view && hover.after.three && hover.after.canvases === 0 && hover.after.webgl === 0 && hover.after.videos === 0 && hover.after.media === 0, hover.after);
+  const saving = await run('save-data', { saveData: true, hover: true });
+  check('landing intent with Save-Data: hovering fetches nothing', !saving.after.page && !saving.after.view && !saving.after.three, saving.after);
+}
+
+// The way in and out: clicks, keys, history, new tabs, slow or failing downloads, going back too
+// early, many visits, leaving while the film plays, no WebGL, reduced motion, the hero's motion.
+async function landingFlows(browser, base) {
+  report.landing ??= {};
+  report.landing.flows = {};
+  const open = async (label, options = {}, init = null) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, ...options });
+    await context.addInitScript(LANDING_PROBE);
+    if (init) await context.addInitScript(init);
+    const page = await context.newPage();
+    attachConsole(page, label);
+    return { context, page };
+  };
+
+  // Click, history, refresh.
+  {
+    const { context, page } = await open('landing-click');
+    await page.goto(base);
+    await waitForLanding(page);
+    const start = await landingState(page);
+    await page.click('.hero a[data-cta]');
+    const right = await landingState(page);
+    const clickedAt = Date.now();
+    await waitForCinema(page);
+    const readyMs = Date.now() - clickedAt;
+    const inside = await landingState(page);
+    check('way in: one click → /cinema at once (opening screen right away, one history entry), the room ready, focus on the page heading', right.path === '/cinema' && right.route === 'cinema' && inside.cinema === 'ready' && inside.canvases === 1 && inside.history === start.history + 1 && inside.focus === 'h1.cinema-title' && inside.title.includes('Phòng chiếu 3D'), { start, right, inside, readyMs });
+    report.landing.flows.clickToReadyMs = readyMs;
+    await page.click('a[data-action="home"]');
+    await waitForLanding(page);
+    const home = await landingState(page);
+    check('way out: the brand link in the auditorium leads home (no canvas left, focus on the main content, one more history entry)', home.path === '/' && home.canvases === 0 && home.focus === 'main#noi-dung' && home.history === inside.history + 1 && home.title.startsWith('Tân Phong Cinema'), home);
+    await page.goBack();
+    await waitForCinema(page);
+    const back = await landingState(page);
+    await page.goBack();
+    await waitForLanding(page);
+    const back2 = await landingState(page);
+    await page.goForward();
+    await waitForCinema(page);
+    const forward = await landingState(page);
+    check('history: Back and Forward move between the landing page and the auditorium, one canvas at most', back.path === '/cinema' && back.canvases === 1 && back2.path === '/' && back2.canvases === 0 && forward.path === '/cinema' && forward.canvases === 1, { back, back2, forward });
+    await page.reload();
+    await waitForCinema(page);
+    const reloadCinema = await landingState(page);
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.reload();
+    await waitForLanding(page);
+    const reloadLanding = await landingState(page);
+    check('refresh: /cinema stays in the auditorium, / stays on the landing page', reloadCinema.path === '/cinema' && reloadCinema.cinema === 'ready' && reloadLanding.path === '/' && reloadLanding.landing, { reloadCinema, reloadLanding });
+    // In-page links do not re-render the page.
+    await page.evaluate(() => (window.__landingMarker = document.querySelector('[data-landing]')));
+    await page.click('.hero a[href="#cach-su-dung"]');
+    await page.waitForTimeout(900);
+    const anchored = await page.evaluate(() => ({ hash: location.hash, top: Math.round(document.querySelector('#cach-su-dung').getBoundingClientRect().top), same: window.__landingMarker === document.querySelector('[data-landing]') }));
+    await page.goBack();
+    await page.waitForTimeout(600);
+    const anchorBack = await page.evaluate(() => ({ hash: location.hash, same: window.__landingMarker === document.querySelector('[data-landing]') }));
+    check('in-page links: "Cách trải nghiệm" scrolls to the guide; Back returns without rebuilding the page', anchored.hash === '#cach-su-dung' && Math.abs(anchored.top) < 40 && anchored.same && anchorBack.hash === '' && anchorBack.same, { anchored, anchorBack });
+    await context.close();
+  }
+
+  // Several fast clicks, then a new tab with Ctrl+click and a middle click.
+  {
+    const { context, page } = await open('landing-multi-click');
+    await page.goto(base);
+    await waitForLanding(page);
+    const start = await landingState(page);
+    await page.evaluate(() => {
+      const link = document.querySelector('.hero a[data-cta]');
+      for (let i = 0; i < 4; i++) link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await waitForCinema(page);
+    await page.waitForTimeout(800);
+    const after = await landingState(page);
+    check('many clicks on "Bước vào rạp": one navigation, one history entry, one canvas', after.history === start.history + 1 && after.canvases === 1, { start: start.history, after });
+    await page.goto(base);
+    await waitForLanding(page);
+    const [tab] = await Promise.all([context.waitForEvent('page'), page.click('.hero a[data-cta]', { modifiers: ['Control'] })]);
+    await tab.waitForLoadState();
+    await waitForCinema(tab);
+    const original = await landingState(page);
+    const [tab2] = await Promise.all([context.waitForEvent('page'), page.click('.site-header a[data-cta]', { button: 'middle' })]);
+    await tab2.waitForLoadState();
+    check('new tab: Ctrl+click and middle click open /cinema in a new tab (its own document, ready); this tab stays on the landing page', new URL(tab.url()).pathname === '/cinema' && new URL(tab2.url()).pathname === '/cinema' && original.path === '/' && original.landing && original.canvases === 0, { tab: tab.url(), tab2: tab2.url(), original });
+    await context.close();
+  }
+
+  // Keyboard: skip link, into the room and back, focus visible.
+  {
+    const { context, page } = await open('landing-keyboard');
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.keyboard.press('Tab');
+    const skip = await page.evaluate(() => ({ text: document.activeElement?.textContent, visible: document.activeElement?.getBoundingClientRect().top >= 0 }));
+    await screenshot(page, 'landing-focus-1-skip-link');
+    await page.keyboard.press('Enter');
+    const skipped = await landingState(page);
+    const order = [];
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press('Tab');
+      order.push(await page.evaluate(() => document.activeElement?.textContent.trim().slice(0, 24) || document.activeElement?.getAttribute('aria-label')));
+    }
+    await page.focus('.hero a[data-cta]');
+    await screenshot(page, 'landing-focus-2-cta');
+    const outline = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+    await page.keyboard.press('Enter');
+    await waitForCinema(page);
+    const inside = await landingState(page);
+    await page.keyboard.press('Tab');
+    const firstInside = await page.evaluate(() => document.activeElement?.dataset.action ?? document.activeElement?.tagName);
+    await page.keyboard.press('Enter');
+    await waitForLanding(page);
+    const back = await landingState(page);
+    check('keyboard: Tab reaches "Bỏ qua, tới nội dung chính" first; Enter jumps to the content; the hero links come next; Enter on "Bước vào rạp" enters; the brand link is the first stop inside and Enter leads home', /Bỏ qua/.test(skip.text) && skip.visible && skipped.focus === 'main#noi-dung' && order.includes('Bước vào rạp') && outline !== 'none' && inside.cinema === 'ready' && firstInside === 'home' && back.path === '/' && back.focus === 'main#noi-dung', { skip, order, inside: inside.focus, firstInside, back: back.focus });
+    await context.close();
+  }
+
+  // Slow code, failing code and retry, going back before the code arrives.
+  {
+    const { context, page } = await open('landing-slow');
+    let delay = 2500;
+    await context.route(/\/src\/cinema\/page\.ts/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      await route.continue();
+    });
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.click('.hero a[data-cta]');
+    await page.waitForTimeout(400);
+    const opening = await page.evaluate(() => ({ text: document.querySelector('.route-status')?.textContent ?? '', home: Boolean(document.querySelector('.route-status a[href="/"]')), role: document.querySelector('.route-status [role]')?.getAttribute('role') }));
+    await screenshot(page, 'landing-way-in-1-opening');
+    await waitForCinema(page);
+    check('slow network: the opening screen says what is happening at once ("Đang mở phòng chiếu…", a way home), then the room', /Đang mở phòng chiếu/.test(opening.text) && opening.home && opening.role === 'status', opening);
+    await context.close();
+  }
+  {
+    const { context, page } = await open('landing-code-fails');
+    let failures = 0;
+    await context.route(/\/src\/cinema\/page\.ts/, async (route) => {
+      if (failures++ === 0) await route.abort('connectionreset');
+      else await route.continue();
+    });
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.click('.hero a[data-cta]');
+    await page.waitForSelector('button[data-action="retry-page"]', { timeout: 10_000 });
+    const error = await page.evaluate(() => ({ text: document.querySelector('.route-status')?.textContent ?? '', spinner: Boolean(document.querySelector('.route-status__spinner')), focus: document.activeElement?.tagName }));
+    await screenshot(page, 'landing-way-in-2-failed');
+    await page.click('button[data-action="retry-page"]');
+    await waitForCinema(page);
+    const after = await landingState(page);
+    check('code fails to download: an error (no spinner) with "Thử lại" and "Về trang chủ"; "Thử lại" fetches it again and the room opens', /Không mở được phòng chiếu/.test(error.text) && !error.spinner && error.focus === 'H1' && after.cinema === 'ready' && after.canvases === 1, { error, after });
+    await context.close();
+  }
+  {
+    const { context, page } = await open('landing-back-early');
+    await context.route(/\/src\/cinema\/page\.ts/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await route.continue();
+    });
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.click('.hero a[data-cta]');
+    await page.waitForTimeout(300);
+    await page.goBack();
+    await waitForLanding(page);
+    await page.waitForTimeout(3800);
+    const stayed = await landingState(page);
+    const probeEarly = await probe(page);
+    await page.click('.hero a[data-cta]');
+    await waitForCinema(page);
+    const after = await landingState(page);
+    check('Back before the code arrives: the landing page stays (the late code mounts nothing, no WebGL), "Bước vào rạp" again opens one room', stayed.path === '/' && stayed.landing && stayed.canvases === 0 && !stayed.cinema && probeEarly.webgl === 0 && after.cinema === 'ready' && after.canvases === 1, { stayed, probeEarly, after });
+    await context.close();
+  }
+
+  // Many visits; the seat choice and the quality survive; leaving while the film plays.
+  {
+    const { context, page } = await open('landing-cycles');
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('HeapProfiler.enable');
+    await page.goto(`${base}cinema`);
+    await waitForCinema(page);
+    await openSeatPanel(page);
+    await page.click('button[data-seat="F05"]');
+    await setQuality(page, 'economy');
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(1500);
+    const playingAt = (await film(page)).snapshot.currentTime;
+    // Leave while it plays.
+    await page.click('a[data-action="home"]');
+    await waitForLanding(page);
+    await page.waitForTimeout(400);
+    const counts = async () => {
+      await cdp.send('HeapProfiler.collectGarbage');
+      await cdp.send('HeapProfiler.collectGarbage');
+      const objects = {};
+      for (const [name, expression] of [
+        ['HTMLVideoElement', 'HTMLVideoElement.prototype'],
+        ['HTMLCanvasElement', 'HTMLCanvasElement.prototype'],
+        ['WebGL2RenderingContext', 'WebGL2RenderingContext.prototype'],
+      ]) {
+        const { result: proto } = await cdp.send('Runtime.evaluate', { expression });
+        const { objects: list } = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.objectId });
+        const { result } = await cdp.send('Runtime.callFunctionOn', { objectId: list.objectId, functionDeclaration: 'function () { return this.length; }', returnByValue: true });
+        objects[name] = result.value;
+        await cdp.send('Runtime.releaseObject', { objectId: list.objectId });
+      }
+      const listeners = {};
+      for (const target of ['window', 'document']) {
+        const { result } = await cdp.send('Runtime.evaluate', { expression: target });
+        listeners[target] = (await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId })).listeners.length;
+      }
+      const heap = await cdp.send('Runtime.getHeapUsage');
+      return { objects, listeners, heapMiB: Number((heap.usedSize / 2 ** 20).toFixed(2)) };
+    };
+    const left = await counts();
+    const sound = await page.evaluate(() => [...document.querySelectorAll('video, audio')].filter((m) => !m.paused).length);
+    check('leaving while the film plays: back on the landing page no video element is alive (after GC), nothing plays, no canvas', left.objects.HTMLVideoElement === 0 && sound === 0 && (await landingState(page)).canvases === 0, left);
+    const cycles = [];
+    for (let i = 0; i < 6; i++) {
+      await page.click('.hero a[data-cta]');
+      await waitForCinema(page);
+      await page.waitForTimeout(300);
+      await page.click('a[data-action="home"]');
+      await waitForLanding(page);
+      if (i === 0 || i === 5) cycles.push(await counts());
+    }
+    await page.click('.hero a[data-cta]');
+    await waitForCinema(page);
+    await page.waitForFunction(() => window.__cinema?.film().snapshot.hasFrame, null, { timeout: 10_000 });
+    const back = await page.evaluate(() => ({
+      canvases: document.querySelectorAll('canvas').length,
+      selected: window.__cinema.getState().seats.selected,
+      quality: window.__cinema.getState().view.quality,
+      preset: window.__cinema.getState().preset,
+      touring: window.__cinema.getState().touring,
+      film: { state: window.__cinema.film().snapshot.state, time: window.__cinema.film().snapshot.currentTime, paused: window.__cinema.film().paused },
+    }));
+    report.landing.flows.cycles = { left, first: cycles[0], last: cycles[1], back, playingAt };
+    check('6 more visits: on the landing page each time 0 canvases, 0 video elements and 0 WebGL contexts alive after GC; page listeners and heap steady', cycles.every((c) => c.objects.HTMLVideoElement === 0 && c.objects.HTMLCanvasElement === 0) && JSON.stringify(cycles[0].listeners) === JSON.stringify(cycles[1].listeners) && cycles[1].heapMiB - cycles[0].heapMiB < 1, report.landing.flows.cycles);
+    check('coming back: one canvas; the chosen seat and Tiết kiệm kept; the film paused where it was left, not playing; camera at Tổng quan, no tour', back.canvases === 1 && back.selected.includes('F05') && back.quality === 'economy' && back.film.paused && back.film.state === 'paused' && Math.abs(back.film.time - playingAt) < 1.5 && back.preset === 'overview' && !back.touring, back);
+    await context.close();
+  }
+
+  // No WebGL: the landing page, then the auditorium's flat fallback.
+  {
+    const { context, page } = await open('webgl-disabled', {}, () => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+        return /webgl/.test(type) ? null : original.call(this, type, ...args);
+      };
+    });
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.click('.hero a[data-cta]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app')?.dataset.status === 'error', null, { timeout: 15_000 });
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(1000);
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['paused']);
+    const flat = await page.evaluate(() => ({ videos: document.querySelectorAll('video').length, video2d: Boolean(document.querySelector('.cinema-video2d video')), state: window.__cinema.film().snapshot.state }));
+    await screenshot(page, 'landing-way-in-3-no-webgl');
+    check('no WebGL: landing page → "Bước vào rạp" → the 2D film plays and pauses (one element)', flat.videos === 1 && flat.video2d && flat.state === 'paused', flat);
+    await context.close();
+  }
+
+  // Reduced motion: nothing moves, everything is there at once.
+  {
+    const { context, page } = await open('landing-reduced-motion', { reducedMotion: 'reduce' });
+    await page.goto(base);
+    await waitForLanding(page);
+    const motion = await page.evaluate(() => ({
+      flag: document.querySelector('.hero').dataset.motion,
+      animations: document.getAnimations().length,
+      opacity: getComputedStyle(document.querySelector('.hero h1')).opacity,
+    }));
+    await page.mouse.move(200, 200);
+    await page.mouse.move(900, 500, { steps: 8 });
+    await page.waitForTimeout(400);
+    const transform = await page.evaluate(() => document.querySelector('.hero__media').style.transform);
+    await screenshot(page, 'landing-reduced-motion');
+    check('reduced motion: no entrance animation, no parallax (the picture stays put under the mouse), words at full opacity at once', motion.flag === 'off' && motion.animations === 0 && motion.opacity === '1' && transform === '', { motion, transform });
+    await context.close();
+  }
+
+  // The hero's depth with a mouse: it follows a little, then stops asking for frames; off when out of view.
+  {
+    const { context, page } = await open('landing-motion');
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.waitForTimeout(1800);
+    await page.mouse.move(300, 300);
+    await page.mouse.move(1100, 600, { steps: 10 });
+    await page.waitForTimeout(1500);
+    const moved = await page.evaluate(() => document.querySelector('.hero__media').style.transform);
+    const f0 = (await probe(page)).frames;
+    await page.waitForTimeout(1000);
+    const f1 = (await probe(page)).frames;
+    await page.evaluate(() => window.scrollTo(0, document.querySelector('#cach-su-dung').offsetTop));
+    await page.waitForTimeout(800);
+    const f2 = (await probe(page)).frames;
+    await page.mouse.move(200, 200, { steps: 10 });
+    await page.waitForTimeout(800);
+    const f3 = (await probe(page)).frames;
+    const shift = (moved.match(/-?[\d.]+/g) ?? []).map(Number);
+    check('hero depth: the picture drifts a few px with the mouse (≤ 10 px), then no more frames; out of view, mouse moves cost no frames', shift.length >= 2 && Math.abs(shift[0]) > 1 && Math.abs(shift[0]) <= 10.5 && f1 === f0 && f3 === f2, { moved, frames: [f0, f1, f2, f3] });
+    await context.close();
+  }
+
+  // The way in and out on video.
+  {
+    const { context, page } = await open('landing-video', { viewport: { width: 1280, height: 720 } });
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.waitForTimeout(1200);
+    await recordVideo(browser, page, 'video-landing-cinema-landing', async () => {
+      await page.mouse.move(400, 300);
+      await page.mouse.move(900, 450, { steps: 12 });
+      await page.waitForTimeout(600);
+      await page.hover('.hero a[data-cta]');
+      await page.waitForTimeout(500);
+      await page.click('.hero a[data-cta]');
+      await waitForCinema(page);
+      await page.waitForTimeout(1500);
+      await page.click('a[data-action="home"]');
+      await waitForLanding(page);
+      await page.waitForTimeout(1500);
+    });
+    await context.close();
+  }
 }
 
 function distance(a, b) {

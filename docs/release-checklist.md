@@ -1,122 +1,138 @@
-# Checklist phát hành — Phòng chiếu 3D (sau Prompt 08)
+# Checklist phát hành — Tân Phong Cinema (sau Prompt 09)
 
-Cập nhật 28/10/2026. Phạm vi: trang `/cinema` (ba tác vụ Khám phá, Chọn ghế, Xem phim), trang kiểm tra
-ghế `/cinema?inspect=seat`, video demo. Chưa có trang mở đầu (Prompt 09).
+Cập nhật 28/10/2026. Phạm vi:
+- trang mở đầu `/`;
+- phòng chiếu `/cinema` (ba tác vụ Khám phá, Chọn ghế, Xem phim);
+- trang kiểm tra ghế `/cinema?inspect=seat`;
+- video demo.
+
+"Tân Phong Cinema" là tên làm việc, chưa phải thương hiệu được duyệt.
 
 "Đã kiểm chứng" chỉ có nghĩa là trên **Chrome 156 desktop (Windows 11, headless, ANGLE D3D11, RTX
-3090)**, kể cả các kích thước mobile và tablet *giả lập* bằng chế độ thiết bị của Chrome. Không có thiết
-bị thật, Safari, Firefox hay trình đọc màn hình thật nào được dùng.
+3090)**, kể cả các kích thước mobile và tablet *giả lập*, cùng các luồng chính trên **Edge 156**
+(cũng là Blink). Không có thiết bị thật, Safari, Firefox hay trình đọc màn hình thật nào được dùng.
 
-## 1. Đã kiểm chứng (Chrome 156 desktop, kể cả giả lập mobile/tablet)
+## 1. Đã kiểm chứng
 
 Bằng chứng: `npm test`, `npm run typecheck`, `npm run build`, `npm run capture`
-(`artifacts/prompt-08/report.json`), `npm run measure:build` (`artifacts/prompt-08/build-metrics.json`).
+(`artifacts/prompt-09/report.json`), `npm run measure:build` (`artifacts/prompt-09/build-metrics.json`).
 
-**Giao diện và bố cục**
-- [x] Ba tác vụ dùng chung một scene, renderer, camera, lựa chọn ghế, một phần tử video và cài đặt
-  chất lượng. Đổi tác vụ không tạo canvas, listener hay video mới, không tự phát, không dời camera.
-  Đã thử 64 lần đổi tác vụ và 32 lần mở/đóng panel, menu.
-- [x] Đo tỷ lệ canvas thực tế ở 7 kích thước:
-  - 1440×900, 1280×720, 820×1180, 1180×820, 390×844, 360×640, 844×390;
-  - ở Khám phá và Xem phim, canvas cao ≥ 55 % viewport (bảng số trong `docs/handoff-prompt-08.md`).
-- [x] Mobile dọc: sơ đồ là sheet nửa màn hình, hoặc toàn màn hình dạng dialog khi người dùng chủ động
-  mở rộng. Không còn dải canvas 14 % hay 0,3 %.
-- [x] Kích thước header, dock và canvas không đổi khi: bắt đầu/dừng tham quan; play/pause; chọn 1→8
-  ghế; nút mini của phim xuất hiện.
-- [x] Không tràn ngang hay dọc ở mọi trạng thái đã đo; zoom 200 % (720×450, 640×360 CSS px) vẫn dùng
-  được.
-- [x] Thanh trình duyệt co giãn 70 px (giả lập bằng đổi chiều cao viewport): canvas co theo, không
-  có frame trắng.
+**Trang mở đầu (Prompt 09)**
+- [x] `/` là trang mở đầu, không chuyển hướng. Nội dung, ảnh và liên kết có ngay trong HTML, nên đọc
+  được khi không có JavaScript (đã thử với JS tắt).
+- [x] "Bước vào rạp" là liên kết thật tới `/cinema`:
+  - click thường: điều hướng trong app một lần, màn "Đang mở phòng chiếu…" hiện ngay;
+  - Ctrl/⌘/Shift/click giữa: mở tab mới;
+  - bấm nhiều lần chỉ tạo một mục history.
+- [x] Back/Forward giữa landing và rạp; refresh cả hai route; `/cinema/` có dấu `/` cuối; trang "Không
+  tìm thấy"; link trong trang (`#cach-su-dung`) không dựng lại trang.
+- [x] Landing không tải mã phòng chiếu, three.js hay video trước khi người dùng tương tác (bản
+  production).
+  - Hover/focus/nhấn CTA chỉ tải mã, không tạo canvas, WebGL hay video.
+  - Save-Data: không tải trước.
+- [x] Mã tải chậm thì có màn chờ rõ ràng. Mã tải lỗi thì có "Thử lại" (tải lại được) và "Về trang chủ".
+  Back khi mã chưa tải xong thì không mount rạp phía sau.
+- [x] Ra/vào rạp nhiều lần:
+  - ở landing không còn canvas, video hay context WebGL (đếm sau GC); listener và heap ổn định;
+  - rời trang khi phim đang phát thì không còn gì phát;
+  - vào lại: một canvas; ghế, chất lượng và vị trí phim (tạm dừng) giữ nguyên; camera ở Tổng quan.
+- [x] Bố cục ở 7 kích thước + zoom 200 %:
+  - CTA ở màn hình đầu; không tràn ngang; header ≤ 80 px;
+  - chữ không đè màn chiếu trong ảnh; nút ≥ 44 px; heading h1 → h2 → h3.
+- [x] Giảm chuyển động: không có hiệu ứng vào, không parallax.
+- [x] Parallax chỉ với chuột: ≤ 10 px, dừng xin frame khi đứng yên; tắt khi hero ra khỏi màn hình.
+  Landing đứng yên: 0 animation frame.
+- [x] Bàn phím: "Bỏ qua, tới nội dung chính" là điểm Tab đầu; vào rạp và về trang chủ bằng Enter;
+  focus rõ.
+- [x] Không có WebGL: landing → vào rạp → video 2D phát và tạm dừng.
+- [x] Metadata riêng cho `/` và `/cinema` ngay trong HTML (title, description, canonical, Open Graph,
+  icon, `lang="vi"`); ảnh chia sẻ có trong `dist/`.
+- [x] Ảnh trên trang là kết xuất của chính khán phòng; màn chiếu trong ảnh là slate, không có frame phim.
 
-**Focus, bàn phím, input**
-- [x] Thứ tự Tab theo tác vụ. Phần ẩn (panel đóng, menu đóng, dock của tác vụ khác) không nằm trong
-  thứ tự Tab.
-- [x] Escape đóng menu hoặc panel và trả focus về nút mở.
-- [x] Sheet toàn màn hình là dialog modal: bẫy focus, phần còn lại `inert`, Escape lùi từng bước.
-- [x] Chuỗi thao tác chỉ bằng bàn phím: chọn ghế → xem từ ghế → phát, tua, tắt tiếng, tạm dừng.
-- [x] Phím đang giữ khi đổi tác vụ không làm người đi bộ tiếp tục đi.
-- [x] Thao tác trên UI không chọn ghế phía sau, không xoay camera, không phát hay dừng phim ngoài ý muốn.
-- [x] Vùng chạm chính ≥ 44 × 44 CSS px trên màn cảm ứng. Ghế trong sơ đồ 36 px, cách nhau 5 px, sơ
-  đồ cuộn ngang.
+**Phòng chiếu (Prompt 05–08, chạy lại toàn bộ)**
+- [x] Ba tác vụ dùng chung scene, camera, lựa chọn ghế, video và chất lượng.
+- [x] Tỷ lệ canvas ≥ 55 % chiều cao ở Khám phá và Xem phim, 7 kích thước.
+- [x] Sheet và dialog toàn màn hình, focus, Escape, phím đang giữ.
+- [x] Loading, lỗi tải 3D, context không trả lại, lỗi video, không WebGL, giảm chuyển động.
+- [x] Tour, đi bộ, chọn ghế và sơ đồ, xem từ ghế, video, chất lượng, mất/khôi phục context, inspector.
+- [x] Credits CC BY luôn trên màn ở mọi tác vụ; footer trang mở đầu cũng ghi công video.
 
-**Trạng thái và lỗi**
-- [x] Đang tải phần 3D: sơ đồ ghế đã dùng được.
-- [x] Tải phần 3D thất bại: báo lỗi, "Thử lại" (Chrome tải lại được), sơ đồ và video 2D vẫn dùng được.
-- [x] Mất context không được trả lại: sau 5 s có "Dựng lại cảnh 3D", giữ ghế, góc nhìn từ ghế, video
-  và vị trí phát.
-- [x] Lỗi video: "Thử lại" chỉ tải lại video, không dựng lại scene.
-- [x] Không có WebGL: bắt đầu ở Chọn ghế; một video 2D; điều khiển camera bị khoá và có ghi lý do.
-- [x] Giảm chuyển động: tham quan theo từng điểm; không có spinner quay hay chuyển động của panel.
-
-**Tải và phát hành**
-- [x] Bản build: `/cinema` mở trực tiếp và sau refresh; `/` chuyển sang `/cinema`; `?inspect=seat`
-  chạy; đường dẫn lạ ra trang "Không tìm thấy".
-- [x] MIME type đúng; video trả về 206 cho request range; `?film=` bị bỏ qua và fixture không có
-  trong `dist/`.
-- [x] Mã cho màn hình đầu là chunk riêng (UI); phần 3D tải song song; video không tải trước khi bấm
-  Phát, ngoài phần đầu tệp chứa metadata.
-
-**Video**
-- [x] Credits CC BY luôn trên màn ở mọi tác vụ: dưới caption ở Khám phá/Chọn ghế, trong player ở Xem
-  phim. Có check ở 7 kích thước; chế độ 2D có check riêng.
-- [x] Tắt tiếng và âm lượng đọc lại đúng từ phần tử video.
-- [x] Có track tiếng được giải mã.
+**Hosting (đã deploy Prompt 08 lên Vercel, kiểm tra bằng vài request đơn lẻ ngày 28/10/2026)**
+- [x] `https://tp3d-cinema.vercel.app/cinema` trả 200, `Cache-Control: no-cache`.
+- [x] `/assets/*` trả `public, max-age=31536000, immutable`.
+- [x] Video trả 206 cho request range, `must-revalidate`.
+- Các rewrite mới của Prompt 09 (`/cinema` → `cinema.html`) chưa deploy, xem phần 2.
 
 ## 2. Chưa kiểm chứng
 
-- [ ] **Âm thanh bằng tai** — chưa nghe; chỉ biết track tiếng được giải mã và các thuộc tính
-  mute/volume đúng.
-- [ ] **Điện thoại và máy tính bảng thật** (iOS Safari, Android Chrome): cảm ứng thật, thanh địa chỉ
-  thật, safe area/notch, bàn phím ảo, hiệu năng GPU, nhiệt, pin.
-- [ ] **Safari / WebKit, Firefox:** không có trong môi trường. Các điểm riêng cần thử:
-  - Safari: `inert`, `dvh`, `requestVideoFrameCallback`, MP4 H.264 High, `playsInline`, volume trên iOS;
+- [ ] **Âm thanh bằng tai** — chưa nghe; chỉ biết track tiếng được giải mã và mute/volume đúng.
+- [ ] **Điện thoại và máy tính bảng thật** (iOS Safari, Android Chrome):
+  - cảm ứng, thanh địa chỉ, safe area/notch, bàn phím ảo;
+  - hiệu năng GPU, nhiệt, pin;
+  - landing: cuộn, ảnh dọc, chuyển trang.
+- [ ] **Safari / WebKit, Firefox:** không có trong môi trường. Điểm riêng cần thử:
+  - Safari: `inert`, `dvh`/`svh`, `requestVideoFrameCallback`, MP4 H.264 High, `playsInline`, volume
+    trên iOS, `text-wrap: balance`;
   - Firefox: rVFC từ bản 132.
-- [ ] **Trình đọc màn hình thật** (NVDA, VoiceOver, TalkBack). Mới kiểm tra thuộc tính ARIA và hành vi
+- [ ] **Trình đọc màn hình thật** (NVDA, VoiceOver, TalkBack): mới kiểm tra thuộc tính ARIA, focus và
   phím bằng script.
-- [ ] **Cấu hình cache trên Vercel** (`vercel.json`, mục `headers`) — cú pháp chưa được Vercel xác
-  nhận vì chưa deploy.
-- [ ] **Mạng chậm thật.** Mới giả lập: 1,6 Mbit/s với RTT 150 ms qua CDP, và giữ request ở route
-  Playwright.
-- [ ] **Bộ nhớ GPU:** không đo trực tiếp; chỉ có số đếm `renderer.info`, đối tượng JS sống sau GC
-  và heap JS.
-- [ ] **Độ tương phản ở mọi trạng thái:** mới tính tỷ lệ WCAG cho 14 cặp màu chính, đều ≥ 5,6:1
-  (bảng trong handoff). Chưa quét tự động mọi trạng thái, nhất là chữ đè trên khung 3D đang đổi.
+- [ ] **Cấu hình Vercel của Prompt 09** (chưa deploy):
+  - rewrite `/cinema` và `/cinema/` sang `cinema.html`;
+  - header `no-cache` trừ `/assets/`, `/media/`, `/brand/`.
+- [ ] **Ảnh chia sẻ trên mạng xã hội thật** (Facebook, Zalo, X…): thẻ Open Graph có trong HTML, nhưng
+  chưa thử với trình thu thập của từng nơi.
+- [ ] **Mạng chậm thật:** mới giả lập 1,6 Mbit/s, RTT 150 ms (CDP) và giữ request ở route Playwright.
+- [ ] **Bộ nhớ GPU:** không đo trực tiếp.
+- [ ] **Độ tương phản ở mọi trạng thái:**
+  - mới tính tỷ lệ WCAG cho các cặp màu chính (rạp ≥ 5,6:1, landing ≥ 7:1 trên lớp phủ của ảnh);
+  - chưa quét tự động mọi trạng thái.
 
-## 3. Blocker thực sự
+## 3. Lỗi chặn
 
-Không có blocker cho việc deploy bản demo trên Chrome desktop. Các mục "chưa kiểm chứng" ở trên là
-rủi ro cho mobile, Safari và người dùng trình đọc màn hình. Những rủi ro đó cần người thử thủ công
-trước khi gọi là "sẵn sàng cho mọi nền tảng".
+Không có lỗi chặn cho việc deploy bản demo lên Chrome desktop. Các mục ở phần 2 là rủi ro cho mobile,
+Safari/Firefox và người dùng trình đọc màn hình. Cần thử tay trước khi gọi là "sẵn sàng cho mọi nền
+tảng".
 
 ## 4. Việc cần người dùng thử thủ công
 
-1. **iPhone (Safari) và một máy Android (Chrome), dọc và ngang.** Làm hết luồng:
-   - mở `/cinema`;
-   - Khám phá: Tham quan, Đi bộ bằng cần điều khiển;
-   - Chọn ghế: Mở sơ đồ, Mở rộng, chọn 2 ghế, Xem từ ghế này;
-   - Xem phim: Phát, xoay máy, Tạm dừng;
-   - quay lại Chọn ghế, kiểm tra ghế vẫn còn.
-2. **Nghe tiếng:** Phát, tắt/bật tiếng, kéo âm lượng (desktop), dùng phím âm lượng (iOS).
-3. **Thanh địa chỉ và notch:** cuộn hoặc chạm để thanh địa chỉ co/giãn; kiểm tra không có nút nào bị
-   che bởi notch hay thanh điều hướng.
+1. **iPhone (Safari) và một máy Android (Chrome), dọc và ngang.**
+   - Mở `/`, cuộn trang, bấm "Cách trải nghiệm", rồi "Bước vào rạp".
+   - Trong rạp: Khám phá (Tham quan, Đi bộ); Chọn ghế (Mở sơ đồ, Mở rộng, chọn 2 ghế, Xem từ ghế này);
+     Xem phim (Phát, xoay máy, Tạm dừng).
+   - Bấm tên "Tân Phong Cinema" để về trang chủ; Back để vào lại; kiểm tra ghế vẫn còn.
+2. **Nghe tiếng:**
+   - Phát, tắt/bật tiếng, kéo âm lượng (desktop), dùng phím âm lượng (iOS);
+   - rời rạp khi đang phát: không còn tiếng.
+3. **Thanh địa chỉ và notch:** cuộn hoặc chạm để thanh địa chỉ co/giãn; không nút nào bị che.
 4. **VoiceOver (iOS/macOS) hoặc NVDA (Windows):**
-   - đọc tên ba tác vụ, nút chính của player, sơ đồ ghế (lưới, trạng thái từng ghế);
+   - landing: liên kết "Bỏ qua…", h1, ba bước;
+   - rạp: ba tác vụ, nút chính của player, sơ đồ ghế;
    - live region không đọc liên tục.
-5. **Safari desktop và Firefox:** mở `/cinema`, phát video, chọn ghế bằng bàn phím.
-6. **Mạng thật chậm** (3G/4G yếu): thời gian tới khi trang dùng được, tới khi cảnh sẵn sàng, và video
-   khi bấm Phát.
+5. **Safari desktop và Firefox:** landing → rạp → phát video → chọn ghế bằng bàn phím → về trang chủ.
+6. **Mạng thật chậm** (3G/4G yếu): thời gian tới khi landing hiện, tới khi vào được rạp, và video khi
+   bấm Phát.
+7. **Chia sẻ đường dẫn** `/` và `/cinema` lên một mạng xã hội hoặc ứng dụng nhắn tin: xem ảnh và tiêu
+   đề.
+8. **Tên "Tân Phong Cinema"** và nhận diện tạm: xác nhận hoặc đổi trong `src/brand.ts` (rồi chạy lại
+   `node scripts/capture-brand-assets.mjs` nếu đổi tên trên slate).
 
 ## 5. Điều kiện trước khi commit / push / deploy
 
-- [ ] Duyệt Prompt 08 (bản bàn giao này) và ảnh/video trong `artifacts/prompt-08/`.
-- [ ] `npm test`, `npm run typecheck`, `npm run build` sạch trên máy sẽ build. Harness
-  `npm run capture` và `npm run measure:build` cần Chrome hoặc Edge cài sẵn.
-- [ ] Kiểm tra `git status`: chỉ có thay đổi dự kiến; không đưa `artifacts/prompt-08-dev` (nếu còn)
-  hay tệp tạm vào commit.
-- [ ] Sau khi deploy lên Vercel preview:
-  - mở `/cinema` trực tiếp và refresh;
-  - xem header `Cache-Control` của `index.html` (`no-cache`), của `/assets/*` (`immutable`) và của
-    `/media/*.mp4` (mặc định của Vercel, có `206` cho range).
+- [ ] Duyệt Prompt 09 (bản bàn giao này) và ảnh/video trong `artifacts/prompt-09/`.
+- [ ] `npm test`, `npm run typecheck`, `npm run build` sạch.
+  - Trên Windows chạy từ thư mục có ổ đĩa viết hoa (`E:\…`); xem lỗi Vitest "no tests" ở
+    `artifacts/prompt-08/logs/vitest-no-tests-NOTE.md`.
+  - `npm run capture` và `npm run measure:build` cần Chrome hoặc Edge cài sẵn.
+- [ ] Kiểm tra `git status`: chỉ có thay đổi dự kiến; không đưa thư mục `*-dev` (nếu còn) hay tệp tạm
+  vào commit.
+  - `fixtures/brand/screen-slate.png` là tệp dev, cùng loại với `fixtures/media`.
+- [ ] Sau khi deploy lên Vercel (preview hoặc main):
+  - mở `/`, `/cinema`, `/cinema/`, `/khong-co` trực tiếp và refresh;
+  - xem nguồn trang `/cinema` có title "Phòng chiếu 3D · Tân Phong Cinema" (tức `cinema.html` được
+    phục vụ);
+  - header `Cache-Control` như phần 1;
+  - chỉ gửi vài request đơn lẻ, đừng chạy vòng lặp: Vercel có checkpoint chống bot.
 - [ ] Làm các mục ở phần 4 trên ít nhất một iPhone và một Android trước khi quảng bá cho người dùng
   mobile.
-- [ ] Giữ dòng ghi công CC BY của Big Buck Bunny ở mọi nơi phát video (xem `docs/media-credits.md`).
+- [ ] Giữ dòng ghi công CC BY của Big Buck Bunny ở mọi nơi phát video và trong footer trang mở đầu
+  (xem `docs/media-credits.md`).

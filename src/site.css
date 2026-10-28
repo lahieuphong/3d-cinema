@@ -1,0 +1,698 @@
+/* The site around the auditorium: landing page, page loading/error, not found. (The auditorium's
+   own styles are src/styles.css, loaded with it.) Colours follow src/brand.ts. */
+
+:root {
+  --site-bg: #14110f;
+  --site-surface: #1c1815;
+  --site-line: #3b312b;
+  --site-text: #f3ede5;
+  --site-muted: #bdb1a3;
+  --site-wine: #8a2636;
+  --site-wine-hover: #a12f42;
+  --site-champagne: #d9c08c;
+  --site-champagne-ink: #1b1510;
+  --site-gutter: clamp(16px, 4vw, 40px);
+  --site-width: 1120px;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+  color: var(--site-text);
+  background: var(--site-bg);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--site-bg);
+}
+
+/* The auditorium's own dark (its styles arrive with it; this keeps the opening screen the same colour). */
+html:is([data-route='cinema'], [data-route='inspector']) body {
+  background: #0f1013;
+}
+
+.noscript-note {
+  margin: 0;
+  padding: 10px var(--site-gutter);
+  background: #3a1a20;
+  color: var(--site-text);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+html[data-route='landing'] {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-route='landing'] {
+    scroll-behavior: auto;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Brand ---------- */
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--site-text);
+  text-decoration: none;
+}
+
+.brand-mark {
+  flex: none;
+}
+
+.wordmark__text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.wordmark__name {
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.wordmark__suffix {
+  color: var(--site-champagne);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+/* ---------- Buttons and links ---------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 22px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.button--primary {
+  background: var(--site-wine);
+  border-color: #b04a5b;
+  color: #fff8ee;
+}
+
+.button--primary:hover {
+  background: var(--site-wine-hover);
+}
+
+.button--ghost {
+  border-color: rgb(217 192 140 / 0.55);
+  color: var(--site-text);
+  background: rgb(20 17 15 / 0.35);
+}
+
+.button--ghost:hover {
+  border-color: var(--site-champagne);
+}
+
+.button--small {
+  min-height: 44px;
+  padding: 8px 18px;
+  border-color: rgb(217 192 140 / 0.6);
+  color: var(--site-text);
+  background: rgb(20 17 15 / 0.45);
+}
+
+.button--small:hover {
+  border-color: var(--site-champagne);
+}
+
+.button[aria-busy='true'] {
+  cursor: progress;
+}
+
+.landing a:focus-visible,
+.route-status a:focus-visible,
+.route-status button:focus-visible,
+.not-found a:focus-visible,
+.landing [tabindex='-1']:focus-visible {
+  outline: 3px solid var(--site-champagne);
+  outline-offset: 3px;
+}
+
+.landing [tabindex='-1']:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--site-champagne);
+  color: var(--site-champagne-ink);
+  font-weight: 650;
+  text-decoration: none;
+  transform: translateY(-150%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* ---------- Header (over the hero) ---------- */
+
+.landing {
+  position: relative;
+}
+
+.site-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px 28px;
+  padding: max(10px, env(safe-area-inset-top)) max(var(--site-gutter), env(safe-area-inset-right)) 10px max(var(--site-gutter), env(safe-area-inset-left));
+  background: linear-gradient(rgb(20 17 15 / 0.82), rgb(20 17 15 / 0));
+}
+
+.site-nav {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--site-text);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  color: var(--site-champagne);
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  display: grid;
+  align-items: center;
+  min-height: max(min(100svh, 920px), 380px);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.hero__media {
+  position: absolute;
+  inset: -24px;
+  z-index: -2;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.hero__media picture,
+.hero__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hero__image {
+  object-fit: cover;
+  object-position: 58% 50%;
+  transform: scale(1.02);
+  transform-origin: 58% 45%;
+  animation: hero-settle 1.6s ease-out both;
+}
+
+.hero__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgb(20 17 15 / 0.94) 0%, rgb(20 17 15 / 0.78) 30%, rgb(20 17 15 / 0.2) 62%, rgb(20 17 15 / 0) 80%),
+    linear-gradient(0deg, var(--site-bg) 0%, rgb(20 17 15 / 0) 26%);
+}
+
+.hero__content {
+  padding: 104px var(--site-gutter) 72px;
+  padding-left: max(var(--site-gutter), env(safe-area-inset-left));
+}
+
+/* Left-aligned with the brand and kept within the left ~45 % of a wide picture: the screen in the
+   render starts just right of that. */
+.hero__content > * {
+  max-width: min(34rem, 42vw);
+}
+
+/* Only the small line above the heading arrives with a short rise; the heading, text and buttons
+   are there from the first paint. */
+.hero .eyebrow {
+  animation: hero-rise 0.5s ease-out both;
+}
+
+.eyebrow {
+  margin: 0 0 14px;
+  color: var(--site-champagne);
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 1.1rem + 3.4vw, 4rem);
+  font-weight: 750;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.hero__lead {
+  margin: 18px 0 0;
+  color: #e6ddd2;
+  font-size: clamp(1rem, 0.94rem + 0.3vw, 1.2rem);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.hero__note {
+  margin: 18px 0 0;
+  color: var(--site-muted);
+  font-size: 0.85rem;
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes hero-settle {
+  from {
+    transform: scale(1.07);
+  }
+}
+
+/* ---------- Sections ---------- */
+
+.section {
+  padding: clamp(56px, 8vw, 104px) 0;
+  scroll-margin-top: 8px;
+}
+
+.section:focus {
+  outline: none;
+}
+
+.section__inner {
+  width: min(100%, var(--site-width));
+  margin: 0 auto;
+  padding: 0 max(var(--site-gutter), env(safe-area-inset-right)) 0 max(var(--site-gutter), env(safe-area-inset-left));
+}
+
+.section h2 {
+  margin: 0;
+  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.section__lead {
+  max-width: 44rem;
+  margin: 14px 0 0;
+  color: var(--site-muted);
+  font-size: 1.05rem;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 36px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.facts li {
+  display: grid;
+  gap: 4px;
+  padding: 20px;
+  border: 1px solid var(--site-line);
+  border-radius: 14px;
+  background: var(--site-surface);
+}
+
+.facts strong {
+  color: var(--site-champagne);
+  font-size: 1.15rem;
+}
+
+.facts span {
+  color: var(--site-muted);
+}
+
+.steps {
+  background: linear-gradient(var(--site-bg), #19130f 40%, var(--site-bg));
+}
+
+.steps__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 36px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border: 1px solid var(--site-line);
+  border-radius: 14px;
+  background: var(--site-surface);
+}
+
+.step h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 6px;
+  font-size: 1.15rem;
+}
+
+.step__number {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--site-champagne);
+  border-radius: 50%;
+  color: var(--site-champagne);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.step p {
+  margin: 0;
+  color: var(--site-muted);
+}
+
+.closing {
+  text-align: center;
+  background: radial-gradient(60% 80% at 50% 100%, rgb(138 38 54 / 0.28), rgb(20 17 15 / 0));
+}
+
+.closing .section__lead {
+  margin-inline: auto;
+}
+
+.closing .button {
+  margin-top: 28px;
+}
+
+.closing__note {
+  max-width: 36rem;
+  margin: 20px auto 0;
+  color: var(--site-muted);
+  font-size: 0.85rem;
+}
+
+.site-footer {
+  padding: 28px 0 max(28px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--site-line);
+  color: var(--site-muted);
+  font-size: 0.85rem;
+}
+
+.site-footer p {
+  margin: 4px 0;
+}
+
+.site-footer__brand {
+  color: var(--site-text);
+  font-weight: 600;
+}
+
+.site-footer a {
+  color: inherit;
+}
+
+/* ---------- Narrower screens ---------- */
+
+@media (max-width: 959px) {
+  .steps__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 719px) {
+  /* The two section links are also in the hero and the page itself; the header keeps the brand
+     and the way in. */
+  .site-nav {
+    display: none;
+  }
+
+  .site-header .button--small {
+    margin-left: auto;
+  }
+
+  .facts,
+  .steps__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Portrait phones and tablets: the portrait render on top, the words under it. */
+@media (max-aspect-ratio: 4/5) {
+  .hero {
+    display: block;
+    min-height: 0;
+  }
+
+  .hero__media {
+    position: relative;
+    inset: auto;
+    height: clamp(220px, 50svh, 640px);
+    margin: 0 0 -96px;
+  }
+
+  /* The photo fades into the page under it; the words sit on that fade. */
+  .hero__shade {
+    display: none;
+  }
+
+  .hero__media::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgb(20 17 15 / 0.55) 0%, rgb(20 17 15 / 0) 22%, rgb(20 17 15 / 0) 48%, var(--site-bg) 100%);
+  }
+
+  .hero__image {
+    object-position: 50% 40%;
+  }
+
+  .hero__content {
+    position: relative;
+    padding-top: 0;
+    padding-bottom: 48px;
+  }
+
+  .hero__content > * {
+    max-width: 34rem;
+  }
+}
+
+@media (max-aspect-ratio: 4/5) and (max-height: 700px) {
+  .hero__media {
+    height: clamp(200px, 44svh, 640px);
+    margin-bottom: -80px;
+  }
+
+  .hero__lead {
+    margin-top: 12px;
+  }
+
+  .hero__actions {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 400px) {
+  .wordmark__suffix {
+    display: none;
+  }
+
+  .button {
+    padding-inline: 18px;
+  }
+}
+
+/* Low landscape screens (phones turned sideways, zoomed windows). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hero__content {
+    padding-top: 72px;
+    padding-bottom: 32px;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.4rem, 0.9rem + 2vw, 2.2rem);
+  }
+
+  .hero__lead {
+    margin-top: 10px;
+  }
+
+  .hero__actions {
+    margin-top: 16px;
+  }
+
+  .eyebrow {
+    margin-bottom: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__image,
+  .hero .eyebrow,
+  .route-status__spinner {
+    animation: none;
+  }
+
+  .button {
+    transition: none;
+  }
+}
+
+/* ---------- Opening the auditorium, and pages that are not there ---------- */
+
+.route-status {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.route-status__text {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.route-status h1 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 650;
+}
+
+.route-status h1:focus {
+  outline: none;
+}
+
+.route-status__message {
+  max-width: 36ch;
+  margin: 0;
+  color: var(--site-muted);
+}
+
+.route-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.route-status__spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--site-line);
+  border-top-color: var(--site-champagne);
+  border-radius: 50%;
+  animation: route-spin 0.9s linear infinite;
+}
+
+@keyframes route-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.not-found {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 16px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.not-found h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.not-found__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}

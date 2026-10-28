@@ -1,3 +1,5 @@
+import { BRAND, markSvg } from '../brand.ts';
+import { isPlainClick } from '../router.ts';
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
 import { QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
@@ -28,6 +30,8 @@ export interface CinemaUiHandlers {
   onWatchAction(): void;
   /** Builds the 3D scene again (after a failure, or a context the browser does not give back). */
   onRetryScene(): void;
+  /** The brand link back to the landing page, in-app (a plain link without it). */
+  onHome?(): void;
 }
 
 /**
@@ -191,7 +195,24 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
 
   // ------------------------------------------------------------------ header
   const header = el('header', 'cinema-header');
-  const title = el('h1', 'cinema-title', 'Phòng chiếu 3D');
+  // The brand leads home; the page's own heading is for screen readers (focus lands on it after
+  // in-app navigation).
+  const home = el('a', 'cinema-brand');
+  home.href = '/';
+  home.dataset.action = 'home';
+  home.setAttribute('aria-label', `${BRAND.name}, về trang chủ`);
+  home.innerHTML = `${markSvg(28)}<span class="cinema-brand__name" aria-hidden="true">${BRAND.name}</span>`;
+  home.addEventListener(
+    'click',
+    (event) => {
+      if (!handlers.onHome || !isPlainClick(event, home.target)) return;
+      event.preventDefault();
+      handlers.onHome();
+    },
+    { signal },
+  );
+  const title = el('h1', 'cinema-title visually-hidden', 'Phòng chiếu 3D');
+  title.tabIndex = -1;
 
   const tasks = el('div', 'cinema-tasks');
   tasks.setAttribute('role', 'group');
@@ -282,7 +303,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
   }
 
   headerEnd.append(miniSlot, settings);
-  header.append(title, tasks, headerEnd);
+  header.append(title, home, tasks, headerEnd);
 
   // ------------------------------------------------------------------ the view
   const stage = el('div', 'cinema-stage');

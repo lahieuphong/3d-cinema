@@ -108,3 +108,21 @@ phụ đề (`captions: null`).
 tiếng, bản WebM không có thời lượng, một tệp không phải video và một tệp hỏng dữ liệu. Không dùng hình
 hay âm thanh bên ngoài. Chỉ dùng cho `npm run capture` qua `?film=<tên tệp>` ở chế độ dev; `vite build`
 không chép thư mục này vào `dist/`.
+
+## Ảnh của trang mở đầu (Prompt 09)
+
+`public/brand/*` (hero 16:9 và dọc, ba ảnh "Cách sử dụng", ảnh chia sẻ 1200 × 630) và
+`public/apple-touch-icon.png`, `public/favicon.svg`:
+
+- **Nguồn:** kết xuất từ chính khán phòng 3D của dự án (`node scripts/capture-brand-assets.mjs`,
+  Chrome cục bộ, chất lượng Cao, tỷ lệ điểm ảnh 2). Không dùng ảnh rạp, logo hay font bên ngoài.
+- **Màn chiếu không có frame phim nào.** Màn hiện một tấm slate do script vẽ bằng canvas: dấu
+  hình học và chữ "Tân Phong Cinema". Slate được đưa vào qua tham số `?poster=` *chỉ có ở chế độ dev*;
+  tệp nằm ở `fixtures/brand/screen-slate.png`, không vào `dist/`.
+  - Nguồn phim của khán phòng (Big Buck Bunny và poster của nó) không đổi.
+- **Ảnh bước 2 và 3** là ảnh chụp giao diện thật của trang `/cinema`. Trong đó có dòng ghi công Big
+  Buck Bunny của trình phát (chữ), nhưng không có hình của phim.
+- **Ghi công video:** footer của trang mở đầu vẫn ghi công *Big Buck Bunny* (CC BY 3.0), vì video này
+  được phát trong phòng chiếu mà trang dẫn vào.
+- **Mã hoá:** WebP (và JPEG dự phòng) bằng canvas của Chrome. AVIF không dùng được: canvas của Chrome
+  không mã hoá AVIF và không cài thêm công cụ nào.

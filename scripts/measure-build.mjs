@@ -1,5 +1,9 @@
 // Measures the production build (dist/, run `npm run build` first) served by `vite preview`, in a
-// locally installed Chrome (playwright-core, no browser download):
+// locally installed Chrome with a fresh temporary profile (playwright-core, no browser download):
+// - the landing page `/`: what it downloads before any interaction (no auditorium code, no three.js,
+//   no film), first and largest paint, layout shift, what hovering "Bước vào rạp" fetches, the time
+//   from the click to a ready room (after a hover, and straight away), cold and warm cache, the page
+//   without JavaScript, and the metadata of both HTML documents;
 // - bundle: every file in dist/assets with raw, gzip and brotli sizes, and which ones the first
 //   screen needs (the entry) versus the 3D part (loaded right after);
 // - routes: /cinema opened directly and refreshed, /, the seat inspector, an unknown path, asset
@@ -21,7 +25,7 @@ import { preview } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-08');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-09');
 const FILM = '/media/big-buck-bunny-trailer-720p.mp4';
 const THROTTLED = { name: '1,6 Mbit/s xuống, 0,75 Mbit/s lên, RTT 150 ms (giả lập CDP)', down: 1.6e6 / 8, up: 0.75e6 / 8, latency: 150 };
 const BROWSERS = [
@@ -33,7 +37,7 @@ const BROWSERS = [
   '/usr/bin/chromium',
 ].filter(Boolean);
 
-const result = { generatedAt: new Date().toISOString(), checks: [], bundle: null, routes: {}, timing: [], network: null };
+const result = { generatedAt: new Date().toISOString(), checks: [], bundle: null, routes: {}, landing: { cold: [], warm: null, noScript: null, metadata: null }, timing: [], network: null };
 function check(name, passed, detail) {
   result.checks.push({ name, passed: Boolean(passed), detail });
   console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail === undefined ? '' : `  ${JSON.stringify(detail)}`}`);
@@ -69,6 +73,25 @@ async function bundle() {
 }
 
 // Marks when the page's own controls exist (usable) and when the scene is ready.
+/** Landing page: paints, layout shift, and when the first "Bước vào rạp" click happened. */
+const LANDING_MARKS = () => {
+  window.__landing = { fcp: null, lcp: null, lcpElement: null, cls: 0, clickAt: null };
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) if (entry.name === 'first-contentful-paint') window.__landing.fcp = entry.startTime;
+  }).observe({ type: 'paint', buffered: true });
+  new PerformanceObserver((list) => {
+    const last = list.getEntries().at(-1);
+    window.__landing.lcp = last.startTime;
+    window.__landing.lcpElement = last.element ? `${last.element.tagName.toLowerCase()}.${last.element.className}` : null;
+  }).observe({ type: 'largest-contentful-paint', buffered: true });
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) if (!entry.hadRecentInput) window.__landing.cls += entry.value;
+  }).observe({ type: 'layout-shift', buffered: true });
+  document.addEventListener('click', (event) => {
+    if (window.__landing.clickAt === null && event.target.closest?.('a[data-cta]')) window.__landing.clickAt = performance.now();
+  }, true);
+};
+
 const MARKS = () => {
   window.__marks = {};
   const observer = new MutationObserver(() => {
@@ -117,8 +140,11 @@ async function main() {
       const fixtureFile = await page.request.get(`${base}/fixtures/media/pattern-16x9.mp4`);
       check('routes: ?film= is ignored in production (demo film shown, no dev hook, fixture not served as video)', /Big Buck Bunny/.test(fixture.title ?? '') && !fixture.hook && fixtureFile.headers()['content-type'] !== 'video/mp4', { ...fixture, fixture: [fixtureFile.status(), fixtureFile.headers()['content-type']] });
       await page.goto(`${base}/`);
+      await page.waitForSelector('[data-landing] .hero');
+      check('routes: / is the landing page (no redirect)', new URL(page.url()).pathname === '/' && (await page.evaluate(() => document.documentElement.dataset.route)) === 'landing', page.url());
+      await page.goto(`${base}/cinema/`);
       await page.waitForFunction(() => document.querySelector('.cinema-app')?.dataset.status === 'ready', null, { timeout: 60_000 });
-      check('routes: / lands on /cinema', new URL(page.url()).pathname === '/cinema', page.url());
+      check('routes: /cinema/ (trailing slash) opens the auditorium too', (await page.title()).includes('Phòng chiếu 3D'), page.url());
       await page.goto(`${base}/cinema?inspect=seat`);
       await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready', null, { timeout: 60_000 });
       check('routes: the seat inspector loads in production', true);
@@ -126,6 +152,138 @@ async function main() {
       check('routes: an unknown path shows the not-found page', (await page.textContent('h1')) === 'Không tìm thấy trang');
       result.routes = { assets: types, film: filmHead, fixture };
       await context.close();
+    }
+
+    // The landing page, cold (cache off): first paint, largest paint, layout shift, what it fetches
+    // before any interaction; then a hover (intent preload) and the click, to a ready room.
+    const typeOf = (name) => (/\.js$/.test(name) ? 'js' : /\.css$/.test(name) ? 'css' : /\.(webp|jpg|png|svg)$/.test(name) ? 'image' : /\.mp4$/.test(name) ? 'media' : 'other');
+    for (const throttle of [null, THROTTLED]) {
+      for (const way of ['hover then click', 'click at once']) {
+        for (let run = 0; run < 2; run++) {
+          const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+          await context.addInitScript(LANDING_MARKS);
+          await context.addInitScript(MARKS);
+          const page = await context.newPage();
+          const cdp = await context.newCDPSession(page);
+          await cdp.send('Network.enable');
+          await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
+          if (throttle) await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: throttle.latency, downloadThroughput: throttle.down, uploadThroughput: throttle.up });
+          await page.goto(`${base}/`, { waitUntil: 'load' });
+          await page.waitForTimeout(throttle ? 4000 : 1500);
+          const resources = () =>
+            page.evaluate(() => {
+              const nav = performance.getEntriesByType('navigation')[0];
+              return [{ name: '/', transfer: nav.transferSize, end: nav.responseEnd }, ...performance.getEntriesByType('resource').map((r) => ({ name: new URL(r.name).pathname, transfer: r.transferSize, end: r.responseEnd }))];
+            });
+          const before = await resources();
+          const paints = await page.evaluate(() => ({ ...window.__landing }));
+          if (way === 'hover then click') {
+            await page.hover('.hero a[data-cta]');
+            await page.waitForFunction(() => performance.getEntriesByType('resource').some((r) => /\/assets\/seats-/.test(r.name) && r.responseEnd > 0), null, { timeout: 60_000 });
+            await page.waitForTimeout(300);
+            await page.click('.hero a[data-cta]');
+          } else {
+            // A click with no hover, focus or press first (keyboard-less, pointer-less): no intent preload.
+            await page.evaluate(() => document.querySelector('.hero a[data-cta]').click());
+          }
+          await page.waitForFunction(() => document.querySelector('.cinema-app')?.dataset.status === 'ready', null, { timeout: 120_000 });
+          const after = await resources();
+          const marks = await page.evaluate(() => ({ clickAt: window.__landing.clickAt, ready: window.__marks.ready }));
+          const sum = (list, filter = () => true) => list.filter(filter).reduce((n, r) => n + r.transfer, 0);
+          const byType = (list) => Object.fromEntries(['js', 'css', 'image', 'media', 'other'].map((t) => [t, sum(list, (r) => typeOf(r.name) === t)]));
+          const hoverAdded = after.filter((r) => !before.some((b) => b.name === r.name));
+          result.landing.cold.push({
+            network: throttle?.name ?? 'máy cục bộ, không giới hạn',
+            way,
+            run,
+            fcpMs: Math.round(paints.fcp),
+            lcpMs: Math.round(paints.lcp),
+            lcpElement: paints.lcpElement,
+            cls: Number(paints.cls.toFixed(4)),
+            beforeInteraction: { total: sum(before), ...byType(before), files: before.map((r) => `${r.name} ${r.transfer}`) },
+            clickToReadyMs: Math.round(marks.ready - marks.clickAt),
+            addedByEntering: { total: sum(hoverAdded), files: hoverAdded.map((r) => `${r.name} ${r.transfer}`) },
+          });
+          await context.close();
+        }
+      }
+    }
+    {
+      const cold = result.landing.cold;
+      const leaks = cold.flatMap((c) => c.beforeInteraction.files).filter((f) => /\/assets\/(seats|view|page|ui|cameraPresets|seatInspector)-|\/media\//.test(f));
+      check('landing (production): nothing of the auditorium, three.js or the film is downloaded before an interaction', leaks.length === 0, leaks);
+      // Chrome does not count an image larger than the viewport (a backdrop) as the largest paint, so
+      // the hero's heading is the expected one.
+      check('landing (production): layout shift ≤ 0.02 while loading; the largest paint is the hero heading, within 2.5 s even on the throttled link', cold.every((c) => c.cls <= 0.02) && cold.every((c) => /^h1|hero/.test(c.lcpElement ?? '') && c.lcpMs <= 2500), cold.map((c) => ({ cls: c.cls, lcp: c.lcpElement, ms: c.lcpMs })));
+    }
+
+    // Warm cache: a second visit to each page in the same browser profile.
+    {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+      const page = await context.newPage();
+      const visit = async (url, ready) => {
+        await page.goto(`${base}${url}`);
+        await page.waitForFunction(ready, null, { timeout: 60_000 });
+        await page.waitForTimeout(800);
+        return page.evaluate(() => {
+          const nav = performance.getEntriesByType('navigation')[0];
+          const list = performance.getEntriesByType('resource');
+          return { total: nav.transferSize + list.reduce((n, r) => n + r.transferSize, 0), fromCache: list.filter((r) => r.transferSize === 0 && r.decodedBodySize > 0).length, files: list.length };
+        });
+      };
+      const landingReady = () => Boolean(document.querySelector('[data-landing] .hero'));
+      const cinemaReady = () => document.querySelector('.cinema-app')?.dataset.status === 'ready';
+      result.landing.warm = {
+        landingCold: await visit('/', landingReady),
+        landingWarm: await visit('/', landingReady),
+        cinemaAfterLanding: await visit('/cinema', cinemaReady),
+        cinemaWarm: await visit('/cinema', cinemaReady),
+      };
+      await context.close();
+    }
+
+    // Without JavaScript: the landing page still reads and links; /cinema says what it needs.
+    {
+      const context = await browser.newContext({ viewport: { width: 390, height: 844 }, javaScriptEnabled: false });
+      const page = await context.newPage();
+      await page.goto(`${base}/`);
+      await page.waitForLoadState('load');
+      const landing = await page.evaluate(() => ({
+        h1: document.querySelector('h1')?.textContent,
+        cta: [...document.querySelectorAll('a[data-cta]')].map((a) => a.getAttribute('href')),
+        sections: [...document.querySelectorAll('section h2')].map((h) => h.textContent),
+        note: document.querySelector('.noscript-note') !== null || /cần JavaScript/.test(document.body.innerText),
+        image: document.querySelector('.hero__image')?.naturalWidth > 0,
+        styled: getComputedStyle(document.querySelector('.hero h1')).fontWeight >= 700,
+      }));
+      await page.screenshot({ path: path.join(outDir, 'landing-no-javascript.png'), fullPage: false });
+      await page.goto(`${base}/cinema`);
+      const cinema = await page.evaluate(() => ({ text: document.body.innerText, home: Boolean(document.querySelector('a[href="/"]')) }));
+      result.landing.noScript = { landing, cinema: { home: cinema.home, mentionsJs: /JavaScript/.test(cinema.text) } };
+      check('without JavaScript: / shows the hero, the guide and real links to /cinema, styled, with a note; /cinema says it needs JavaScript and links back', landing.h1?.includes('Bước vào rạp') && landing.cta.length === 3 && landing.cta.every((h) => h === '/cinema') && landing.sections.length >= 3 && landing.note && landing.image && landing.styled && cinema.home && /JavaScript/.test(cinema.text), result.landing.noScript);
+      await context.close();
+    }
+
+    // Metadata in the HTML documents themselves (what crawlers that run no script read).
+    {
+      const read = async (file) => {
+        const html = await readFile(path.join(dist, file), 'utf8');
+        const meta = (attr, name) => new RegExp(`<meta ${attr}="${name}" content="([^"]*)"`).exec(html)?.[1] ?? null;
+        return {
+          title: /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? null,
+          description: meta('name', 'description'),
+          canonical: /<link rel="canonical" href="([^"]*)"/.exec(html)?.[1] ?? null,
+          ogTitle: meta('property', 'og:title'),
+          ogImage: meta('property', 'og:image'),
+          lang: /<html lang="([^"]*)"/.exec(html)?.[1] ?? null,
+          icon: /<link rel="icon" href="([^"]*)"/.exec(html)?.[1] ?? null,
+        };
+      };
+      const index = await read('index.html');
+      const cinema = await read('cinema.html');
+      const imageFile = index.ogImage ? path.join(dist, new URL(index.ogImage).pathname) : '';
+      result.landing.metadata = { index, cinema, shareImageInDist: existsSync(imageFile) };
+      check('metadata: / and /cinema have their own title, description, canonical and share data in the HTML; lang vi; icon and share image shipped', index.title !== cinema.title && index.description && cinema.description && index.canonical?.endsWith('/') && cinema.canonical?.endsWith('/cinema') && index.ogImage && index.lang === 'vi' && cinema.lang === 'vi' && existsSync(path.join(dist, 'favicon.svg')) && result.landing.metadata.shareImageInDist, result.landing.metadata);
     }
 
     // Time to a usable page and to the scene, and bytes transferred by then.
@@ -202,8 +360,9 @@ async function main() {
       const ended = snapshot();
       const fileBytes = (await stat(path.join(dist, FILM))).size;
       result.network = { fileBytes, durationShownBeforePlay: metadata, beforePlay: sum(before), afterPlay4s: sum(playing), afterEnd: sum(ended), requests: { before, playing, ended } };
-      // preload="metadata": Chrome still reads ahead about 1–1.4 MB from the start of the file.
-      check('film: before Play only the poster and the start of the film are fetched (≤ 2 requests, ≤ 20 % of the file)', result.network.beforePlay.requests <= 2 && result.network.beforePlay.bytes <= fileBytes * 0.2 && result.network.beforePlay.poster === 1, result.network.beforePlay);
+      // preload="metadata": Chrome still reads ahead from the start of the file, 1.0–1.8 MB across runs
+      // (more when the room, and so the film's metadata request, is ready sooner); never the whole file.
+      check('film: before Play only the poster and the start of the film are fetched (≤ 2 requests, ≤ 25 % of the file)', result.network.beforePlay.requests <= 2 && result.network.beforePlay.bytes <= fileBytes * 0.25 && result.network.beforePlay.poster === 1, result.network.beforePlay);
       check('film: its duration is known before Play', /\/ 0:3\d/.test(metadata ?? ''), metadata);
       check('film: watching to the end downloads the file about once (≤ 1,2 × its size)', result.network.afterEnd.bytes <= fileBytes * 1.2, { ...result.network.afterEnd, fileBytes });
       await context.close();
@@ -231,6 +390,8 @@ async function main() {
   console.log(`  first screen (html + entry + css): ${kB(result.bundle.initial.raw)} / ${kB(result.bundle.initial.gzip)} gzip`);
   console.log(`  everything to the scene:           ${kB(result.bundle.toScene.raw)} / ${kB(result.bundle.toScene.gzip)} gzip`);
   console.log('Timing (median of 3):', JSON.stringify(result.summary, null, 1));
+  console.log('Landing:', JSON.stringify(result.landing.cold.map((c) => ({ network: c.network.slice(0, 12), way: c.way, fcp: c.fcpMs, lcp: c.lcpMs, cls: c.cls, before: c.beforeInteraction.total, js: c.beforeInteraction.js, image: c.beforeInteraction.image, clickToReady: c.clickToReadyMs, added: c.addedByEntering.total })), null, 1));
+  console.log('Warm cache:', JSON.stringify(result.landing.warm));
   console.log('Film:', JSON.stringify({ before: result.network.beforePlay, after4s: result.network.afterPlay4s, end: result.network.afterEnd, file: result.network.fileBytes }));
   const failed = result.checks.filter((c) => !c.passed).length;
   console.log(`\n${result.checks.length - failed} passed, ${failed} failed → ${path.relative(root, path.join(outDir, 'build-metrics.json'))}`);

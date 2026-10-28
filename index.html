@@ -2,26 +2,28 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <title>Phòng chiếu 3D</title>
+    <script>
+      // Before anything is painted: the landing content below belongs to "/" only (this document
+      // also answers unknown paths, where the app shows "not found").
+      document.documentElement.dataset.route = location.pathname.replace(/\/+$/, '') === '' ? 'landing' : 'other';
+    </script>
     <style>
-      /* Before the app's own code and styles arrive: a plain message, no fake progress. */
-      html, body { margin: 0; height: 100%; background: #0f1013; color: #e9eaee; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-      #app { height: 100%; }
-      .boot { display: grid; place-content: center; gap: 12px; height: 100%; padding: 16px; box-sizing: border-box; text-align: center; color: #a3a7b1; font-size: 0.95rem; }
-      .boot button { justify-self: center; min-height: 44px; padding: 8px 16px; border: 1px solid #2a2d34; border-radius: 8px; background: #17191e; color: #e9eaee; font: inherit; cursor: pointer; }
+      html { background: #14110f; color: #f3ede5; }
+      html[data-route='other'] [data-landing] { display: none; }
+      html:not([data-route='other']) [data-boot] { display: none; }
+      [data-boot] { display: grid; place-content: center; gap: 12px; min-height: 100vh; margin: 0; padding: 16px; box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #bdb1a3; text-align: center; }
+      [data-boot] button { justify-self: center; min-height: 44px; padding: 8px 16px; border: 1px solid #3b312b; border-radius: 8px; background: #1c1815; color: #f3ede5; font: inherit; cursor: pointer; }
     </style>
   </head>
   <body>
-    <div id="app"><div class="boot" role="status">Đang tải trang…</div></div>
-    <noscript><p class="boot">Trang này cần JavaScript và WebGL để hiển thị phòng chiếu 3D.</p></noscript>
+    <noscript><p class="noscript-note">Phòng chiếu 3D cần JavaScript và WebGL. Phần giới thiệu bên dưới vẫn đọc được.</p></noscript>
+    <div id="app"><!--landing--><p data-boot role="status">Đang tải trang…</p></div>
     <script>
-      // If the app's code has not taken over after a while, say so (it replaces #app when it starts).
+      // If the app has not taken over an unknown path after a while, say so.
       setTimeout(function () {
-        var boot = document.querySelector('#app > .boot');
-        if (!boot) return;
+        var boot = document.querySelector('#app > [data-boot]');
+        if (!boot || document.documentElement.dataset.route !== 'other') return;
         boot.textContent = 'Trang đang tải lâu hơn bình thường. Hãy kiểm tra kết nối mạng.';
         var reload = document.createElement('button');
         reload.type = 'button';

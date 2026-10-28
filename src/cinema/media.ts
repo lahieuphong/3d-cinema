@@ -43,7 +43,12 @@ export const DEMO_FILM: FilmSource = {
  * how the missing-file check works.
  */
 export function devFilm(search: string): FilmSource | null {
-  const name = new URLSearchParams(search).get('film');
+  const params = new URLSearchParams(search);
+  // `?poster=<file>`: the demo film with another still from fixtures/brand/ (the brand pictures use a
+  // slate there, so no film frame appears without its credit).
+  const poster = params.get('poster');
+  if (poster && /^[\w.-]+$/.test(poster)) return { ...DEMO_FILM, poster: `/fixtures/brand/${poster}` };
+  const name = params.get('film');
   if (!name || !/^[\w.-]+$/.test(name)) return null;
   return {
     ...DEMO_FILM,

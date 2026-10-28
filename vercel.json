@@ -4,14 +4,18 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/cinema", "destination": "/cinema.html" },
+    { "source": "/cinema/", "destination": "/cinema.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },
     {
-      "source": "/((?!assets/|media/).*)",
+      "source": "/((?!assets/|media/|brand/).*)",
       "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     }
   ]

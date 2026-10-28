@@ -1,3 +1,5 @@
+import '../styles.css';
+import { PAGE_TITLES } from '../brand.ts';
 import {
   Box3,
   BufferGeometry,
@@ -381,7 +383,7 @@ declare global {
 
 /** Mounts the seat inspector into `host`. Returns a function that tears everything down. */
 export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): void }): () => void {
-  document.title = 'Duyệt mẫu ghế · Phòng chiếu 3D';
+  document.title = PAGE_TITLES.inspector;
   const listeners = new AbortController();
   const { signal } = listeners;
 

@@ -1,3 +1,5 @@
+import '../styles.css';
+import { PAGE_TITLES } from '../brand.ts';
 import type { ToggleablePart } from './architecture.ts';
 import { DEFAULT_PRESET, describePreset, formatMetres, presetInfo, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
 import { createAuditoriumLayout, type Vec3 } from './layout.ts';
@@ -7,7 +9,7 @@ import { createPlayerUi } from './playerUi.ts';
 import { loadQuality, prefersReducedMotion, saveQuality } from './quality.ts';
 import { createSeatPanel } from './seatPanel.ts';
 import { createSeatSummary } from './seatSummary.ts';
-import type { SeatSelection } from './selection.ts';
+import { DEMO_RESERVED_SEAT_IDS, SeatSelection } from './selection.ts';
 import { initialTaskLayout, reduceTaskLayout, SHEET_LAYOUT_QUERY, type CinemaTask, type TaskLayout, type TaskLayoutEvent } from './taskLayout.ts';
 import { createCinemaUi, TOGGLEABLE_PARTS } from './ui.ts';
 import { validateLayout } from './validation.ts';
@@ -57,7 +59,15 @@ export interface CinemaSession {
 export interface CinemaPageOptions {
   /** Opens the seat inspector (a separate route; this page is unmounted first). */
   openInspector(): void;
+  /** In-app way back to the landing page (the header's brand link); without it the link loads `/`. */
+  goHome?(): void;
   session: CinemaSession;
+}
+
+/** A visit's state, created with the auditorium's first mount and kept while the tab stays on the site. */
+export function createCinemaSession(): CinemaSession {
+  const { seats, config } = createAuditoriumLayout();
+  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null, media: null, task: null };
 }
 
 const FREE_CAMERA_CAPTION = 'Camera tự do: kéo để xoay, cuộn hoặc chụm để thu phóng. Chọn một góc để quay lại.';
@@ -86,7 +96,7 @@ const CONTEXT_WAIT_MS = 5000;
  * element and place, and the quality choice are untouched.
  */
 export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): () => void {
-  document.title = 'Phòng chiếu 3D';
+  document.title = PAGE_TITLES.cinema;
   let sceneModule: Promise<SceneModule> = import('./view.ts');
   const layout = createAuditoriumLayout();
   if (import.meta.env.DEV) {
@@ -252,6 +262,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       else dispatch({ type: 'task', task: 'seats' });
     },
     onRetryScene: () => retryScene(),
+    onHome: options.goHome,
   });
 
   const viewFromSeat = (id: string) => {
