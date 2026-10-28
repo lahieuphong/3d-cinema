@@ -8,6 +8,9 @@
 // (playwright-core, no browser download). WebP and JPEG are encoded by the browser's canvas.
 //
 //   node scripts/capture-brand-assets.mjs
+//   BRAND_ONLY=step-2,step-3 node scripts/capture-brand-assets.mjs   # only those pictures
+//
+// Picture names for BRAND_ONLY: hero, hero-portrait, step-1, step-2, step-3, icon.
 
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -28,11 +31,14 @@ const BROWSERS = [
   '/usr/bin/chromium',
 ].filter(Boolean);
 
+const only = new Set((process.env.BRAND_ONLY ?? '').split(',').filter(Boolean));
+const wanted = (name) => only.size === 0 || only.has(name);
+
 const COLORS = { charcoal: '#14110f', wine: '#7d2232', champagne: '#d9c08c' };
 
 /** Only the 3D view, filling the window (development page, styles injected by this script). */
 const VIEW_ONLY =
-  '.cinema-header,.cinema-dock,.cinema-overlay,.cinema-filmstatus,.cinema-notice,.cinema-caption,.cinema-return,.cinema-tourbar{display:none!important}' +
+  '.cinema-header,.cinema-hub,.cinema-overlay,.cinema-filmstatus,.cinema-notice,.cinema-caption,.cinema-return,.cinema-tourbar{display:none!important}' +
   '.cinema-main{padding:0!important}.cinema-screen{gap:0!important}.cinema-stage{border:0!important;border-radius:0!important}';
 
 // Camera poses (metres, room coordinates; the screen is at z = −8.7): the hero sees the room from the
@@ -164,50 +170,76 @@ async function main() {
     await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool), 'base64'));
     console.log('slate: fixtures/brand/screen-slate.png');
 
-    // Hero, 16:9: 2560 × 1440 render (High quality, pixel ratio 2).
-    let page = await openRoom(browser, base, { width: 1280, height: 720 }, 2);
-    const hero = await renderView(page, POSES.hero);
-    await page.close();
-    console.log('hero');
-    await encode(tool, hero, 'hero', [960, 1440, 1920, 2560], { jpegWidths: [1920] });
-    // Share card, 1200 × 630, from the same render.
-    await encode(tool, hero, 'share', [], { jpegWidths: [1200], crop: 1200 / 630, quality: 0.86 });
+    let page;
+    if (wanted('hero')) {
+      // Hero, 16:9: 2560 × 1440 render (High quality, pixel ratio 2).
+      page = await openRoom(browser, base, { width: 1280, height: 720 }, 2);
+      const hero = await renderView(page, POSES.hero);
+      await page.close();
+      console.log('hero');
+      await encode(tool, hero, 'hero', [960, 1440, 1920, 2560], { jpegWidths: [1920] });
+      // Share card, 1200 × 630, from the same render.
+      await encode(tool, hero, 'share', [], { jpegWidths: [1200], crop: 1200 / 630, quality: 0.86 });
+    }
 
-    // Hero, portrait (2:3): 1440 × 2160 render.
-    page = await openRoom(browser, base, { width: 720, height: 1080 }, 2);
-    const portrait = await renderView(page, POSES.heroPortrait);
-    await page.close();
-    console.log('hero portrait');
-    await encode(tool, portrait, 'hero-portrait', [720, 1080, 1440], { jpegWidths: [1080] });
+    if (wanted('hero-portrait')) {
+      // Hero, portrait (2:3): 1440 × 2160 render.
+      page = await openRoom(browser, base, { width: 720, height: 1080 }, 2);
+      const portrait = await renderView(page, POSES.heroPortrait);
+      await page.close();
+      console.log('hero portrait');
+      await encode(tool, portrait, 'hero-portrait', [720, 1080, 1440], { jpegWidths: [1080] });
+    }
 
-    // Step 1: walking — the right aisle from standing eye height (3:2).
-    page = await openRoom(browser, base, { width: 960, height: 640 }, 2);
-    const aisle = await renderView(page, POSES.aisle);
-    await page.close();
-    console.log('step 1');
-    await encode(tool, aisle, 'step-1', [640, 960], { jpegWidths: [960] });
+    if (wanted('step-1')) {
+      // Step 1: walking — the right aisle from standing eye height (3:2).
+      page = await openRoom(browser, base, { width: 960, height: 640 }, 2);
+      const aisle = await renderView(page, POSES.aisle);
+      await page.close();
+      console.log('step 1');
+      await encode(tool, aisle, 'step-1', [640, 960], { jpegWidths: [960] });
+    }
 
-    // Step 2: the real page in Chọn ghế — the side panel with two seats selected (3:2).
-    page = await openRoom(browser, base, { width: 1200, height: 800 }, 1.6);
-    await page.click('button[data-task="seats"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
-    for (const id of ['F05', 'F06']) await page.click(`button[data-seat="${id}"]`);
-    await page.mouse.move(5, 5);
-    await page.waitForTimeout(700);
-    const seats = (await page.screenshot({ type: 'png' })).toString('base64');
-    console.log('step 2');
-    await encode(tool, seats, 'step-2', [640, 960], { jpegWidths: [960] });
+    if (wanted('step-2') || wanted('step-3')) {
+      // Step 2: the real page — "Mở sơ đồ" from "Cài đặt", the map beside the room, two seats selected (3:2).
+      page = await openRoom(browser, base, { width: 1200, height: 800 }, 1.6);
+      await page.click('button[data-action="settings"]');
+      await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+      await page.click('.cinema-hub button[data-action="seat-panel"]');
+      await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+      for (const id of ['F05', 'F06']) await page.click(`button[data-seat="${id}"]`);
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(700);
+      if (wanted('step-2')) {
+        const seats = (await page.screenshot({ type: 'png' })).toString('base64');
+        console.log('step 2');
+        await encode(tool, seats, 'step-2', [640, 960], { jpegWidths: [960] });
+      }
 
-    // Step 3: Xem phim from seat F06 — the screen (slate) and the player under the view (3:2).
-    await page.click('button[data-action="view-from-seat"]');
-    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
-    await page.click('button[data-task="watch"]');
-    await page.waitForTimeout(900);
-    const watch = (await page.screenshot({ type: 'png' })).toString('base64');
-    await page.close();
-    console.log('step 3');
-    await encode(tool, watch, 'step-3', [640, 960], { jpegWidths: [960] });
+      // Step 3: from seat F06 — the screen (slate) and, from "Cài đặt", the film's player (3:2).
+      await page.click('button[data-action="view-from-seat"]');
+      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+      await page.click('button[data-action="seat-panel-close"]');
+      await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });
+      await page.click('button[data-action="settings"]');
+      await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+      // The film's section at the top of the panel.
+      await page.evaluate(() => {
+        const body = document.querySelector('.cinema-hub__body');
+        const film = body.querySelector('[data-section="film"]');
+        body.scrollTop = film.offsetTop - body.offsetTop;
+      });
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(900);
+      if (wanted('step-3')) {
+        const watch = (await page.screenshot({ type: 'png' })).toString('base64');
+        console.log('step 3');
+        await encode(tool, watch, 'step-3', [640, 960], { jpegWidths: [960] });
+      }
+      await page.close();
+    }
 
+    if (!wanted('icon')) return;
     // Icons: the mark on warm charcoal (the browser tab may be light).
     const icon = await tool.evaluate(({ charcoal, wine, champagne }) => {
       const canvas = document.createElement('canvas');

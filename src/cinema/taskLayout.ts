@@ -85,7 +85,9 @@ export function reduceTaskLayout(state: TaskLayout, event: TaskLayoutEvent, layo
     }
     case 'panel':
       if (event.open) {
-        const left = state.task === 'explore';
+        // The map takes the keys: opening it stops the tour and walking, also when walking was
+        // started (from the control panel) while the task was still Chọn ghế.
+        const left = state.task === 'explore' || state.panel === 'closed';
         return result({ task: 'seats', panel: state.panel === 'expanded' ? 'expanded' : shown, panelChoice: true }, left);
       }
       return result({ panel: 'closed', panelChoice: state.task === 'seats' ? false : state.panelChoice });

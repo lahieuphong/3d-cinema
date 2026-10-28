@@ -101,4 +101,13 @@ describe('task layout', () => {
     const watch = run(explore, [{ type: 'task', task: 'watch' }], false);
     expect(reduceTaskLayout(watch, { type: 'task', task: 'seats' }, false).stopExploreActivities).toBe(false);
   });
+
+  it('stops the tour and walking whenever the map opens, also after it was closed in Chọn ghế', () => {
+    const closedInSeats = run(initialTaskLayout(), [{ type: 'panel', open: true }, { type: 'panel', open: false }], false);
+    expect(closedInSeats.task).toBe('seats');
+    expect(reduceTaskLayout(closedInSeats, { type: 'panel', open: true }, false).stopExploreActivities).toBe(true);
+    // Already open: nothing to stop.
+    const open = run(initialTaskLayout(), [{ type: 'panel', open: true }], false);
+    expect(reduceTaskLayout(open, { type: 'panel', open: true }, false).stopExploreActivities).toBe(false);
+  });
 });
