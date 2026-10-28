@@ -34,7 +34,9 @@ const BROWSERS = [
   '/usr/bin/chromium',
 ].filter(Boolean);
 const bypass = process.env.VERCEL_PROTECTION_BYPASS ?? process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-const headers = bypass ? { 'x-vercel-protection-bypass': bypass, 'x-vercel-set-bypass-cookie': 'true' } : {};
+// Sent with every request (fetch, and the browser's extraHTTPHeaders), so no bypass cookie is needed;
+// asking for one (x-vercel-set-bypass-cookie) makes Vercel answer with a redirect first.
+const headers = bypass ? { 'x-vercel-protection-bypass': bypass } : {};
 const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
 // As in capture-views.mjs: ANGLE's D3D shader compiler notes float constant folding (X4122), which
 // three.js prints as a warning after a successful link. A driver note, not a shader error.
@@ -126,6 +128,48 @@ async function flows(browser, base) {
     report.flows.landingToFilm = { early, entered, picked, time, end: { camera: end.camera, preset: end.preset } };
     check('A. landing fetches no auditorium code or film; "Bước vào rạp" opens /cinema with one history entry and one canvas', early.length === 0 && entered.path === '/cinema' && entered.historyAdded === 1 && entered.canvases === 1, { early, entered });
     check('A. F06 picked on the map, seen from its seat, the film plays and pauses; "Trở về" back to a preset with F06 kept', picked === 'true' && !/^0:00/.test(time ?? '') && end.camera === 'preset' && (await pressed(page, 'F06')) === 'true', report.flows.landingToFilm);
+    await context.close();
+  }
+
+  // O. A seat picked in the 3D view (not the map), then the film's sound off and on. The build has no
+  // hook for seat positions, so the click tries a few points over the rows until one picks a seat.
+  {
+    const { context, page } = await newPage(browser, 'pick-3d-and-mute');
+    await page.goto(`${base}/cinema`);
+    await ready(page);
+    await page.click('button[data-task="seats"]');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await page.waitForTimeout(800);
+    const chosen = () => page.$$eval('button[data-seat][aria-pressed="true"]', (seats) => seats.map((s) => s.dataset.seat));
+    const box = await page.locator('canvas').boundingBox();
+    const panel = await page.locator('#cinema-seat-panel').boundingBox();
+    const right = panel && panel.x > box.x ? panel.x : box.x + box.width;
+    let picked = null;
+    let tries = 0;
+    for (const fy of [0.72, 0.8, 0.64, 0.88]) {
+      for (const fx of [0.5, 0.38, 0.62, 0.3]) {
+        if (picked) break;
+        tries++;
+        const before = await chosen();
+        await page.mouse.click(box.x + (right - box.x) * fx, box.y + box.height * fy);
+        await page.waitForTimeout(250);
+        picked = (await chosen()).find((id) => !before.includes(id)) ?? null;
+      }
+    }
+    await page.click('button[data-task="watch"]');
+    await page.click('button[data-action="media-primary"]');
+    await waitPlayer(page, ['playing']);
+    const muted = [];
+    for (let i = 0; i < 2; i++) {
+      await page.click('button[data-action="media-mute"]');
+      await page.waitForTimeout(200);
+      muted.push(await page.getAttribute('.cinema-player', 'data-muted'));
+    }
+    const still = await playerState(page);
+    await page.click('button[data-action="media-primary"]');
+    await waitPlayer(page, ['paused']);
+    report.flows.pick3dAndMute = { picked, tries, muted, playingWhileMuting: still };
+    check('O. a seat picked by clicking it in the 3D view is selected on the map too; the film\'s sound goes off and on while it plays', Boolean(picked) && muted[0] === 'true' && muted[1] === 'false' && still === 'playing', report.flows.pick3dAndMute);
     await context.close();
   }
 
