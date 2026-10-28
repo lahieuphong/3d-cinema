@@ -6,8 +6,9 @@
 // - A deployment: BASE_URL=https://… node scripts/acceptance.mjs. Adds the hosting checks (status
 //   codes, types, cache headers, missing files, ranges, canonical) and whether the deployment serves
 //   the same build as the local dist/ (same hashed file names). A protected Vercel preview needs
-//   VERCEL_PROTECTION_BYPASS, sent as a request header and never written out.
-//   ACCEPTANCE_ONLY=hosting skips the browser flows.
+//   the project's automation bypass secret in VERCEL_PROTECTION_BYPASS (or
+//   VERCEL_AUTOMATION_BYPASS_SECRET, as the Vercel CLI calls it), sent as a request header and
+//   never written out. ACCEPTANCE_ONLY=hosting skips the browser flows.
 //
 // Writes artifacts/<CAPTURE_DIR or prompt-10>/acceptance/report.json and a few screenshots.
 //
@@ -32,7 +33,7 @@ const BROWSERS = [
   '/usr/bin/google-chrome',
   '/usr/bin/chromium',
 ].filter(Boolean);
-const bypass = process.env.VERCEL_PROTECTION_BYPASS;
+const bypass = process.env.VERCEL_PROTECTION_BYPASS ?? process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const headers = bypass ? { 'x-vercel-protection-bypass': bypass, 'x-vercel-set-bypass-cookie': 'true' } : {};
 const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
 // As in capture-views.mjs: ANGLE's D3D shader compiler notes float constant folding (X4122), which
@@ -366,16 +367,19 @@ async function flows(browser, base) {
   }
 }
 
-/** A deployment: what the server answers (one request each, no loops). */
+/** A deployment: what the server answers (a few single requests, no loops). */
 async function hosting(base) {
-  const get = async (pathname, extra = {}) => {
-    const response = await fetch(`${base}${pathname}`, { headers: { ...headers, ...extra }, redirect: 'manual' });
-    const body = /html/.test(response.headers.get('content-type') ?? '') ? await response.text() : (await response.arrayBuffer(), '');
+  const get = async (pathname, extra = {}, method = 'GET') => {
+    const response = await fetch(`${base}${pathname}`, { method, headers: { ...headers, ...extra }, redirect: 'manual' });
+    const body = method === 'GET' && /html/.test(response.headers.get('content-type') ?? '') ? await response.text() : (await response.arrayBuffer(), '');
     return {
+      method,
       status: response.status,
       type: response.headers.get('content-type'),
       cache: response.headers.get('cache-control'),
       range: response.headers.get('content-range'),
+      robots: response.headers.get('x-robots-tag'),
+      edge: response.headers.get('x-vercel-cache'),
       title: /<title>([^<]*)/.exec(body)?.[1] ?? null,
       canonical: /<link rel="canonical" href="([^"]*)"/.exec(body)?.[1] ?? null,
       ogUrl: /<meta property="og:url" content="([^"]*)"/.exec(body)?.[1] ?? null,
@@ -384,8 +388,17 @@ async function hosting(base) {
   };
   const pages = {};
   for (const p of ['/', '/cinema', '/cinema/', '/cinema?inspect=seat', '/?utm_source=test', '/khong-co-trang-nay']) pages[p] = await get(p);
+  if ([401, 403].includes(pages['/'].status) || (pages['/'].status >= 300 && pages['/'].status < 400)) {
+    check('hosting: the deployment answers without a login (protected? set VERCEL_PROTECTION_BYPASS)', false, { status: pages['/'].status });
+    return { pages };
+  }
+  // Names no one has asked for before (no cached answer), each asked GET, HEAD, then GET again.
+  const unique = `khong-co-${Date.now().toString(36)}`;
   const missing = {};
-  for (const p of ['/assets/khong-co.js', '/brand/khong-co.webp', '/media/khong-co.mp4', '/favicon.ico']) missing[p] = await get(p);
+  for (const p of [`/assets/${unique}.js`, `/brand/${unique}.webp`, `/media/${unique}.mp4`, `/${unique}-favicon.ico`]) {
+    missing[p] = [await get(p), await get(p, {}, 'HEAD'), await get(p)];
+  }
+  const longCache = (cache) => /immutable|max-age=[1-9]/.test(cache ?? '');
   const entry = pages['/'].assets.find((a) => a.endsWith('.js'));
   const files = { entry: await get(entry), brand: await get('/brand/hero-960.webp'), poster: await get('/media/big-buck-bunny-trailer-poster.jpg') };
   const ranges = { start: await get(FILM, { Range: 'bytes=0-1023' }), seek: await get(FILM, { Range: 'bytes=8000000-8000999' }) };
@@ -394,7 +407,8 @@ async function hosting(base) {
   const isLanding = (r) => r.status === 200 && / — /.test(r.title ?? '');
   const isCinema = (r) => r.status === 200 && /^Phòng chiếu 3D/.test(r.title ?? '');
   check('hosting: / (also with a query) is the landing HTML, /cinema, /cinema/ and ?inspect=seat the cinema HTML, an unknown page falls back to the landing HTML', isLanding(pages['/']) && isLanding(pages['/?utm_source=test']) && isCinema(pages['/cinema']) && isCinema(pages['/cinema/']) && isCinema(pages['/cinema?inspect=seat']) && isLanding(pages['/khong-co-trang-nay']), Object.fromEntries(Object.entries(pages).map(([p, r]) => [p, [r.status, r.title]])));
-  check('hosting: missing files answer 404, not the landing page', Object.values(missing).every((r) => r.status === 404), Object.fromEntries(Object.entries(missing).map(([p, r]) => [p, [r.status, r.type, r.cache]])));
+  check('hosting: missing files answer 404 to GET, HEAD and a repeated GET, never the landing page', Object.values(missing).flat().every((r) => r.status === 404 && r.title === null), Object.fromEntries(Object.entries(missing).map(([p, rs]) => [p, rs.map((r) => `${r.method} ${r.status} ${r.type}`)])));
+  check('hosting: a 404 is never cached long (no immutable, no max-age) — /assets included', Object.values(missing).flat().every((r) => !longCache(r.cache)), Object.fromEntries(Object.entries(missing).map(([p, rs]) => [p, rs.map((r) => `${r.method} ${r.cache} ${r.edge ?? ''}`.trim())])));
   check('hosting: HTML no-cache; hashed assets immutable with a JS type; brand and media pictures revalidated (not immutable)', [pages['/'], pages['/cinema']].every((r) => /no-cache/.test(r.cache ?? '')) && /immutable/.test(files.entry.cache ?? '') && /javascript/.test(files.entry.type ?? '') && files.brand.type === 'image/webp' && !/immutable/.test(files.brand.cache ?? '') && files.poster.type === 'image/jpeg' && !/immutable/.test(files.poster.cache ?? ''), { landing: pages['/'].cache, cinema: pages['/cinema'].cache, entry: [files.entry.type, files.entry.cache], brand: [files.brand.type, files.brand.cache], poster: [files.poster.type, files.poster.cache] });
   check('hosting: the film is video/mp4 and answers range requests at the start and further in (seek)', [ranges.start, ranges.seek].every((r) => r.status === 206 && r.type === 'video/mp4') && /^bytes 0-1023\//.test(ranges.start.range ?? '') && /^bytes 8000000-8000999\//.test(ranges.seek.range ?? '') && !/immutable/.test(ranges.start.cache ?? ''), { start: [ranges.start.status, ranges.start.range, ranges.start.cache], seek: [ranges.seek.status, ranges.seek.range] });
   check('hosting: each document has one canonical (/ and /cinema) on one origin, equal to og:url', pages['/'].canonical?.endsWith('/') && pages['/cinema'].canonical?.endsWith('/cinema') && new URL(pages['/'].canonical).origin === new URL(pages['/cinema'].canonical).origin && pages['/'].canonical === pages['/'].ogUrl && pages['/cinema'].canonical === pages['/cinema'].ogUrl, { landing: pages['/'].canonical, cinema: pages['/cinema'].canonical });

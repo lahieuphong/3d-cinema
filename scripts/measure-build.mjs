@@ -76,33 +76,49 @@ async function bundle() {
 }
 
 /**
- * vercel.json against dist/, in Vercel's order: a file that exists is served as it is, else the
- * first matching rewrite, else 404; every matching header rule applies. The sources here are literal
- * paths or `/(regex)`, so `^source$` is their pattern. Says nothing about the deployment itself.
+ * vercel.json against dist/, in the phases of Vercel's routing (Build Output API): routes before
+ * `{ handle: 'filesystem' }` run on every request, 404s included; a file that exists is served and
+ * the `hit` routes run; otherwise the routes after `filesystem` may rewrite to a file; else 404 (and
+ * the `error` routes). `headers` and `rewrites` compile the way `vercel build` shows: headers before
+ * the filesystem, rewrites after it. Says nothing about the deployment itself.
  */
 async function hostingRules() {
   const config = JSON.parse(await readFile(path.join(root, 'vercel.json'), 'utf8'));
-  const pattern = (source) => new RegExp(`^${source}$`);
+  const routes = config.routes ?? [
+    ...(config.headers ?? []).map((rule) => ({ src: `^${rule.source}$`, headers: Object.fromEntries(rule.headers.map((h) => [h.key, h.value])), continue: true })),
+    { handle: 'filesystem' },
+    ...(config.rewrites ?? []).map((rule) => ({ src: `^${rule.source}$`, dest: rule.destination })),
+  ];
+  const phases = { before: [] };
+  let phase = 'before';
+  for (const route of routes) {
+    if (route.handle) phases[(phase = route.handle)] ??= [];
+    else phases[phase].push(route);
+  }
   const isFile = (pathname) => statSync(path.join(dist, pathname), { throwIfNoEntry: false })?.isFile() ?? false;
+  const headersOf = (list = [], pathname) => Object.assign({}, ...list.filter((r) => r.headers && new RegExp(r.src).test(pathname)).map((r) => r.headers));
   const serve = (pathname) => {
-    if (isFile(pathname === '/' ? '/index.html' : pathname)) return pathname === '/' ? '/index.html' : pathname;
-    return (config.rewrites ?? []).find((rule) => pattern(rule.source).test(pathname))?.destination ?? 404;
+    const own = pathname === '/' ? '/index.html' : pathname;
+    const file = isFile(own) ? own : (phases.filesystem ?? []).find((r) => r.dest && new RegExp(r.src).test(pathname))?.dest;
+    const found = Boolean(file && isFile(file));
+    const headers = { ...headersOf(phases.before, pathname), ...headersOf(found ? phases.hit : phases.error, pathname) };
+    return { status: found ? 200 : 404, file: found ? file : null, cache: Object.entries(headers).find(([key]) => key.toLowerCase() === 'cache-control')?.[1] ?? 'default' };
   };
-  const cache = (pathname) =>
-    (config.headers ?? []).filter((rule) => pattern(rule.source).test(pathname)).flatMap((rule) => rule.headers).findLast((h) => h.key.toLowerCase() === 'cache-control')?.value ?? 'default';
   const entry = /<script type="module"[^>]*src="(\/assets\/[^"]+)"/.exec(await readFile(path.join(dist, 'index.html'), 'utf8'))?.[1];
-  const table = (paths) => Object.fromEntries(paths.map((p) => [p, serve(p)]));
-  const caches = (paths) => Object.fromEntries(paths.map((p) => [p, cache(p)]));
+  const table = (paths) => Object.fromEntries(paths.map((p) => [p, serve(p).status === 200 ? serve(p).file : 404]));
+  const caches = (paths) => Object.fromEntries(paths.map((p) => [p, serve(p).cache]));
+  const missing = ['/assets/khong-co.js', '/brand/khong-co.webp', '/media/khong-co.mp4', '/favicon.ico', '/robots.txt'];
   return {
     pages: table(['/', '/cinema', '/cinema/', '/khong-co-trang-nay', '/cinema/khong-co']),
-    missing: table(['/assets/khong-co.js', '/brand/khong-co.webp', '/media/khong-co.mp4', '/favicon.ico', '/robots.txt']),
+    missing: table(missing),
     files: table([entry, FILM, '/brand/hero-960.webp', '/favicon.svg', '/cinema.html', '/index.html']),
-    destinationsExist: (config.rewrites ?? []).every((rule) => isFile(rule.destination)),
-    redirects: (config.redirects ?? []).length,
+    destinationsExist: routes.filter((r) => r.dest).every((r) => isFile(r.dest)),
+    redirects: (config.redirects ?? []).length + routes.filter((r) => r.status >= 300 && r.status < 400).length,
     cache: {
       immutable: caches([entry]),
       noCache: caches(['/', '/cinema', '/cinema/', '/index.html', '/cinema.html', '/favicon.svg']),
       revalidated: caches([FILM, '/media/big-buck-bunny-trailer-poster.jpg', '/brand/hero-960.webp']),
+      missing: caches(missing),
     },
   };
 }
@@ -148,6 +164,7 @@ async function main() {
   check('hosting (vercel.json, config only): a missing asset, image, video or file is a 404, not the landing page', all(hosting.missing, (v) => v === 404), hosting.missing);
   check('hosting (vercel.json, config only): existing files are served as they are; rewrites point at files; no redirects', all(hosting.files, (v, p) => v === p) && hosting.destinationsExist && hosting.redirects === 0, { files: hosting.files, destinationsExist: hosting.destinationsExist, redirects: hosting.redirects });
   check('hosting (vercel.json, config only): hashed assets immutable, HTML no-cache, media and brand images revalidated (Vercel default)', all(hosting.cache.immutable, (v) => /immutable/.test(v)) && all(hosting.cache.noCache, (v) => v === 'no-cache') && all(hosting.cache.revalidated, (v) => v === 'default'), hosting.cache);
+  check('hosting (vercel.json, config only): a 404 is never cached long (no immutable on missing files, /assets included)', all(hosting.cache.missing, (v) => !/immutable|max-age=[1-9]/.test(v)), hosting.cache.missing);
 
   const server = await preview({ root, logLevel: 'warn', preview: { port: 4317, strictPort: false } });
   const base = server.resolvedUrls.local[0].replace(/\/$/, '');
