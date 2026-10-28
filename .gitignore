@@ -12,8 +12,8 @@ dist
 dist-ssr
 *.local
 
-# QA screenshots, videos and reports stay on the machine (summaries go to docs/). Prompts 01–09
-# were committed before this rule; ignoring does not untrack them (docs/release-audit-prompt-10.md).
+# QA screenshots, videos and reports stay on the machine (summaries go to docs/). Those of
+# prompts 01–09 were committed earlier and untracked in Prompt 11; history still holds them.
 /artifacts/
 
 # Editor directories and files
