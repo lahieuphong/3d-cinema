@@ -5,6 +5,16 @@ tạo preview. Prompt 10 không commit, không push, không deploy.
 
 Bối cảnh: [release-audit-prompt-10.md](release-audit-prompt-10.md). Checklist: [release-checklist.md](release-checklist.md).
 
+> **Đã thực hiện ở Prompt 11.** Kết quả: [preview-verification-prompt-11.md](preview-verification-prompt-11.md).
+>
+> Khác với kế hoạch dưới đây:
+> - Base là `192318f`: người dùng đã commit và push Prompt 10.
+> - Bỏ theo dõi toàn bộ `artifacts/`, không chỉ Prompt 09.
+> - Thêm commit sửa header `immutable` trên 404.
+> - Cấu hình Vercel (Production Branch `main`, Deployment Protection) đã đọc qua API bằng Vercel CLI có sẵn.
+> - Script dùng header `x-vercel-protection-bypass` cho từng request. Không gửi
+>   `x-vercel-set-bypass-cookie`, vì header đó làm Vercel trả về một chuyển hướng trước.
+
 ## 1. Cách project đang được deploy (đã xác minh)
 
 | Điều | Bằng chứng | Kết luận |
