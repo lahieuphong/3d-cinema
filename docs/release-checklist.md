@@ -1,17 +1,19 @@
-# Checklist phát hành — Tân Phong Cinema (sau Prompt 11)
+# Checklist phát hành — Tân Phong Cinema (sau Prompt 12)
 
-Cập nhật 28/10/2026 (Prompt 11: deploy và kiểm chứng bản preview). Chi tiết và bằng chứng:
+Cập nhật 28/10/2026 (Prompt 12: phát hành production). Chi tiết và bằng chứng:
+[production-release-prompt-12.md](production-release-prompt-12.md),
 [preview-verification-prompt-11.md](preview-verification-prompt-11.md),
 [release-audit-prompt-10.md](release-audit-prompt-10.md),
 [preview-deployment-plan.md](preview-deployment-plan.md).
 
 **Trạng thái:**
-- **Production:** `main` = `192318f` (Prompt 10), deployment `dpl_NpH96…`. Tệp thiếu trả 404 nhưng 404 dưới
-  `/assets/` còn kèm `immutable`.
-- **Preview đã kiểm chứng:** nhánh `preview/p10-release-audit` @ `dc759bf`, `dpl_HPxnF8b92SQ4GJ7EK3DT4TgXkXVF`.
-  - Hosting 8/8, nghiệm thu 24/24 trên Vercel thật.
+- **Production:** `main` = `52809eeaf759ac9713db0951e7c6dbc2d7ddbe8c`, deployment
+  `dpl_2FS8fuhnhX3qgzBJ8Qse6NdUkD2z` (READY 07:53:46Z).
+  - Hosting 8/8, nghiệm thu 24/24 trên `tp3d-cinema.vercel.app`.
   - 404 không còn `immutable`.
-- **Chưa promote, chưa merge vào `main`.**
+- **Rollback dự phòng:** `dpl_NpH96Mgh7xK14NLe7T7r1rxfHSxt` (`192318f`). Rollback thì lỗi 404 kèm
+  `immutable` sẽ quay lại.
+- Các mục "Production (`192318f`)" bên dưới là lịch sử trước khi phát hành.
 
 Phạm vi:
 - trang mở đầu `/`;
