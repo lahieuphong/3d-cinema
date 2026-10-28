@@ -10,9 +10,15 @@
 // seat selection (3D picking with mouse and real touch, the 2D map with keyboard, highlights,
 // limits, seat views, occlusion, lifecycle across context restores), the film on the screen (real
 // playback, controls, colour and aspect with generated clips, errors, refused play, slow network,
-// hidden tab, inspector, quality, context loss, phones, 2D fallback, lifecycle, render rate) and a
-// simulated WebGL failure, then writes screenshots, videos and report.json to
-// artifacts/<CAPTURE_DIR or prompt-07>/.
+// hidden tab, inspector, quality, context loss, phones, 2D fallback, lifecycle, render rate), a
+// simulated WebGL failure, and the page's three tasks (Khám phá, Chọn ghế, Xem phim): layouts and
+// measured canvas share per viewport, the seat sheet and its full-screen dialog, focus and keyboard,
+// zoom 200 %, loading and failure states, end-to-end flows, then writes screenshots, videos and
+// report.json to artifacts/<CAPTURE_DIR or prompt-08>/.
+//
+// Controls are reached the way a visitor would: switching to their task, opening "Cài đặt" (with
+// its inspection tools), "Góc khác" or the seat panel first (see `reveal`).
+// CAPTURE_ONLY=section,section runs a subset (names in main()) while working on one area.
 // When <output folder>/baseline/ exists (a run of the previous code with CAPTURE_DIR=prompt-NN/baseline),
 // its renderer figures are copied into the report and its screenshots are paired with the new ones
 // from the same cameras in compare-*.png.
@@ -30,7 +36,7 @@ import { chromium } from 'playwright-core';
 import { createServer, normalizePath } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-07');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-08');
 
 const BROWSER_CANDIDATES = [
   process.env.BROWSER_PATH,
@@ -106,24 +112,94 @@ async function waitForStatus(page, timeout = 30_000) {
   return page.evaluate(() => document.querySelector('.cinema-app').dataset.status);
 }
 
-async function openInspectTools(page) {
-  if ((await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) !== 'true') {
-    await page.click('button[data-action="inspect-tools"]');
+const currentTask = (page) => page.evaluate(() => document.querySelector('.cinema-app')?.dataset.task ?? null);
+
+async function ensureTask(page, task) {
+  if ((await currentTask(page)) !== task) await page.click(`button[data-task="${task}"]`);
+  await page.waitForFunction((t) => document.querySelector('.cinema-app').dataset.task === t, task);
+}
+
+/** Closes "Cài đặt" and "Góc khác" with their own buttons, if open. */
+async function closeMenus(page) {
+  await page.evaluate(() => {
+    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"]')) toggle.click();
+  });
+}
+
+/**
+ * Makes a control reachable the way a visitor would: its task, "Cài đặt" (and the inspection
+ * tools inside it), "Góc khác" or the seat panel. Returns what had to be opened ('' if nothing).
+ */
+async function reveal(page, selector) {
+  const where = await page.evaluate((sel) => {
+    const element = document.querySelector(sel);
+    if (!element) return 'missing';
+    if (element.getClientRects().length > 0 && !element.closest('[inert]')) return '';
+    if (element.closest('#cinema-inspect-tools')) return 'inspect';
+    if (element.closest('#cinema-settings')) return 'settings';
+    if (element.closest('#cinema-more-views')) return 'more';
+    if (element.closest('#cinema-seat-panel')) return 'panel';
+    // The film's status chip (and its "Thử lại") shows in Xem phim.
+    if (element.closest('.cinema-filmstatus')) return 'watch';
+    return element.closest('[data-dock]')?.dataset.dock ?? 'other';
+  }, selector);
+  if (where === 'inspect' || where === 'settings') {
+    if ((await page.getAttribute('button[data-action="settings"]', 'aria-expanded')) !== 'true') await page.click('button[data-action="settings"]');
+    if (where === 'inspect' && (await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) !== 'true') {
+      await page.click('button[data-action="inspect-tools"]');
+    }
+  } else if (where === 'more') {
+    await ensureTask(page, 'explore');
+    if (!(await page.isVisible(selector))) await page.click('button[data-action="more-views"]');
+  } else if (where === 'panel') {
+    await openSeatPanel(page);
+  } else if (['explore', 'seats', 'watch'].includes(where)) {
+    await ensureTask(page, where);
   }
+  return where;
+}
+
+/** Clicks a control after revealing it; a settings menu opened for it is closed again. */
+async function clickUi(page, selector, options) {
+  const opened = await reveal(page, selector);
+  await page.click(selector, options);
+  if (opened === 'settings' || opened === 'inspect') await closeMenus(page);
+}
+
+async function tapUi(page, selector) {
+  await reveal(page, selector);
+  await page.tap(selector);
+}
+
+async function focusUi(page, selector) {
+  await reveal(page, selector);
+  await page.focus(selector);
+}
+
+async function setQuality(page, level) {
+  await clickUi(page, `button[data-quality="${level}"]`);
+}
+
+async function openInspectTools(page) {
+  await reveal(page, 'button[data-action="open-inspector"]');
 }
 
 async function togglePart(page, part) {
-  await openInspectTools(page);
-  await page.click(`label:has(input[data-toggle="${part}"])`);
+  await clickUi(page, `label:has(input[data-toggle="${part}"])`);
 }
 
+/**
+ * Picks a camera view with its button: the visitor views are in Khám phá (the rarer ones under
+ * "Góc khác" on narrow screens), the technical ones in "Cài đặt". Afterwards the page goes back to
+ * the task it was in, as a visitor would (switching tasks never moves the camera).
+ */
 async function selectPreset(page, id, { keyboard = false } = {}) {
-  if (INSPECTION_PRESETS.has(id)) await openInspectTools(page);
+  const task = await currentTask(page);
   if (keyboard) {
-    await page.focus(`button[data-preset="${id}"]`);
+    await focusUi(page, `button[data-preset="${id}"]`);
     await page.keyboard.press('Enter');
   } else {
-    await page.click(`button[data-preset="${id}"]`);
+    await clickUi(page, `button[data-preset="${id}"]`);
   }
   await page.waitForFunction(
     (preset) => {
@@ -133,6 +209,8 @@ async function selectPreset(page, id, { keyboard = false } = {}) {
     id,
     { timeout: 10_000 },
   );
+  await closeMenus(page);
+  if (task && (await currentTask(page)) !== task) await ensureTask(page, task);
   await nextFrames(page);
 }
 
@@ -237,9 +315,12 @@ async function main() {
   const browser = await chromium.launch({ executablePath, headless: true });
   report.browser = { executablePath, version: browser.version(), baseUrl: base };
 
+  // CAPTURE_ONLY=viewports,film-desktop,… runs only those sections (development; a full run is the record).
+  const only = new Set((process.env.CAPTURE_ONLY ?? '').split(',').filter(Boolean));
+  const run = (section) => only.size === 0 || only.has(section);
   try {
     // "/" lands on /cinema.
-    {
+    if (run('viewports')) {
       const context = await browser.newContext();
       const page = await context.newPage();
       attachConsole(page, 'root-redirect');
@@ -249,7 +330,7 @@ async function main() {
       await context.close();
     }
 
-    for (const { name, ...options } of VIEWPORTS) {
+    for (const { name, ...options } of run('viewports') ? VIEWPORTS : []) {
       const context = await browser.newContext(options);
       const page = await context.newPage();
       attachConsole(page, name);
@@ -284,13 +365,11 @@ async function main() {
         });
       }
 
-      // Seat panel: open by default on wide desktops, closed on phones and tablets. Closed for the
-      // preset shots, so they stay comparable with the baseline's framing.
+      // The page opens in Khám phá with the seat panel out of the way (Prompt 07 opened it on wide
+      // desktops). Preset shots are taken in Khám phá.
       {
-        const open = (await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) === 'true';
-        const expected = name === 'desktop';
-        check(`${name}: seat panel ${expected ? 'open' : 'closed'} by default`, open === expected, open);
-        if (open) await page.click('button[data-action="seat-panel"]');
+        const s = await state(page);
+        check(`${name}: opens in Khám phá, seat panel closed`, s.task === 'explore' && s.panel === 'closed' && !s.seats.panelOpen, { task: s.task, panel: s.panel });
         await nextFrames(page);
       }
 
@@ -345,7 +424,7 @@ async function main() {
       if (name === 'tablet') {
         // DPR 2: here the levels also differ in pixel ratio (2 vs 1.25), unlike the DPR-1 desktop.
         await measurePerformance(page, 'tablet economy');
-        await page.click('button[data-quality="high"]');
+        await setQuality(page, 'high');
         await nextFrames(page);
         await measurePerformance(page, 'tablet high');
       }
@@ -356,26 +435,41 @@ async function main() {
       await context.close();
     }
 
-    await seatInspector(browser, base);
-    await inspectorFromPage(browser, base);
-    await reducedMotion(browser, base);
-    await contextLoss(browser, base);
-    await lifecycleChecks(browser, base);
-    await webglFailure(browser, base);
-    await filmDesktop(browser, base);
-    await filmFixtures(browser, base);
-    await filmMobile(browser, base);
-    await videos(browser, base);
-    await comparisons(browser);
+    const sections = [
+      ['inspector', () => seatInspector(browser, base)],
+      ['inspector-from-page', () => inspectorFromPage(browser, base)],
+      ['reduced-motion', () => reducedMotion(browser, base)],
+      ['context-loss', () => contextLoss(browser, base)],
+      ['lifecycle', () => lifecycleChecks(browser, base)],
+      ['webgl-failure', () => webglFailure(browser, base)],
+      ['film-desktop', () => filmDesktop(browser, base)],
+      ['film-fixtures', () => filmFixtures(browser, base)],
+      ['film-mobile', () => filmMobile(browser, base)],
+      ['ui-layouts', () => uiLayouts(browser, base)],
+      ['ui-focus', () => uiFocus(browser, base)],
+      ['ui-states', () => uiStates(browser, base)],
+      ['ui-flows', () => uiFlows(browser, base)],
+      ['ui-zoom', () => uiZoom(browser, base)],
+      ['videos', () => videos(browser, base)],
+      ['comparisons', async () => {
+        await comparisons(browser);
+        await uiComparisons(browser);
+      }],
+    ];
+    report.ui ??= {};
+    for (const [section, runSection] of sections) if (run(section)) await runSection();
   } finally {
     await browser.close();
     await server.close();
   }
 
-  // The WebGL-disabled page logs its failure on purpose, and the X4122 driver note is harmless;
-  // anything else is unexpected.
+  // The WebGL-disabled page logs its failure on purpose, as does the page whose 3D download is cut
+  // (only those messages), and the X4122 driver note is harmless; anything else is unexpected.
   for (const entry of report.console) {
-    entry.expected = entry.page === 'webgl-disabled' || (entry.type === 'warning' && KNOWN_DRIVER_WARNING.test(entry.text));
+    entry.expected =
+      entry.page === 'webgl-disabled' ||
+      (entry.page === 'ui-3d-download-fails' && /Could not load the 3D part|Failed to fetch dynamically imported module|Failed to load resource/.test(entry.text)) ||
+      (entry.type === 'warning' && KNOWN_DRIVER_WARNING.test(entry.text));
   }
   const unexpected = report.console.filter((entry) => !entry.expected);
   check('no unexpected console warnings or errors', unexpected.length === 0, unexpected.length);
@@ -433,7 +527,7 @@ async function desktopInteractions(page, server) {
   await screenshot(page, 'desktop-6-cutaway-orbit');
 
   // Reset restores everything.
-  await page.click('button[data-action="reset"]');
+  await clickUi(page, 'button[data-action="reset"]');
   await page.waitForFunction(() => {
     const app = document.querySelector('.cinema-app');
     return app.dataset.preset === 'overview' && app.dataset.transitioning === 'false';
@@ -463,7 +557,7 @@ async function desktopInteractions(page, server) {
   await page.mouse.up();
   const dragged = (await state(page)).view.camera.position;
   check('desktop: orbit drag moves the camera', distance(before, dragged) > 0.05, distance(before, dragged));
-  await page.click('button[data-preset="seats"]');
+  await clickUi(page, 'button[data-preset=\"seats\"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.transitioning === 'false');
   await nextFrames(page);
   const settled = (await state(page)).view.camera;
@@ -476,8 +570,8 @@ async function desktopInteractions(page, server) {
   );
 
   // Two presets in quick succession: one transition, ending on the last one.
-  await page.click('button[data-preset="seats"]');
-  await page.click('button[data-preset="seatEye"]');
+  await clickUi(page, 'button[data-preset=\"seats\"]');
+  await clickUi(page, 'button[data-preset=\"seatEye\"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.transitioning === 'false');
   s = await state(page);
   check('desktop: rapid preset clicks end on the last preset', s.preset === 'seatEye' && s.view.mode === 'eye');
@@ -626,7 +720,7 @@ async function lightingChecks(page) {
     lights,
   );
   check('lighting: hiding the ceiling redraws the shadow map', s.view.shadow.renders > renders, s.view.shadow);
-  await screenshot(page, 'state-1-ceiling-hidden');
+  await screenshot(page, 'ui-state-1-ceiling-hidden');
 
   const rendersBefore = s.view.shadow.renders;
   s = await toggle('rightWall');
@@ -638,7 +732,7 @@ async function lightingChecks(page) {
   );
   check('lighting: hiding the right wall redraws the shadow map', s.view.shadow.renders > rendersBefore, s.view.shadow);
   await selectPreset(page, 'seatEye');
-  await screenshot(page, 'state-2-ceiling-hidden-seat-eye');
+  await screenshot(page, 'ui-state-2-ceiling-hidden-seat-eye');
   await selectPreset(page, 'overview');
 
   s = await toggle('ceiling');
@@ -653,8 +747,8 @@ async function lightingChecks(page) {
 // Same cameras at both levels; switching keeps the camera and visibility, persists the choice,
 // does not grow GPU resources, and the renderer goes idle again afterwards.
 async function qualityChecks(page) {
-  const setQuality = async (level) => {
-    await page.click(`button[data-quality="${level}"]`);
+  const switchTo = async (level) => {
+    await setQuality(page, level);
     await nextFrames(page);
     return state(page);
   };
@@ -664,7 +758,7 @@ async function qualityChecks(page) {
     ['seat-leather', { pose: [[1.6, 1.9, -0.9], [0.0, 0.8, 1.6]] }],
     ['graphite-grazing', { pose: [[4.6, 0.9, -3.9], [3.6, 0.4, -2.6]] }],
   ];
-  await setQuality('high');
+  await switchTo('high');
   for (const [name, view] of views) {
     if (view.preset) await selectPreset(page, view.preset);
     else {
@@ -676,20 +770,20 @@ async function qualityChecks(page) {
     }
     const before = (await state(page)).view.camera;
     await screenshot(page, `quality-${name}-high`);
-    const s = await setQuality('economy');
+    const s = await switchTo('economy');
     await screenshot(page, `quality-${name}-economy`);
     check(
       `quality: switching at "${name}" keeps the camera exactly`,
       distance(before.position, s.view.camera.position) < 1e-9 && distance(before.target, s.view.camera.target) < 1e-9,
       { before: before.position, after: s.view.camera.position },
     );
-    await setQuality('high');
+    await switchTo('high');
   }
 
   await selectPreset(page, 'overview');
   const cost = {};
   for (const level of ['high', 'economy']) {
-    await setQuality(level);
+    await switchTo(level);
     cost[level] = await page.evaluate(() => window.__cinema.measureCost());
   }
   report.quality.overviewCost = cost;
@@ -706,7 +800,7 @@ async function qualityChecks(page) {
   await nextFrames(page);
   let s = await state(page);
   const kept = { visibility: s.visibility, camera: s.view.camera, preset: s.preset };
-  s = await setQuality('high');
+  s = await switchTo('high');
   check(
     'quality: switching keeps hidden parts, free camera and preset',
     JSON.stringify(s.visibility) === JSON.stringify(kept.visibility) && distance(s.view.camera.position, kept.camera.position) < 1e-9 &&
@@ -721,7 +815,7 @@ async function qualityChecks(page) {
   // Resources: switch back and forth; geometries, textures and programs must come back to the same count.
   await selectPreset(page, 'overview');
   const memoryBefore = (await state(page)).view.memory;
-  for (let i = 0; i < 6; i++) await setQuality(i % 2 === 0 ? 'economy' : 'high');
+  for (let i = 0; i < 6; i++) await switchTo(i % 2 === 0 ? 'economy' : 'high');
   const afterSwitching = await state(page);
   report.quality.memory = { before: memoryBefore, afterSixSwitches: afterSwitching.view.memory };
   check(
@@ -734,7 +828,7 @@ async function qualityChecks(page) {
   check('quality: no new frames once a switch has rendered', (await state(page)).view.framesRendered === framesAfterSwitch);
 
   // Persisted choice: reload at Economy, then go back to High for the rest of the run.
-  await setQuality('economy');
+  await switchTo('economy');
   await page.reload();
   await waitForStatus(page);
   s = await state(page);
@@ -799,7 +893,7 @@ async function sampleUntil(page, until, { every = 120, timeout = 40_000 } = {}) 
 }
 
 async function startTour(page) {
-  await page.click('button[data-action="tour"]');
+  await clickUi(page, 'button[data-action="tour"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.tour !== 'off');
 }
 
@@ -844,8 +938,8 @@ async function tourChecks(page) {
       await page.mouse.wheel(0, 200);
     },
     'stop button': () => page.click('button[data-action="tour-stop"]'),
-    preset: () => page.click('button[data-preset="seatEye"]'),
-    reset: () => page.click('button[data-action="reset"]'),
+    preset: () => clickUi(page, 'button[data-preset=\"seatEye\"]'),
+    reset: () => clickUi(page, 'button[data-action="reset"]'),
   };
   report.tour.cancel = {};
   for (const [how, stop] of Object.entries(stoppers)) {
@@ -894,12 +988,12 @@ async function tourChecks(page) {
   await selectPreset(page, 'overview');
   await startTour(page);
   await page.waitForTimeout(2500);
-  await page.click('button[data-quality="economy"]');
+  await setQuality(page, 'economy');
   await page.waitForTimeout(800);
   const mid = await state(page);
   check('tour: switching quality during the tour keeps it running', mid.touring && mid.view.tour?.time > 2 && mid.view.quality === 'economy', mid.view.tour);
-  await page.click('button[data-quality="high"]');
-  await page.click('button[data-action="tour"]');
+  await setQuality(page, 'high');
+  await clickUi(page, 'button[data-action="tour"]');
   await selectPreset(page, 'overview');
 
   // Collider and tour path overlay (development view), from the plan view.
@@ -924,13 +1018,13 @@ async function tourChecks(page) {
   await selectPreset(page, 'overview');
   // Alternated twice, so warm-up and clock changes show up as a difference between runs of one level.
   for (const [run, level] of [[1, 'high'], [1, 'economy'], [2, 'high'], [2, 'economy']]) {
-    await page.click(`button[data-quality="${level}"]`);
+    await setQuality(page, level);
     await nextFrames(page);
     const timing = await page.evaluate(() => window.__cinema.measureTour(150));
     const s = await state(page);
     report.frameTiming.push({ label: `desktop tour ${level} (run ${run})`, pixelRatio: s.view.pixelRatio, drawingBuffer: s.view.drawingBuffer, ...timing });
   }
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'high');
   await selectPreset(page, 'overview');
 }
 
@@ -939,7 +1033,7 @@ async function tourChecks(page) {
 async function exploreChecks(page) {
   const walker = async () => (await state(page)).view.explore?.walker ?? null;
   const startExplore = async () => {
-    await page.click('button[data-action="explore"]');
+    await clickUi(page, 'button[data-action="explore"]');
     await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
   };
   const hold = async (keys, ms, every = 100) => {
@@ -1041,7 +1135,7 @@ async function exploreChecks(page) {
   // Quality switch while exploring keeps the walker where it is.
   await page.waitForTimeout(800);
   const beforeSwitch = await walker();
-  await page.click('button[data-quality="economy"]');
+  await setQuality(page, 'economy');
   await nextFrames(page);
   const afterSwitch = await state(page);
   check('explore: switching quality keeps exploring at the same spot', afterSwitch.view.state === 'explore' && JSON.stringify(afterSwitch.view.explore?.walker) === JSON.stringify(beforeSwitch), {
@@ -1049,9 +1143,9 @@ async function exploreChecks(page) {
     before: beforeSwitch,
     after: afterSwitch.view.explore?.walker,
   });
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'high');
 
-  await page.click('button[data-action="explore"]');
+  await clickUi(page, 'button[data-action="explore"]');
   await nextFrames(page);
   const stopped = await state(page);
   check('explore: pressing Khám phá again stops where the camera is', stopped.view.state === 'free' && !stopped.exploring, stopped.view.state);
@@ -1107,7 +1201,7 @@ async function touchChecks(page, context) {
   const afterTouch = await state(page);
   check('mobile: a finger drag on the canvas stops the tour (real touch events)', !afterTouch.touring && afterTouch.view.state === 'free', afterTouch.view.state);
 
-  await page.tap('button[data-action="explore"]');
+  await tapUi(page, 'button[data-action="explore"]');
   await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
   const stickVisible = await page.isVisible('.cinema-stick');
   check('mobile: exploring shows the stick', stickVisible);
@@ -1158,7 +1252,7 @@ async function touchChecks(page, context) {
 
   // Rotate at a preset: it is framed again for the new shape (the portrait overview stands over
   // the right aisle, the landscape one on the centre line).
-  await page.tap('button[data-action="explore"]');
+  await tapUi(page, 'button[data-action="explore"]');
   await selectPreset(page, 'overview');
   const portrait = (await state(page)).view.camera.position;
   await page.setViewportSize({ width: 844, height: 390 });
@@ -1184,7 +1278,7 @@ async function inspectorFromPage(browser, base) {
   await startTour(page);
   await page.waitForTimeout(1500);
   await openInspectTools(page);
-  await page.click('button[data-action="open-inspector"]');
+  await clickUi(page, 'button[data-action="open-inspector"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
   const opened = await page.evaluate(() => ({
     url: location.pathname + location.search,
@@ -1215,11 +1309,11 @@ async function reducedMotion(browser, base) {
   attachConsole(page, 'reduced-motion');
   await page.goto(`${base}cinema`);
   await waitForStatus(page);
-  await page.click('button[data-preset="seats"]');
+  await clickUi(page, 'button[data-preset=\"seats\"]');
   const cut = await state(page);
   check('reduced motion: presets cut straight to the view (no transition)', cut.view.state === 'preset' && !cut.view.transitioning, cut.view.state);
 
-  await page.click('button[data-action="tour"]');
+  await clickUi(page, 'button[data-action="tour"]');
   await nextFrames(page);
   let s = await state(page);
   check('reduced motion: the tour steps between stops instead of moving', s.view.tour?.steps && (await page.getAttribute('.cinema-app', 'data-tour')) === 'steps' && s.view.state === 'tour');
@@ -1238,7 +1332,7 @@ async function reducedMotion(browser, base) {
 
   // Turned on during a playing tour.
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.click('button[data-action="tour"]');
+  await clickUi(page, 'button[data-action="tour"]');
   await page.waitForTimeout(3000);
   const playing = await state(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1368,7 +1462,7 @@ async function videos(browser, base) {
       await page.waitForTimeout(1500);
       await startTour(page);
       await page.waitForTimeout(3000);
-      await page.click('button[data-preset="seatEye"]');
+      await clickUi(page, 'button[data-preset=\"seatEye\"]');
       await page.waitForTimeout(2000);
     });
     await context.close();
@@ -1377,6 +1471,8 @@ async function videos(browser, base) {
     const { context, page } = await open('video-select-3d-map-seat-view', { viewport: { width: 1280, height: 760 } });
     await recordVideo(browser, page, 'video-select-3d-map-seat-view', async () => {
       await page.waitForTimeout(600);
+      await openSeatPanel(page);
+      await page.waitForTimeout(400);
       for (const id of ['F05', 'F06', 'G08']) {
         const p = await seatPoint(page, id);
         if (!p.visible) continue;
@@ -1388,7 +1484,7 @@ async function videos(browser, base) {
       await page.click('button[data-seat="F06"]');
       await page.click('button[data-seat="F06"]');
       await page.waitForTimeout(500);
-      await page.click('button[data-action="view-from-seat"]');
+      await clickUi(page, 'button[data-action="view-from-seat"]');
       await page.waitForFunction(() => window.__cinema.getState().view.state === 'seat', null, { timeout: 8000 });
       await page.waitForTimeout(1500);
       await page.click('button[data-action="return"]');
@@ -1435,7 +1531,7 @@ async function videos(browser, base) {
     const { context, page } = await open('video-mobile-explore', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
     const cdp = await context.newCDPSession(page);
     await recordVideo(browser, page, 'video-mobile-explore', async () => {
-      await page.tap('button[data-action="explore"]');
+      await tapUi(page, 'button[data-action="explore"]');
       await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
       const stick = await page.locator('.cinema-stick').boundingBox();
       const [sx, sy] = [stick.x + stick.width / 2, stick.y + stick.height / 2];
@@ -1458,17 +1554,19 @@ const seatsState = async (page) => (await state(page)).seats;
 const seatLook = (page, id) => page.evaluate((seatId) => window.__cinema.seatLook(seatId), id);
 const seatPoint = (page, id) => page.evaluate((seatId) => window.__cinema.seatScreenPoint(seatId), id);
 
+/** Chọn ghế, then "Sơ đồ ghế" / "Mở sơ đồ" if the panel is not open yet. */
 async function openSeatPanel(page) {
+  await ensureTask(page, 'seats');
   if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') {
     await page.click('button[data-action="seat-panel"]');
   }
   await page.waitForSelector('#cinema-seat-panel:not([hidden])');
 }
 
+/** The panel's own "Đóng" (or "Trở lại phòng 3D"), if it is open. */
 async function closeSeatPanel(page) {
-  if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) === 'true') {
-    await page.click('button[data-action="seat-panel"]');
-  }
+  if (await page.isVisible('#cinema-seat-panel')) await page.click('button[data-action="seat-panel-close"]');
+  await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });
 }
 
 /** Clicks the first of `ids` that is visible in the 3D view; returns its id or null. */
@@ -1586,23 +1684,31 @@ async function seatChecks(page) {
   );
   await screenshot(page, 'seats-2-keyboard-focus');
 
-  // Arrow keys in the map never move the camera, even while exploring.
-  await page.click('button[data-action="explore"]');
+  // Walking belongs to Khám phá: switching to Chọn ghế stops it where the camera is, and keys
+  // pressed in the map never move the camera. (Prompt 06 pressed them while walking; the map is
+  // no longer on screen while walking.)
+  await clickUi(page, 'button[data-action="explore"]');
   await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
-  const walkerBefore = (await state(page)).view.explore.walker;
-  await page.focus('button[data-seat][tabindex="0"]');
+  await page.waitForTimeout(300);
+  const walking = (await state(page)).view.camera.position;
+  await openSeatPanel(page);
+  const switched = await state(page);
+  await focusUi(page, 'button[data-seat][tabindex="0"]');
   for (const key of ['ArrowUp', 'ArrowLeft', 'KeyW']) {
     await page.keyboard.down(key);
     await page.waitForTimeout(250);
     await page.keyboard.up(key);
   }
-  const walkerAfter = (await state(page)).view.explore.walker;
-  check('seats: keys pressed in the map do not move the explorer', JSON.stringify(walkerBefore) === JSON.stringify(walkerAfter));
-  await page.click('button[data-action="explore"]');
+  const keyed = await state(page);
+  check('seats: switching to Chọn ghế stops walking where the camera is; keys in the map do not move the camera', !switched.exploring && switched.view.owner !== 'driver' && distance(walking, switched.view.camera.position) < 0.05 && JSON.stringify(switched.view.camera.position) === JSON.stringify(keyed.view.camera.position), {
+    walking,
+    switched: switched.view.camera.position,
+    keyed: keyed.view.camera.position,
+  });
   await selectPreset(page, 'overview');
 
   // The limit: 8 seats, the 9th is refused with a message, nothing is lost.
-  await page.click('button[data-action="clear-selection"]');
+  await clickUi(page, 'button[data-action="clear-selection"]');
   const eight = ['A01', 'A02', 'A03', 'A06', 'A07', 'A08', 'A09', 'A10'];
   for (const id of eight) await page.click(`button[data-seat="${id}"]`);
   await page.click('button[data-seat="A11"]');
@@ -1613,7 +1719,7 @@ async function seatChecks(page) {
   await screenshot(page, 'seats-3-limit-reached');
   await page.click('button[data-remove-seat="A03"]');
   const afterRemove = (await seatsState(page)).selected;
-  await page.click('button[data-action="clear-selection"]');
+  await clickUi(page, 'button[data-action="clear-selection"]');
   s = await seatsState(page);
   check('seats: removing one and clearing all work, reservations unchanged', !afterRemove.includes('A03') && afterRemove.length === 7 && s.selected.length === 0 && s.reserved === reservedCount);
 
@@ -1643,7 +1749,7 @@ async function seatChecks(page) {
   check('seats: the first click during the tour only stops it; the next click selects', !firstClick.touring && firstClick.seats.selected.length === 0 && selectedAfterSecond && (await seatsState(page)).selected.includes(selectedAfterSecond), {
     selectedAfterSecond,
   });
-  await page.click('button[data-action="clear-selection"]');
+  await clickUi(page, 'button[data-action="clear-selection"]');
   await selectPreset(page, 'overview');
 
   // Seat views from the panel: pose from seatViewPose, caption with the ID, selection kept; back.
@@ -1652,7 +1758,7 @@ async function seatChecks(page) {
   report.seats.views = {};
   for (const id of ['A01', 'A06', 'F06', 'J06', 'J11']) {
     await page.focus(`button[data-seat="${id}"]`);
-    await page.click('button[data-action="view-from-seat"]');
+    await clickUi(page, 'button[data-action="view-from-seat"]');
     await page.waitForFunction(() => window.__cinema.getState().view.state === 'seat', null, { timeout: 8000 });
     await nextFrames(page);
     const view = (await state(page)).view;
@@ -1689,7 +1795,7 @@ async function seatChecks(page) {
   check('seats: "Trở về" goes back to the view the seat view was opened from (overview), no tour', back.preset === 'overview' && !back.touring && (await page.isHidden('button[data-action="return"]')));
 
   // Closing and opening the panel resizes the canvas; picking follows the new rect.
-  await page.click('button[data-action="clear-selection"]');
+  await clickUi(page, 'button[data-action="clear-selection"]');
   await closeSeatPanel(page);
   await page.waitForTimeout(300);
   const wide = (await state(page)).view.drawingBuffer.width;
@@ -1702,7 +1808,7 @@ async function seatChecks(page) {
   check('seats: picking stays exact after the panel resizes the canvas', pickedWide && pickedNarrow && wide > narrow && s.selected.includes('E09') && s.selected.includes('G04'), { wide, narrow, selected: s.selected });
 
   // Quality switch: same selection, same look, picking still maps to the right seats.
-  await page.click('button[data-quality="economy"]');
+  await setQuality(page, 'economy');
   await nextFrames(page);
   const economyLook = await seatLook(page, 'E09');
   const pickedEconomy = await clickFirstVisible(page, ['F08', 'E05', 'D06', 'C06', 'G07']);
@@ -1711,7 +1817,7 @@ async function seatChecks(page) {
     pickedEconomy,
     selected: s.selected,
   });
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'high');
   await nextFrames(page);
 
   // Occlusion: from the section view, a visible right wall blocks every seat; hidden, it does not.
@@ -1743,7 +1849,7 @@ async function seatChecks(page) {
     await page.click('button[data-seat="B09"]');
   }
   for (const level of ['economy', 'high', 'economy', 'high']) {
-    await page.click(`button[data-quality="${level}"]`);
+    await setQuality(page, level);
     await nextFrames(page);
   }
   const memoryAfter = (await state(page)).view.memory;
@@ -1759,7 +1865,7 @@ async function seatChecks(page) {
   const keepIds = (await seatsState(page)).selected;
   const listeners = (await seatsState(page)).listeners;
   await openInspectTools(page);
-  await page.click('button[data-action="open-inspector"]');
+  await clickUi(page, 'button[data-action="open-inspector"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
@@ -1770,7 +1876,7 @@ async function seatChecks(page) {
     selected: s.selected,
     listeners: s.listeners,
   });
-  await page.click('button[data-action="clear-selection"]');
+  await clickUi(page, 'button[data-action="clear-selection"]');
   await closeSeatPanel(page);
 }
 
@@ -1779,10 +1885,7 @@ async function seatChecks(page) {
 async function mobileSeatChecks(page, context) {
   const cdp = await context.newCDPSession(page);
   await selectPreset(page, 'overview');
-  // The inspection row is still open from the preset checks; a visitor would not have it open.
-  if ((await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) === 'true') {
-    await page.click('button[data-action="inspect-tools"]');
-  }
+  await page.tap('button[data-task="seats"]');
   await page.tap('button[data-action="seat-panel"]');
   await page.waitForSelector('#cinema-seat-panel:not([hidden])');
   await page.waitForTimeout(300);
@@ -1831,13 +1934,14 @@ async function mobileSeatChecks(page, context) {
   await selectPreset(page, 'overview');
 
   // Exploring: a thumb on the stick and a second finger on a seat does not select.
-  await page.tap('button[data-action="explore"]');
+  await tapUi(page, 'button[data-action="explore"]');
   await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
   const stick = await page.locator('.cinema-stick').boundingBox();
   const sx = stick.x + stick.width / 2;
   const sy = stick.y + stick.height / 2;
+  // A seat in reach from where walking starts (the view's shape decides which ones are on screen).
   const near = await page.evaluate(() => {
-    for (const id of ['J07', 'J08', 'I07', 'I08', 'J09', 'H07']) {
+    for (const id of ['J07', 'J08', 'I07', 'I08', 'J09', 'H07', ...window.__cinema.layout.seats.map((seat) => seat.id).reverse()]) {
       const point = window.__cinema.seatScreenPoint(id);
       if (point.visible) return { id, ...point };
     }
@@ -1853,10 +1957,11 @@ async function mobileSeatChecks(page, context) {
     await page.waitForTimeout(150);
   }
   check('mobile: stick + a finger on a seat (walk and look) does not select', near && JSON.stringify((await seatsState(page)).selected) === before, near);
-  await page.tap('button[data-action="explore"]');
+  await tapUi(page, 'button[data-action="explore"]');
   await selectPreset(page, 'overview');
 
   // Rotate with the sheet open: it becomes a side panel; selection and picking still right.
+  await openSeatPanel(page);
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(400);
   // With the panel open beside it, the view has less room by design.
@@ -1873,10 +1978,11 @@ async function mobileSeatChecks(page, context) {
   await page.keyboard.press('Escape');
   const closed = await page.isHidden('#cinema-seat-panel');
   const focusBack = await page.evaluate(() => document.activeElement?.dataset?.action ?? null);
-  check('mobile: Escape in the sheet closes it and returns focus to "Sơ đồ ghế" (non-modal, no trap)', closed && focusBack === 'seat-panel', { focusBack });
+  check('mobile: Escape in the sheet closes it and returns focus to "Mở sơ đồ" (non-modal, no trap)', closed && focusBack === 'seat-panel', { focusBack });
   await page.tap('button[data-action="seat-panel"]');
-  await page.click('button[data-action="clear-selection"]');
-  await page.tap('button[data-action="seat-panel"]');
+  await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+  await clickUi(page, 'button[data-action="clear-selection"]');
+  await closeSeatPanel(page);
 }
 
 // Several context loss/restore cycles with seats selected: state kept and repainted, and nothing
@@ -1940,17 +2046,17 @@ async function lifecycleChecks(browser, base) {
   await cycle();
   // Warm-up also covers a quality round trip: the first switch compiles 3 more shader variants
   // (after a restore only what is drawn is compiled); from then on the count stays put.
-  await page.click('button[data-quality="economy"]');
+  await setQuality(page, 'economy');
   await nextFrames(page);
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'high');
   await nextFrames(page);
   const first = await count();
   const selectedBefore = (await seatsState(page)).selected;
   for (let i = 0; i < 4; i++) {
     await cycle();
-    await page.click('button[data-quality="economy"]');
+    await setQuality(page, 'economy');
     await nextFrames(page);
-    await page.click('button[data-quality="high"]');
+    await setQuality(page, 'high');
     await nextFrames(page);
   }
   const last = await count();
@@ -2067,7 +2173,7 @@ async function seatInspector(browser, base) {
   // Both levels in the inspector, same view; the measured seat must not change.
   await selectInspectorView(page, 'front');
   const highState = (await inspectorState(page)).inspector;
-  await page.click('button[data-quality="economy"]');
+  await setQuality(page, 'economy');
   await nextFrames(page);
   const economyState = (await inspectorState(page)).inspector;
   await screenshot(page, 'seat-7-front-economy');
@@ -2079,7 +2185,7 @@ async function seatInspector(browser, base) {
       (await page.evaluate(() => document.querySelectorAll('canvas').length)) === 1,
     { trianglesPerSeat: report.seatInspector.trianglesPerSeat, sizeDelta },
   );
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'high');
   await selectInspectorView(page, 'side');
   check(
     'inspector: measured seat fits the brief (W 0.72–0.76, D ≤ 0.75, H 1.05–1.15, seat 0.43–0.47, cushion 0.48–0.52 m)',
@@ -2169,7 +2275,7 @@ async function contextLoss(browser, base) {
   check('context loss during the tour stops it; the restore does not restart it', !lostDuringTour.touring && !afterTourRestore.touring && afterTourRestore.view.tour === null);
 
   // While walking with a key held: input is dropped, nothing moves after the restore.
-  await page.click('button[data-action="explore"]');
+  await clickUi(page, 'button[data-action="explore"]');
   await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
   await page.keyboard.down('KeyW');
   await page.waitForTimeout(300);
@@ -2181,15 +2287,15 @@ async function contextLoss(browser, base) {
   await page.waitForTimeout(500);
   const laterWalker = (await state(page)).view.explore.walker;
   check('context loss while walking drops held input; after the restore nothing moves by itself', JSON.stringify(restoredWalker) === JSON.stringify(laterWalker));
-  await page.click('button[data-action="explore"]');
+  await clickUi(page, 'button[data-action="explore"]');
   // Resources from before the loss are rebuilt, so a quality switch now deletes nothing stale
   // (the console check at the end fails on any "does not belong to this context").
-  await page.click('button[data-quality="economy"]');
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'economy');
+  await setQuality(page, 'high');
   await nextFrames(page);
 
   // Lose the context after a quality change and a hidden ceiling: both must survive the restore.
-  await page.click('button[data-quality="economy"]');
+  await setQuality(page, 'economy');
   await togglePart(page, 'ceiling');
   await nextFrames(page);
   const beforeLoss = await state(page);
@@ -2216,7 +2322,7 @@ async function contextLoss(browser, base) {
   check('rendering and presets resume after context restore', restored === 'ready', restored);
   // Unmounting after a restore (opening the inspector) used to log ~190 stale-handle warnings.
   await openInspectTools(page);
-  await page.click('button[data-action="open-inspector"]');
+  await clickUi(page, 'button[data-action="open-inspector"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
   await context.close();
 
@@ -2252,10 +2358,14 @@ async function webglFailure(browser, base) {
   await page.goto(`${base}cinema`);
   const status = await waitForStatus(page, 10_000).catch(() => 'timeout');
   const message = await page.textContent('.cinema-status').catch(() => '');
-  // Camera and display controls go; the seat panel and its map stay.
-  const disabled = await page.$$eval('.cinema-toolbar button:not([data-action="seat-panel"])', (buttons) => buttons.every((b) => b.disabled));
+  // Camera and display controls go (with the reason); seat selection becomes the task, its map stays.
+  const disabled = await page.$$eval(
+    '[data-dock="explore"] button, #cinema-settings button[data-preset], #cinema-settings button[data-quality], #cinema-settings input[data-toggle], button[data-action="open-inspector"]',
+    (controls) => controls.length > 8 && controls.every((b) => b.disabled),
+  );
+  const reason = await page.textContent('[data-dock="explore"] .cinema-dock__note');
   check('WebGL unavailable: shows an error instead of loading forever', status === 'error', { status, message });
-  check('WebGL unavailable: camera and display controls are disabled', disabled);
+  check('WebGL unavailable: camera, display and inspection controls are disabled, with the reason in Khám phá', disabled && /Không có cảnh 3D/.test(reason) && (await currentTask(page)) === 'seats', { reason });
   const panelOpen = await page.isVisible('#cinema-seat-panel');
   await page.click('button[data-seat="F04"]');
   await page.click('button[data-seat="F05"]');
@@ -2279,8 +2389,8 @@ async function webglFailure(browser, base) {
     };
   });
   await page.click('button[data-seat="F04"]');
-  await page.click('button[data-action="seat-panel"]');
-  await page.click('button[data-action="media-primary"]');
+  await closeSeatPanel(page);
+  await clickUi(page, PRIMARY);
   await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'playing', null, { timeout: 10_000 });
   await page.waitForTimeout(1500);
   const playing = await page.evaluate(() => window.__cinema.film());
@@ -2289,7 +2399,7 @@ async function webglFailure(browser, base) {
     currentTime: playing.snapshot.currentTime,
   });
   await screenshot(page, 'film-14-2d-fallback');
-  await page.click('button[data-action="media-primary"]');
+  await clickUi(page, PRIMARY);
   await context.close();
 }
 
@@ -2308,7 +2418,7 @@ async function comparisons(browser) {
     'mobile-4-seat-eye',
   ]) {
     const before = path.join(baselineDir, `${file}.png`);
-    if (existsSync(before)) pairs.push([`compare-p06-p07-${file}`, [['Prompt 06 (baseline)', before], ['Prompt 07', path.join(outDir, `${file}.png`)]]]);
+    if (existsSync(before)) pairs.push([`compare-p07-p08-${file}`, [['Prompt 07 (baseline)', before], ['Prompt 08', path.join(outDir, `${file}.png`)]]]);
   }
   for (const name of ['overview', 'seat-eye', 'seat-leather', 'graphite-grazing']) {
     pairs.push([
@@ -2409,12 +2519,12 @@ const PATTERN_POINTS = [
 ];
 
 async function playFilm(page) {
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   return waitForFilm(page, ['playing']);
 }
 
 async function pauseFilm(page) {
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   return waitForFilm(page, ['paused']);
 }
 
@@ -2548,6 +2658,7 @@ async function filmDesktop(browser, base) {
     height: f.snapshot.videoHeight,
     duration: f.snapshot.duration,
   };
+  await ensureTask(page, 'watch');
   const layout = await playerLayout(page);
   check('film: player sits under the 3D view (no overlap with view or seat panel), inside the window', !layout.overlaps.stage && !layout.overlaps.panel && layout.insideWindow && layout.overflowX <= 0, layout);
   const a11y = await page.evaluate(() => {
@@ -2559,7 +2670,7 @@ async function filmDesktop(browser, base) {
       mute: [q('button[data-action="media-mute"]').getAttribute('aria-label'), q('button[data-action="media-mute"]').getAttribute('aria-pressed')],
       volume: q('input[data-action="media-volume"]').getAttribute('aria-label'),
       credit: q('.cinema-player__credit').textContent,
-      live: q('.cinema-player [aria-live]') !== null,
+      live: q('[data-film-live]')?.getAttribute('aria-live') === 'polite',
     };
   });
   check('film: controls have names and states; the attribution and licence are shown', a11y.primary === 'Phát' && a11y.seek && a11y.mute[1] === 'false' && a11y.volume && /Blender Foundation/.test(a11y.credit) && /CC BY 3\.0/.test(a11y.credit) && a11y.live, a11y);
@@ -2568,7 +2679,7 @@ async function filmDesktop(browser, base) {
   report.film.metrics.staticNotPlaying = { renders: idle.rendersPerSecond, ...staticScene.view.render, ...staticScene.view.memory };
 
   // Play: only the element's own events count. Real frames, real time, picture changes.
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   f = await waitForFilm(page, ['playing']);
   const startPixels = await page.evaluate(() => window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]));
   const rates = await filmRates(page, 2500);
@@ -2597,7 +2708,7 @@ async function filmDesktop(browser, base) {
   const mutedAria = await page.getAttribute(muteButton, 'aria-pressed');
   await page.click(muteButton);
   await page.waitForFunction((b) => !window.__cinema.filmElement().muted && document.querySelector(b).getAttribute('aria-pressed') === 'false', muteButton);
-  await page.focus('input[data-action="media-volume"]');
+  await focusUi(page, 'input[data-action="media-volume"]');
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
   await page.waitForFunction(() => document.querySelector('input[data-action="media-volume"]').getAttribute('aria-valuetext') === '80 %', null, { timeout: 3000 }).catch(() => {});
   const sound = await page.evaluate(() => ({ volume: window.__cinema.filmElement().volume, muted: window.__cinema.filmElement().muted, text: document.querySelector('input[data-action="media-volume"]').getAttribute('aria-valuetext') }));
@@ -2622,14 +2733,14 @@ async function filmDesktop(browser, base) {
   });
   // Arrow keys on the focused seek bar jump 5 s while playing.
   const beforeKey = (await film(page)).snapshot.currentTime;
-  await page.focus('input[data-action="media-seek"]');
+  await focusUi(page, 'input[data-action="media-seek"]');
   await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(150);
   const afterKey = (await film(page)).snapshot.currentTime;
   check('film: → on the seek bar jumps about 5 s while playing', afterKey - beforeKey > 4 && afterKey - beforeKey < 6.5, { beforeKey, afterKey });
 
   // Pause: the last frame is drawn, then nothing renders.
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   f = await waitForFilm(page, ['paused']);
   await page.waitForTimeout(300);
   const pausedRates = await filmRates(page, 1200);
@@ -2641,7 +2752,7 @@ async function filmDesktop(browser, base) {
 
   // Seek while paused: the new frame appears, then rendering stops again.
   const beforeSeek = await page.evaluate(() => ({ pixels: window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]), version: window.__cinema.film().view.screen.textureVersion, rendered: window.__cinema.getState().view.framesRendered }));
-  await page.focus('input[data-action="media-seek"]');
+  await focusUi(page, 'input[data-action="media-seek"]');
   await page.keyboard.press('Home');
   await page.waitForFunction(() => window.__cinema.film().snapshot.currentTime < 0.5);
   await page.keyboard.press('ArrowRight');
@@ -2675,27 +2786,34 @@ async function filmDesktop(browser, base) {
   check('film: clicks and drags on the player never pick a seat or turn the camera', JSON.stringify(camera0.position) === JSON.stringify(camera1.position) && JSON.stringify(camera0.target) === JSON.stringify(camera1.target) && JSON.stringify(seats0) === JSON.stringify(seats1.selected) && seats1.hovered === null, {
     selected: seats1.selected,
   });
-  await page.click(PRIMARY); // play again (from where the drag left it)
+  await clickUi(page, PRIMARY); // play again (from where the drag left it)
   await waitForFilm(page, ['playing']);
-  await page.click('button[data-action="explore"]');
+  // Walking in Khám phá, then back to Xem phim: walking stops where the camera is (the film plays
+  // on), and arrow keys on the player's controls never move the camera. (Prompt 07 pressed them
+  // while walking; the player is no longer on screen while walking.)
+  await clickUi(page, 'button[data-action="explore"]');
   await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
-  const walker0 = (await state(page)).view.explore.walker;
-  await page.focus(PRIMARY);
+  await page.waitForTimeout(300);
+  const walkCamera = (await state(page)).view.camera.position;
+  await focusUi(page, PRIMARY);
+  const backToWatch = await state(page);
   await page.keyboard.down('ArrowUp');
   await page.waitForTimeout(600);
   await page.keyboard.up('ArrowUp');
-  await page.focus('input[data-action="media-seek"]');
+  await focusUi(page, 'input[data-action="media-seek"]');
   await page.keyboard.down('ArrowLeft');
   await page.waitForTimeout(300);
   await page.keyboard.up('ArrowLeft');
-  const walker1 = (await state(page)).view.explore.walker;
-  check('film: arrow keys on the player’s controls do not walk', Math.hypot(walker1.x - walker0.x, walker1.z - walker0.z) < 1e-6, { walker0, walker1 });
+  const keyed = await state(page);
+  check('film: Xem phim stops walking where the camera is; arrow keys on the player’s controls do not move it', !backToWatch.exploring && distance(walkCamera, backToWatch.view.camera.position) < 0.05 && JSON.stringify(backToWatch.view.camera.position) === JSON.stringify(keyed.view.camera.position) && (await film(page)).snapshot.state === 'playing', {
+    walkCamera,
+    after: keyed.view.camera.position,
+  });
   await page.evaluate(() => document.activeElement?.blur());
   const spaceBefore = (await film(page)).snapshot.state;
   await page.keyboard.press('Space');
   await page.waitForTimeout(300);
   check('film: Space with nothing focused does not play or pause (no page-wide shortcut)', (await film(page)).snapshot.state === spaceBefore, spaceBefore);
-  await page.click('button[data-action="explore"]');
 
   // Seats and the seat view while playing: the same element keeps playing.
   await page.evaluate(() => (window.__filmElement = window.__cinema.filmElement()));
@@ -2705,7 +2823,7 @@ async function filmDesktop(browser, base) {
   check('film: picking a seat in 3D while playing selects it; playback goes on', picked && (await seatsState(page)).selected.includes(picked) && afterPick.snapshot.state === 'playing', { picked });
   await openSeatPanel(page);
   await page.click('button[data-seat="F06"]');
-  await page.click('button[data-action="view-from-seat"]');
+  await clickUi(page, 'button[data-action="view-from-seat"]');
   // A camera move while playing: renders never exceed browser frames.
   const moving = await rendersPerBrowserFrame(page);
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
@@ -2723,7 +2841,7 @@ async function filmDesktop(browser, base) {
   // Quality switch while playing: time, playing, sound and element unchanged.
   const q0 = await film(page);
   // The pixel ratio changes too, which clears the canvas: no blank frame may reach the screen.
-  const qualityFrames = await framesAfter(page, () => page.click('button[data-quality="economy"]'));
+  const qualityFrames = await framesAfter(page, () => setQuality(page, 'economy'));
   await nextFrames(page);
   const q1 = await film(page);
   check('film: switching quality (drawing buffer resized) never presents a blank canvas frame', qualityFrames.length > 0 && qualityFrames.every((f) => f.deviation > 6), qualityFrames);
@@ -2731,7 +2849,7 @@ async function filmDesktop(browser, base) {
     before: q0.snapshot.currentTime,
     after: q1.snapshot.currentTime,
   });
-  await page.click('button[data-quality="high"]');
+  await setQuality(page, 'high');
   await nextFrames(page);
   // Drop the test's own reference, so the live-object counts below see only the page's.
   await page.evaluate(() => delete window.__filmElement);
@@ -2760,16 +2878,16 @@ async function filmDesktop(browser, base) {
   });
 
   // Ended, then replay.
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   await waitForFilm(page, ['playing']);
-  await page.focus('input[data-action="media-seek"]');
+  await focusUi(page, 'input[data-action="media-seek"]');
   await page.keyboard.press('End');
   f = await waitForFilm(page, ['ended'], 10_000);
   await page.waitForTimeout(300);
   const endedRates = await filmRates(page, 1000);
   check('film: the end — "Phát lại" offered, nothing renders, no loop', (await page.getAttribute(PRIMARY, 'aria-label')) === 'Phát lại' && endedRates.rendersPerSecond === 0 && f.paused, endedRates);
   await screenshot(page, 'film-5-ended');
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   f = await waitForFilm(page, ['playing']);
   check('film: replay starts again from the beginning', f.snapshot.currentTime < 3, f.snapshot.currentTime);
 
@@ -2800,13 +2918,13 @@ async function filmDesktop(browser, base) {
     camera: afterLoss.view.state,
   });
   await screenshot(page, 'film-6-context-restored-paused');
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   f = await waitForFilm(page, ['playing']);
   await page.waitForTimeout(700);
   const resumedRates = await filmRates(page, 1000);
   check('film: playing again after the restore draws new frames', resumedRates.videoFramesPerSecond > 15 && resumedRates.rendersPerSecond > 15, resumedRates);
   // play() still pending when the context goes: it must not start once things settle.
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   await waitForFilm(page, ['paused']);
   await page.evaluate(() => {
     document.querySelector('button[data-action="media-primary"]').click();
@@ -2823,12 +2941,12 @@ async function filmDesktop(browser, base) {
   // The seat inspector: the film stops and its element goes; back in the room it is paused where it was.
   const cdp = await context.newCDPSession(page);
   await cdp.send('HeapProfiler.enable');
-  await page.click(PRIMARY);
+  await clickUi(page, PRIMARY);
   await waitForFilm(page, ['playing']);
   await page.waitForTimeout(1500);
   await openInspectTools(page);
   const leftAt = (await film(page)).snapshot;
-  await page.click('button[data-action="open-inspector"]');
+  await clickUi(page, 'button[data-action="open-inspector"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
   await page.evaluate(() => (window.__filmTypes = { MediaController: null, HTMLVideoElement }));
   const inInspector = await liveCounts(cdp, ['HTMLVideoElement']);
@@ -2863,13 +2981,13 @@ async function filmDesktop(browser, base) {
   // Many play/pause/seek rounds and inspector round trips: resources stay put.
   const types = ['MediaController', 'HTMLVideoElement', 'Texture', 'Material', 'BufferGeometry'];
   const round = async () => {
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     await waitForFilm(page, ['playing']);
     await page.waitForTimeout(250);
-    await page.focus('input[data-action="media-seek"]');
+    await focusUi(page, 'input[data-action="media-seek"]');
     // Back 5 s, so the rounds never run into the end.
     await page.keyboard.press('ArrowLeft');
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     await waitForFilm(page, ['paused']);
   };
   for (let i = 0; i < 2; i++) await round();
@@ -2879,7 +2997,7 @@ async function filmDesktop(browser, base) {
   for (let i = 0; i < 8; i++) await round();
   for (let i = 0; i < 3; i++) {
     await openInspectTools(page);
-    await page.click('button[data-action="open-inspector"]');
+    await clickUi(page, 'button[data-action="open-inspector"]');
     await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
@@ -2898,8 +3016,9 @@ async function filmDesktop(browser, base) {
 
   // Opening the seat panel resizes the 3D view, which clears the canvas: it must be drawn again
   // before the browser presents the frame, never shown blank for a frame.
-  await page.click('button[data-action="reset"]');
+  await clickUi(page, 'button[data-action="reset"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.transitioning === 'false');
+  await ensureTask(page, 'seats');
   await closeSeatPanel(page);
   await page.waitForTimeout(500);
   const resizeFrames = await framesAfter(page, () => page.click('button[data-action="seat-panel"]'));
@@ -2914,13 +3033,13 @@ async function filmDesktop(browser, base) {
     await page.waitForTimeout(400);
     await page.click('button[data-seat="E08"]');
     await page.waitForTimeout(500);
-    await page.click('button[data-action="view-from-seat"]');
+    await clickUi(page, 'button[data-action="view-from-seat"]');
     await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
     await page.waitForTimeout(500);
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     await waitForFilm(page, ['playing']);
     await page.waitForTimeout(3500);
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     await waitForFilm(page, ['paused']);
     await page.waitForTimeout(800);
   });
@@ -2939,6 +3058,8 @@ async function filmFixtures(browser, base) {
     if (options.before) await options.before(page, context);
     await page.goto(`${base}cinema${query}`);
     await waitForStatus(page);
+    // The clips are checked as a viewer sees them: in Xem phim, where the film's status and retry show.
+    await ensureTask(page, 'watch');
     await closeSeatPanel(page);
     return { context, page };
   };
@@ -3043,7 +3164,7 @@ async function filmFixtures(browser, base) {
     page.on('request', (request) => request.url().includes(file) && requests.push(request.url()));
     if (play) {
       await page.waitForFunction(() => ['ready', 'error'].includes(window.__cinema.film().snapshot.state), null, { timeout: 10_000 });
-      if ((await film(page)).snapshot.state === 'ready') await page.click(PRIMARY);
+      if ((await film(page)).snapshot.state === 'ready') await clickUi(page, PRIMARY);
     }
     const f = await waitForFilm(page, ['error'], 10_000);
     await page.waitForTimeout(2500);
@@ -3061,7 +3182,7 @@ async function filmFixtures(browser, base) {
     });
     if (shot) await screenshot(page, shot);
     if (file === 'not-a-video.mp4') {
-      await page.click('button[data-action="media-retry"]');
+      await clickUi(page, 'button[data-action="media-retry"]');
       await waitForFilm(page, ['error'], 10_000);
       await page.waitForTimeout(1500);
       check('film error: "Thử lại" loads once more and ends in the same error (no loop)', (await film(page)).snapshot.state === 'error' && requests.length - requestsBeforeRetry <= 2, { requests: requests.length - requestsBeforeRetry });
@@ -3081,7 +3202,7 @@ async function filmFixtures(browser, base) {
       },
     });
     await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     await page.waitForFunction(() => window.__cinema.film().snapshot.notice === 'blocked');
     await page.waitForTimeout(500);
     const f = await film(page);
@@ -3089,7 +3210,7 @@ async function filmFixtures(browser, base) {
     check('film: a refused play() shows a message, stays "Phát" (not a fake "playing"), element paused', f.paused && f.snapshot.state !== 'playing' && (await page.getAttribute(PRIMARY, 'aria-label')) === 'Phát' && /chưa cho phát/.test(text), { state: f.snapshot.state, text });
     await screenshot(page, 'film-12-play-blocked');
     await page.evaluate(() => (window.__allowPlay = true));
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     const after = await waitForFilm(page, ['playing']);
     check('film: pressing Phát again once allowed plays and clears the message', after.snapshot.notice === null && (await page.textContent('.cinema-player__status')) === '', after.snapshot.state);
     await context.close();
@@ -3122,7 +3243,7 @@ async function filmFixtures(browser, base) {
         }),
     });
     await page.waitForFunction(() => ['ready', 'loading'].includes(window.__cinema.film().snapshot.state), null, { timeout: 20_000 });
-    await page.click(PRIMARY);
+    await clickUi(page, PRIMARY);
     const states = new Set();
     let slowSeen = false;
     let busyText = '';
@@ -3181,33 +3302,872 @@ async function filmMobile(browser, base) {
     await page.goto(`${base}cinema`);
     await waitForStatus(page);
     await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
-    await page.tap(PRIMARY);
+    await tapUi(page, PRIMARY);
     await waitForFilm(page, ['playing']);
     await page.waitForTimeout(1500);
     const playing = await playerLayout(page);
-    check(`film mobile ${name}: player under the view, inside the window, the 3D view keeps most of the space`, !playing.overlaps.stage && playing.insideWindow && playing.overflowX <= 0 && playing.stageShare > playing.playerShare * 3, playing);
+    check(`film mobile ${name}: Xem phim — player under the view, inside the window, the 3D view keeps most of the space`, !playing.overlaps.stage && playing.insideWindow && playing.overflowX <= 0 && playing.stageShare > playing.playerShare * 3, playing);
     await screenshot(page, `film-mobile-${name}-playing`);
-    await openSeatPanel(page);
+    // Chọn ghế while the film plays: the player gives way to the seats; the header keeps a pause button.
+    await page.tap('button[data-task="seats"]');
+    // A side panel (landscape) opens with the task; a sheet (portrait) waits for "Mở sơ đồ".
+    if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') await page.tap('button[data-action="seat-panel"]');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
     await page.waitForTimeout(300);
-    const sheet = await playerLayout(page);
-    check(`film mobile ${name}: with the seat panel open the player overlaps neither the panel nor the view`, !sheet.overlaps.panel && !sheet.overlaps.stage && sheet.insideWindow, sheet);
+    const seats = await page.evaluate(() => {
+      const rect = (s) => document.querySelector(s)?.getBoundingClientRect();
+      const mini = document.querySelector('button[data-action="media-mini"]');
+      const a = rect('#cinema-seat-panel');
+      const b = rect('.cinema-stage');
+      return {
+        mini: mini && mini.getClientRects().length > 0 ? mini.getAttribute('aria-label') : null,
+        overlap: a.x < b.right - 0.5 && b.x < a.right - 0.5 && a.y < b.bottom - 0.5 && b.y < a.bottom - 0.5,
+        playerShown: document.querySelector('.cinema-player').getClientRects().length > 0,
+      };
+    });
+    check(`film mobile ${name}: Chọn ghế while playing — panel and view apart, player out of the way, "Tạm dừng phim" in the header`, !seats.overlap && !seats.playerShown && /Tạm dừng phim/.test(seats.mini ?? ''), seats);
     await page.click('button[data-seat="F06"]');
     await page.click('button[data-action="view-from-seat"]');
     await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
-    await closeSeatPanel(page);
+    if (await page.isVisible('#cinema-seat-panel')) await closeSeatPanel(page);
+    await page.tap('button[data-task="watch"]');
     await page.waitForTimeout(400);
     const seat = await playerLayout(page);
     check(`film mobile ${name}: seat view — the way back button and the player do not overlap`, !seat.overlaps.returnButton, seat);
     await screenshot(page, `film-mobile-${name}-seat-view`);
-    await page.tap('button[data-action="explore"]');
+    await tapUi(page, 'button[data-action="explore"]');
     await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
-    const explore = await playerLayout(page);
-    check(`film mobile ${name}: exploring — the stick and the player do not overlap`, !explore.overlaps.stick && !explore.overlaps.stage, explore);
+    const explore = await page.evaluate(() => {
+      const rect = (s) => {
+        const e = document.querySelector(s);
+        return e && e.getClientRects().length > 0 ? e.getBoundingClientRect() : null;
+      };
+      const overlap = (a, b) => Boolean(a && b && a.x < b.right - 0.5 && b.x < a.right - 0.5 && a.y < b.bottom - 0.5 && b.y < a.bottom - 0.5);
+      const stick = rect('.cinema-stick');
+      return {
+        stick: Boolean(stick),
+        overlaps: { dock: overlap(stick, rect('.cinema-dock')), caption: overlap(stick, rect('.cinema-caption')), back: overlap(stick, rect('button[data-action="return"]')) },
+        mini: rect('button[data-action="media-mini"]') ? document.querySelector('button[data-action="media-mini"]').getAttribute('aria-label') : null,
+      };
+    });
+    check(`film mobile ${name}: walking — the stick overlaps neither the dock, the caption nor the way back; the header keeps "Tạm dừng phim"`, explore.stick && !Object.values(explore.overlaps).some(Boolean) && /Tạm dừng phim/.test(explore.mini ?? ''), explore);
     await screenshot(page, `film-mobile-${name}-explore`);
     const f = await film(page);
-    check(`film mobile ${name}: still playing through panel, seat view and explore`, f.snapshot.state === 'playing', f.snapshot.state);
+    check(`film mobile ${name}: still playing through Chọn ghế, the seat view and walking`, f.snapshot.state === 'playing', f.snapshot.state);
     await context.close();
   }
+}
+
+// ---------------------------------------------------------------- Prompt 08: tasks, layouts, flows
+
+// Sizes checked (Chrome emulation, not real devices). Names match the Prompt 07 baseline metrics.
+const UI_VIEWPORTS = [
+  { name: 'desktop-1440x900', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+  { name: 'laptop-1280x720', viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+  { name: 'tablet-portrait-820x1180', viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true },
+  { name: 'tablet-landscape-1180x820', viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true },
+  { name: 'mobile-390x844', viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  { name: 'mobile-narrow-360x640', viewport: { width: 360, height: 640 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+  { name: 'mobile-landscape-844x390', viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true },
+];
+
+/** The canvas' measured box against the viewport (what is on screen, not what CSS intends). */
+const canvasShare = (page) =>
+  page.evaluate(() => {
+    const canvas = document.querySelector('canvas.cinema-canvas');
+    const r = canvas && canvas.getClientRects().length > 0 ? canvas.getBoundingClientRect() : null;
+    const visible = r ? Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)) * Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) : 0;
+    return {
+      heightShare: r ? Number((r.height / innerHeight).toFixed(3)) : 0,
+      areaShare: Number((visible / (innerWidth * innerHeight)).toFixed(3)),
+      canvas: r ? { width: Math.round(r.width), height: Math.round(r.height) } : null,
+      overflowX: document.documentElement.scrollWidth - innerWidth,
+      overflowY: document.documentElement.scrollHeight - innerHeight,
+    };
+  });
+
+/** Heights of the chrome around the view and the canvas size, to see that nothing shifts. */
+const chromeBox = (page) =>
+  page.evaluate(() => {
+    const h = (s) => {
+      const e = document.querySelector(s);
+      return e && e.getClientRects().length > 0 ? Math.round(e.getBoundingClientRect().height * 10) / 10 : 0;
+    };
+    const c = document.querySelector('canvas.cinema-canvas').getBoundingClientRect();
+    return { header: h('.cinema-header'), dock: h('.cinema-dock'), canvas: `${Math.round(c.width)}x${Math.round(c.height)}` };
+  });
+
+/** Visible controls smaller than `min` CSS px in either direction (the dense seat map and chips excepted). */
+const smallTargets = (page, min = 43.5) =>
+  page.evaluate((limit) => {
+    const selector = '.cinema-tasks__button, .cinema-dock button, .cinema-mini, button[data-action="settings"], .cinema-seats__header button, .cinema-seats__info button, .cinema-return';
+    return [...document.querySelectorAll(selector)]
+      .filter((e) => e.getClientRects().length > 0 && !e.closest('[inert]'))
+      .map((e) => ({ name: e.dataset.action ?? e.dataset.task ?? e.dataset.preset ?? e.textContent.trim().slice(0, 20), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height) }))
+      .filter((t) => t.w < limit || t.h < limit);
+  }, min);
+
+/** Presses Tab until `selector` has focus; returns the number of presses, or -1. */
+async function tabTo(page, selector, max = 60, key = 'Tab') {
+  for (let i = 1; i <= max; i++) {
+    await page.keyboard.press(key);
+    if (await page.evaluate((s) => document.activeElement?.matches(s) ?? false, selector)) return i;
+  }
+  return -1;
+}
+
+const focusedName = (page) =>
+  page.evaluate(() => {
+    const e = document.activeElement;
+    if (!e || e === document.body) return 'body';
+    return e.dataset.task ? `task:${e.dataset.task}` : e.dataset.seat ? `seat:${e.dataset.seat}` : (e.dataset.action ?? e.dataset.preset ?? e.dataset.quality ?? e.tagName.toLowerCase());
+  });
+
+// Every viewport: Khám phá, Chọn ghế (summary, panel, full-screen sheet), Xem phim — measured
+// canvas share, no overflow, steady chrome sizes, touch targets on touch screens.
+async function uiLayouts(browser, base) {
+  Object.assign(report.ui, { canvas: {}, chrome: {}, smallTargets: {} });
+  for (const { name, ...options } of UI_VIEWPORTS) {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    attachConsole(page, `ui-${name}`);
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await waitForCameraToSettle(page);
+    const touchScreen = Boolean(options.hasTouch);
+    const portraitPhone = options.viewport.width < 600;
+    const shares = {};
+    const chrome = {};
+    const small = {};
+    const credits = {};
+    const shot = async (stateName) => {
+      shares[stateName] = await canvasShare(page);
+      chrome[stateName] = await chromeBox(page);
+      // The film (or its poster) is on the screen in every state: its attribution must be visible.
+      credits[stateName] = await page.evaluate(() =>
+        [...document.querySelectorAll('.cinema-filmcredit, .cinema-player__credit')]
+          .filter((e) => e.getClientRects().length > 0 && e.getBoundingClientRect().bottom <= innerHeight && !e.closest('[inert]'))
+          .map((e) => e.textContent)
+          .join(' | '),
+      );
+      if (touchScreen) small[stateName] = await smallTargets(page);
+      await screenshot(page, `ui-${name}-${stateName}`);
+    };
+
+    // Khám phá: steady while the tour starts and stops.
+    await shot('1-explore');
+    await clickUi(page, 'button[data-action="tour"]');
+    await page.waitForTimeout(800);
+    const touring = await chromeBox(page);
+    await clickUi(page, 'button[data-action="tour"]');
+    await page.waitForTimeout(300);
+    const stopped = await chromeBox(page);
+    await selectPreset(page, 'overview');
+
+    // Chọn ghế: the summary (sheet closed), then the panel; the summary keeps its size from 0 to 8 seats.
+    await ensureTask(page, 'seats');
+    await page.waitForTimeout(300);
+    if (await page.isVisible('#cinema-seat-panel')) await closeSeatPanel(page);
+    await shot('2-seats');
+    await page.click('button[data-action="seat-panel"]');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    const counts = [];
+    for (const id of ['F05', 'F06', 'A01', 'A02', 'A03', 'A06', 'A07', 'A08']) {
+      await page.click(`button[data-seat="${id}"]`);
+      counts.push(await chromeBox(page));
+    }
+    await page.click('button[data-seat="F06"]');
+    await shot('3-seats-open');
+    if (await page.isVisible('button[data-action="seat-panel-expand"]')) {
+      await page.click('button[data-action="seat-panel-expand"]');
+      await page.waitForTimeout(200);
+      const dialog = await page.evaluate(() => {
+        const panel = document.querySelector('#cinema-seat-panel');
+        const r = panel.getBoundingClientRect();
+        return {
+          role: panel.getAttribute('role'),
+          modal: panel.getAttribute('aria-modal'),
+          inert: document.querySelector('.cinema-header').inert && document.querySelector('.cinema-screen').inert,
+          coverage: Number(((r.width * r.height) / (innerWidth * innerHeight)).toFixed(3)),
+          canvasShown: document.querySelector('canvas').getClientRects().length > 0,
+          focusInside: panel.contains(document.activeElement),
+        };
+      });
+      check(`ui ${name}: "Mở rộng" makes the sheet a full-screen dialog — the map is the page, no strip of 3D left, the rest inert`, dialog.role === 'dialog' && dialog.modal === 'true' && dialog.inert && dialog.coverage > 0.85 && !dialog.canvasShown && dialog.focusInside, dialog);
+      await shot('4-seats-expanded');
+      await page.click('button[data-action="seat-panel-close"]');
+      await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });
+      const back = await page.evaluate(() => ({ task: document.querySelector('.cinema-app').dataset.task, focus: document.activeElement?.dataset.action ?? null, inert: document.querySelector('.cinema-header').inert }));
+      check(`ui ${name}: "Trở lại phòng 3D" closes it; focus returns to "Mở sơ đồ", nothing left inert`, back.task === 'seats' && back.focus === 'seat-panel' && !back.inert, back);
+    } else {
+      await closeSeatPanel(page);
+    }
+    const summaryFull = await chromeBox(page);
+    await shot('2b-seats-eight-selected');
+
+    // Xem phim: the dock keeps its size through ready, playing and paused; the header through the mini control.
+    await ensureTask(page, 'watch');
+    const ready = await chromeBox(page);
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(1200);
+    await shot('5-watch');
+    const playingBox = await chromeBox(page);
+    await ensureTask(page, 'explore');
+    const miniShown = await page.isVisible('button[data-action="media-mini"]');
+    const exploreWithMini = await chromeBox(page);
+    await ensureTask(page, 'watch');
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['paused']);
+    const pausedBox = await chromeBox(page);
+
+    report.ui.canvas[name] = shares;
+    check(`ui ${name}: the film's CC BY attribution is on screen in every task (beside the view, or in the player)`, Object.entries(credits).every(([k, text]) => k === '4-seats-expanded' || (/Blender Foundation/.test(text) && /CC BY 3\.0/.test(text))), credits);
+    report.ui.chrome[name] = { explore: [chrome['1-explore'], touring, stopped], seats: [chrome['2-seats'], ...counts.slice(-1), summaryFull], watch: [ready, playingBox, pausedBox], exploreWithMini };
+    const min = 0.55;
+    check(`ui ${name}: Khám phá and Xem phim keep the 3D view ≥ ${Math.round(min * 100)} % of the viewport height (measured canvas)`, shares['1-explore'].heightShare >= min && shares['5-watch'].heightShare >= min, {
+      explore: shares['1-explore'].heightShare,
+      seats: shares['2-seats'].heightShare,
+      watch: shares['5-watch'].heightShare,
+    });
+    check(`ui ${name}: no page overflow in any state`, Object.values(shares).every((s) => s.overflowX <= 0 && s.overflowY <= 0), Object.fromEntries(Object.entries(shares).map(([k, v]) => [k, [v.overflowX, v.overflowY]])));
+    const same = (list) => list.every((b) => JSON.stringify(b) === JSON.stringify(list[0]));
+    check(`ui ${name}: chrome and canvas keep their size while the tour starts and stops`, same([chrome['1-explore'], touring, stopped]), [chrome['1-explore'], touring, stopped]);
+    // The side panel shares the row with the view: picking seats in it never resizes anything.
+    check(`ui ${name}: selecting 1→8 seats never resizes the chrome or the view`, same(counts) && (portraitPhone || options.viewport.width < 1025 ? same([chrome['2-seats'], summaryFull]) : true), { counts: counts.map((c) => c.dock), summary: [chrome['2-seats'], summaryFull] });
+    check(`ui ${name}: Xem phim keeps its size through ready → playing → paused; the header's mini control never resizes the view`, same([ready, playingBox, pausedBox]) && miniShown && exploreWithMini.header === chrome['1-explore'].header && exploreWithMini.canvas === chrome['1-explore'].canvas, {
+      watch: [ready, playingBox, pausedBox],
+      exploreWithMini,
+      explore: chrome['1-explore'],
+    });
+    if (touchScreen) {
+      report.ui.smallTargets[name] = small;
+      check(`ui ${name}: main touch controls are at least 44 × 44 CSS px`, Object.values(small).every((list) => list.length === 0), small);
+    }
+    // Browser toolbars showing and hiding: the dynamic viewport height follows, the view is drawn at once.
+    if (portraitPhone) {
+      await ensureTask(page, 'explore');
+      const tall = await canvasShare(page);
+      const frames = await framesAfter(page, () => page.setViewportSize({ width: options.viewport.width, height: options.viewport.height - 70 }));
+      const short = await canvasShare(page);
+      await page.setViewportSize(options.viewport);
+      check(`ui ${name}: a browser toolbar taking 70 px — the view shrinks with it, no overflow, never a blank frame`, short.canvas.height < tall.canvas.height && short.overflowY <= 0 && frames.every((f) => f.deviation > 6), { tall: tall.canvas, short: short.canvas, frames: frames.length });
+    }
+    await context.close();
+  }
+}
+
+// Keyboard and focus: order by task, menus, the seat panel (non-modal beside the view, modal when
+// full screen on a phone), Escape and focus return, nothing hidden in the Tab order, no stuck keys.
+async function uiFocus(browser, base) {
+  report.ui.focus = {};
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-keyboard');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    await page.evaluate(() => document.activeElement?.blur());
+    const order = [];
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press('Tab');
+      order.push(await focusedName(page));
+    }
+    report.ui.focus.exploreOrder = order;
+    check('keyboard: Tab goes tasks → settings → the Khám phá controls; nothing hidden is reached', order.slice(0, 4).join() === 'task:explore,task:seats,task:watch,settings' && order.includes('overview') && order.includes('tour') && order.includes('explore') && !order.some((n) => n.startsWith('seat:') || n === 'media-primary'), order);
+    await page.focus('button[data-task="explore"]');
+    await screenshot(page, 'focus-1-task-button');
+    const outline = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+
+    // Settings: Enter opens, Escape closes and returns focus.
+    await page.focus('button[data-action="settings"]');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Tab');
+    const inMenu = await page.evaluate(() => document.querySelector('#cinema-settings').contains(document.activeElement));
+    await page.keyboard.press('Escape');
+    const menuClosed = await page.evaluate(() => ({ open: document.querySelector('#cinema-settings').dataset.open, focus: document.activeElement?.dataset.action }));
+    check('keyboard: "Cài đặt" opens with Enter, Tab enters it, Escape closes it and focus returns to its button', inMenu && menuClosed.open === 'false' && menuClosed.focus === 'settings' && outline !== 'none', { inMenu, menuClosed, outline });
+
+    // Chọn ghế by keyboard: the side panel, the map (one Tab stop), select, view from the seat.
+    await page.focus('button[data-task="seats"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    const toMap = await tabTo(page, 'button[data-seat][tabindex="0"]');
+    for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
+    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
+    const onSeat = await focusedName(page);
+    await page.keyboard.press('Enter');
+    await screenshot(page, 'focus-2-map-seat');
+    const seatOutline = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+    const toView = await tabTo(page, 'button[data-action="view-from-seat"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+    const s = await state(page);
+    check('keyboard: Chọn ghế → Tab into the map → arrows to F05 → Enter selects → Tab to "Xem từ ghế này" → Enter views from it', toMap > 0 && onSeat === 'seat:F05' && s.seats.selected.includes('F05') && toView > 0 && s.view.seatView === 'F05' && seatOutline !== 'none', { toMap, onSeat, toView, selected: s.seats.selected });
+
+    // Xem phim by keyboard: play, seek, mute, pause.
+    await page.focus('button[data-task="watch"]');
+    await page.keyboard.press('Enter');
+    const toPlay = await tabTo(page, PRIMARY);
+    await page.keyboard.press('Space');
+    await waitForFilm(page, ['playing']);
+    await screenshot(page, 'focus-3-player');
+    await tabTo(page, 'input[data-action="media-seek"]');
+    const t0 = (await film(page)).snapshot.currentTime;
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(200);
+    const t1 = (await film(page)).snapshot.currentTime;
+    await tabTo(page, 'button[data-action="media-mute"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.__cinema.filmElement().muted);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !window.__cinema.filmElement().muted);
+    await tabTo(page, PRIMARY, 60, 'Shift+Tab');
+    await page.keyboard.press('Enter');
+    const paused = await waitForFilm(page, ['paused']);
+    check('keyboard: Xem phim → Tab to Phát → Space plays → → seeks 5 s → mute on/off → Enter pauses', toPlay > 0 && t1 - t0 > 4 && paused.snapshot.state === 'paused' && !paused.snapshot.muted, { toPlay, t0, t1 });
+
+    // Escape in the side panel closes it; focus goes to "Sơ đồ ghế"; a closed panel is out of the Tab order.
+    await page.focus('button[data-task="seats"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await tabTo(page, 'button[data-seat][tabindex="0"]');
+    await page.keyboard.press('Escape');
+    const escaped = await page.evaluate(() => ({ hidden: document.querySelector('#cinema-seat-panel').hidden, focus: document.activeElement?.dataset.action ?? null, role: document.querySelector('#cinema-seat-panel').getAttribute('role'), modal: document.querySelector('#cinema-seat-panel').hasAttribute('aria-modal') }));
+    const reached = [];
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.press('Tab');
+      reached.push(await page.evaluate(() => Boolean(document.activeElement?.closest('#cinema-seat-panel, #cinema-settings, #cinema-more-views'))));
+    }
+    check('keyboard: the side panel is a non-modal region; Escape closes it, focus back on "Sơ đồ ghế", closed parts never get focus', escaped.hidden && escaped.focus === 'seat-panel' && escaped.role === 'region' && !escaped.modal && !reached.some(Boolean), escaped);
+
+    // A key held while leaving Khám phá does not keep the walker going.
+    await page.focus('button[data-task="explore"]');
+    await page.keyboard.press('Enter');
+    await clickUi(page, 'button[data-action="explore"]');
+    await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(300);
+    await page.click('button[data-task="watch"]');
+    await page.keyboard.up('KeyW');
+    const left = (await state(page)).view.camera.position;
+    await page.waitForTimeout(600);
+    await page.click('button[data-task="explore"]');
+    await page.waitForTimeout(600);
+    const after = await state(page);
+    check('keyboard: walking with W held, switching task stops the walker; nothing moves afterwards', !after.exploring && after.view.owner !== 'driver' && JSON.stringify(after.view.camera.position) === JSON.stringify(left), { left, after: after.view.camera.position });
+    await context.close();
+  }
+  {
+    // Phone: the full-screen sheet traps focus, Escape steps back out, focus returns.
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-sheet-focus');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.tap('button[data-task="seats"]');
+    await page.tap('button[data-action="seat-panel"]');
+    await page.tap('button[data-action="seat-panel-expand"]');
+    await page.waitForTimeout(200);
+    const inside = [];
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press('Tab');
+      inside.push(await page.evaluate(() => document.querySelector('#cinema-seat-panel').contains(document.activeElement)));
+    }
+    await page.focus('button[data-action="seat-panel-expand"]');
+    await page.keyboard.press('Shift+Tab');
+    const wrapped = await page.evaluate(() => document.querySelector('#cinema-seat-panel').contains(document.activeElement));
+    const behind = await page.evaluate(() => {
+      const r = document.querySelector('#cinema-seat-panel').getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + 10);
+      return Boolean(hit && document.querySelector('#cinema-seat-panel').contains(hit));
+    });
+    check('sheet: full screen traps focus (Tab and Shift+Tab stay inside) and takes every press', inside.every(Boolean) && wrapped && behind, { inside: inside.filter(Boolean).length, wrapped });
+    await page.focus('button[data-seat="F05"]');
+    await page.keyboard.press('Escape');
+    const stepped = await page.evaluate(() => ({ state: document.querySelector('#cinema-seat-panel').dataset.state, focus: document.activeElement?.dataset.seat ?? document.activeElement?.dataset.action, modal: document.querySelector('#cinema-seat-panel').hasAttribute('aria-modal'), inert: document.querySelector('.cinema-header').inert }));
+    await page.keyboard.press('Escape');
+    const closed = await page.evaluate(() => ({ hidden: document.querySelector('#cinema-seat-panel').hidden, focus: document.activeElement?.dataset.action ?? null }));
+    const sheetArea = await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight - 120)?.closest('#cinema-seat-panel') !== null);
+    check('sheet: Escape leaves full screen (focus stays on the seat, page usable again), Escape again closes it and focus goes to "Mở sơ đồ"; nothing of it takes presses', stepped.state === 'open' && stepped.focus === 'F05' && !stepped.modal && !stepped.inert && closed.hidden && closed.focus === 'seat-panel' && !sheetArea, { stepped, closed });
+    await context.close();
+  }
+}
+
+// Loading, failures and their retries: each says what it is, offers the right retry, and keeps
+// what the user has (seats, the film's place).
+async function uiStates(browser, base) {
+  report.ui.states = {};
+  // The 3D part arrives late: the page is usable at once (tasks, seat map), the room follows.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await context.route(/\/src\/cinema\/view\.ts/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await route.continue();
+    });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-slow-3d');
+    const start = Date.now();
+    await page.goto(`${base}cinema`);
+    await page.waitForSelector('.cinema-app');
+    const shell = Date.now() - start;
+    const loading = await page.evaluate(() => ({
+      status: document.querySelector('.cinema-app').dataset.status,
+      text: document.querySelector('.cinema-status').textContent,
+      tourDisabled: document.querySelector('button[data-action="tour"]').disabled,
+      playDisabled: document.querySelector('button[data-action="media-primary"]').disabled,
+    }));
+    await page.click('button[data-task="seats"]');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await page.click('button[data-seat="F05"]');
+    const selectedEarly = (await seatsState(page)).selected;
+    await screenshot(page, 'ui-state-1-loading-3d-code');
+    await waitForStatus(page, 20_000);
+    const ready = Date.now() - start;
+    await nextFrames(page);
+    const look = await seatLook(page, 'F05');
+    report.ui.states.slow3d = { shellMs: shell, readyMs: ready };
+    check('loading: while the 3D part downloads the page says so, camera and play wait, and the seat map already works', loading.status === 'loading' && /phần 3D/.test(loading.text) && loading.tourDisabled && loading.playDisabled && JSON.stringify(selectedEarly) === '["F05"]', { loading, selectedEarly });
+    check('loading: once the room is built the seat picked meanwhile is shown in 3D', look.tag && ready > 2500, { readyMs: ready, shellMs: shell });
+    await context.close();
+  }
+  // Reduced motion: the loading indicator does not spin.
+  {
+    const context = await browser.newContext({ viewport: { width: 960, height: 600 }, reducedMotion: 'reduce' });
+    await context.route(/\/src\/cinema\/view\.ts/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-reduced-motion-loading');
+    await page.goto(`${base}cinema`);
+    await page.waitForSelector('.cinema-status__spinner');
+    const animation = await page.evaluate(() => getComputedStyle(document.querySelector('.cinema-status__spinner')).animationName);
+    await waitForStatus(page);
+    check('reduced motion: the loading indicator stands still', animation === 'none', animation);
+    await context.close();
+  }
+  // The 3D part fails to download: the page says so, keeps the map and the flat film, offers "Thử lại".
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    let failed = 0;
+    await context.route(/\/src\/cinema\/view\.ts/, async (route) => {
+      if (failed++ === 0) await route.abort('connectionreset');
+      else await route.continue();
+    });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-3d-download-fails');
+    await page.goto(`${base}cinema`);
+    const status = await waitForStatus(page, 15_000);
+    const error = await page.evaluate(() => ({
+      text: document.querySelector('.cinema-status').textContent,
+      retry: Boolean(document.querySelector('button[data-action="retry-scene"]')),
+      spinner: Boolean(document.querySelector('.cinema-status__spinner')),
+      video2d: Boolean(document.querySelector('.cinema-video2d video')),
+      task: document.querySelector('.cinema-app').dataset.task,
+    }));
+    await page.click('button[data-seat="C05"]');
+    await screenshot(page, 'ui-state-2-3d-download-failed');
+    check('3D download fails: an error (no spinner) with "Thử lại", the map and the 2D film stay usable', status === 'error' && /Không tải được phần 3D/.test(error.text) && error.retry && !error.spinner && error.video2d && (await seatsState(page)).selected.includes('C05'), error);
+    await page.click('button[data-action="retry-scene"]');
+    const after = await page
+      .waitForFunction(() => ['ready', 'error'].includes(document.querySelector('.cinema-app').dataset.status) && !document.querySelector('.cinema-status__spinner'), null, { timeout: 15_000 })
+      .then(() => page.evaluate(() => document.querySelector('.cinema-app').dataset.status))
+      .catch(() => 'timeout');
+    const kept = (await seatsState(page)).selected;
+    report.ui.states.downloadRetry = { after, requests: failed };
+    // Browsers may remember a failed module for the page's life: then the retry fails again, honestly.
+    check('3D download fails: "Thử lại" ends in a definite state (room built, or the error again — never a spinner), seats kept', ['ready', 'error'].includes(after) && kept.includes('C05'), { after, requests: failed });
+    if (after === 'ready') {
+      const room = await page.evaluate(() => ({ canvases: document.querySelectorAll('canvas').length, video2d: Boolean(document.querySelector('.cinema-video2d')), videos: document.querySelectorAll('video').length }));
+      check('3D download fails: after a successful retry the room replaces the 2D film (one canvas, no video left in the page)', room.canvases === 1 && !room.video2d && room.videos === 0, room);
+    }
+    await context.close();
+  }
+  // A context the browser never gives back: after a few seconds "Dựng lại cảnh 3D" rebuilds only the
+  // scene; seats, the camera's seat view, the film's element and place stay.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-context-stuck');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await openSeatPanel(page);
+    for (const id of ['E03', 'E04']) await page.click(`button[data-seat="${id}"]`);
+    await page.click('button[data-action="view-from-seat"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => {
+      window.__filmElement = window.__cinema.filmElement();
+      window.__oldCanvas = document.querySelector('.cinema-canvas');
+      document.querySelector('.cinema-canvas').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+    });
+    await page.waitForSelector('button[data-action="retry-scene"]', { timeout: 9000 });
+    const lostAt = (await film(page)).snapshot;
+    await screenshot(page, 'ui-state-3-context-not-restored');
+    await page.click('button[data-action="retry-scene"]');
+    await waitForStatus(page);
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+    await nextFrames(page);
+    const rebuilt = await page.evaluate(() => ({
+      canvases: document.querySelectorAll('canvas').length,
+      newCanvas: document.querySelector('.cinema-canvas') !== window.__oldCanvas,
+      sameFilm: window.__filmElement === window.__cinema.filmElement(),
+      seatView: window.__cinema.getState().view.seatView,
+      selected: window.__cinema.getState().seats.selected,
+    }));
+    const f = await film(page);
+    await page.evaluate(() => {
+      delete window.__filmElement;
+      delete window.__oldCanvas;
+    });
+    check('context not given back: "Dựng lại cảnh 3D" rebuilds the scene — one canvas, same seats and seat view, same film element, paused where it was', rebuilt.canvases === 1 && rebuilt.newCanvas && rebuilt.sameFilm && rebuilt.seatView === 'E04' && JSON.stringify(rebuilt.selected) === '["E03","E04"]' && f.paused && Math.abs(f.snapshot.currentTime - lostAt.currentTime) < 0.5 && f.view.screen.content === 'video', { rebuilt, time: [lostAt.currentTime, f.snapshot.currentTime] });
+    await screenshot(page, 'ui-state-4-scene-rebuilt');
+    await context.close();
+  }
+  // A film that cannot load, on a narrow phone: the long message stays in its chip, "Thử lại" reloads
+  // the film only (same canvas, scene not rebuilt).
+  {
+    const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-media-error');
+    await page.goto(`${base}cinema?film=missing.mp4`);
+    await waitForStatus(page);
+    await page.tap('button[data-task="watch"]');
+    await waitForFilm(page, ['error']);
+    const chip = await page.evaluate(() => {
+      const c = document.querySelector('.cinema-filmstatus').getBoundingClientRect();
+      const s = document.querySelector('.cinema-stage').getBoundingClientRect();
+      window.__canvas = document.querySelector('.cinema-canvas');
+      return { inside: c.x >= s.x && c.right <= s.right + 0.5 && c.bottom <= s.bottom + 0.5, share: Number(((c.width * c.height) / (s.width * s.height)).toFixed(3)), text: document.querySelector('.cinema-player__status').textContent };
+    });
+    await screenshot(page, 'ui-state-5-media-error-narrow');
+    const frames = (await state(page)).view.framesRendered;
+    await page.tap('button[data-action="media-retry"]');
+    await waitForFilm(page, ['error']);
+    const after = await page.evaluate(() => ({ sameCanvas: window.__canvas === document.querySelector('.cinema-canvas'), status: document.querySelector('.cinema-app').dataset.status, frames: window.__cinema.getState().view.framesRendered }));
+    check('media error on a narrow phone: the message stays inside its chip over a corner of the room; "Thử lại" reloads only the film', chip.inside && chip.share < 0.5 && /Không mở được video/.test(chip.text) && after.sameCanvas && after.status === 'ready' && after.frames >= frames, { chip, after });
+    await context.close();
+  }
+  // Empty and full selections on a phone.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    attachConsole(page, 'ui-seat-states');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.tap('button[data-task="seats"]');
+    const empty = await page.textContent('.cinema-summary__text');
+    await page.tap('button[data-action="seat-panel"]');
+    for (const id of ['A01', 'A02', 'A03', 'A06', 'A07', 'A08', 'A09', 'A10', 'A11']) await page.click(`button[data-seat="${id}"]`);
+    const limit = await page.textContent('.cinema-seats__limit');
+    await screenshot(page, 'ui-state-6-limit-reached-sheet');
+    await closeSeatPanel(page);
+    const full = await page.textContent('.cinema-summary__text');
+    await screenshot(page, 'ui-state-7-summary-eight');
+    check('seats on a phone: the summary says when nothing is chosen and when the limit is reached; the 9th is refused with the reason; all labelled demo', /Chưa chọn ghế nào/.test(empty) && /Minh họa/.test(empty) && /Đã đủ 8 ghế/.test(limit) && /Đã đủ 8\/8/.test(full), { empty, limit, full });
+    await context.close();
+  }
+}
+
+// End-to-end flows (Prompt 08 §12): desktop and phone on video, no WebGL, reduced motion, and
+// resources after many task and panel switches.
+async function uiFlows(browser, base) {
+  report.ui.flows = {};
+  // A. Desktop: tour → stop by dragging → pick in 3D → map → select/deselect → view from seat → play → pause → back.
+  {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    attachConsole(page, 'flow-desktop');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    const steps = {};
+    await recordVideo(browser, page, 'video-p08-flow-desktop', async () => {
+      await page.waitForTimeout(500);
+      await clickUi(page, 'button[data-action="tour"]');
+      await page.waitForTimeout(4000);
+      const box = await page.locator('.cinema-canvas').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2, { steps: 10 });
+      await page.mouse.up();
+      steps.tourStopped = !(await state(page)).touring;
+      await waitForCameraToSettle(page);
+      await selectPreset(page, 'overview');
+      await page.click('button[data-task="seats"]');
+      await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+      await page.waitForTimeout(400);
+      steps.picked3d = await clickFirstVisible(page, ['G05', 'H06', 'E08', 'G07']);
+      await page.waitForTimeout(500);
+      await page.click('button[data-seat="F06"]');
+      await page.click('button[data-seat="F07"]');
+      await page.waitForTimeout(300);
+      await page.click('button[data-seat="F07"]');
+      // F06 becomes the seat being looked at again (focus shows its details).
+      await page.focus('button[data-seat="F06"]');
+      await page.waitForTimeout(300);
+      steps.selected = (await seatsState(page)).selected;
+      await page.click('button[data-action="view-from-seat"]');
+      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+      await page.waitForTimeout(600);
+      await page.click('button[data-task="watch"]');
+      await page.waitForTimeout(300);
+      await page.click(PRIMARY);
+      await waitForFilm(page, ['playing']);
+      await page.waitForTimeout(3000);
+      await page.click(PRIMARY);
+      steps.paused = (await waitForFilm(page, ['paused'])).snapshot.state;
+      await page.waitForTimeout(500);
+      await page.click('button[data-action="return"]');
+      await page.waitForFunction(() => window.__cinema.getState().view.state === 'preset', null, { timeout: 8000 });
+      await page.waitForTimeout(800);
+    });
+    const end = await state(page);
+    report.ui.flows.desktop = { ...steps, end: { preset: end.preset, selected: end.seats.selected } };
+    check('flow A (desktop): tour stopped by a drag, seat picked in 3D, map select/deselect, view from F06, play, pause, back to the overview — selection intact', steps.tourStopped && steps.picked3d && steps.selected.includes('F06') && steps.selected.includes(steps.picked3d) && !steps.selected.includes('F07') && steps.paused === 'paused' && end.preset === 'overview' && JSON.stringify(end.seats.selected) === JSON.stringify(steps.selected), report.ui.flows.desktop);
+    await screenshot(page, 'flow-a-desktop-end');
+    await context.close();
+  }
+  // B. Phone portrait: explore → map → select → view from seat → play → rotate → pause → back to the map, selection kept.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    attachConsole(page, 'flow-mobile');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    const steps = {};
+    await recordVideo(browser, page, 'video-p08-flow-mobile', async () => {
+      await page.waitForTimeout(500);
+      await page.tap('button[data-action="more-views"]');
+      await page.waitForTimeout(300);
+      await page.tap('button[data-preset="seats"]');
+      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'preset', null, { timeout: 10_000 });
+      await page.waitForTimeout(600);
+      await page.tap('button[data-task="seats"]');
+      await page.tap('button[data-action="seat-panel"]');
+      await page.waitForTimeout(300);
+      await page.tap('button[data-action="seat-panel-expand"]');
+      await page.waitForTimeout(300);
+      for (const id of ['E03', 'E04']) {
+        await page.tap(`button[data-seat="${id}"]`);
+        await page.waitForTimeout(300);
+      }
+      await page.tap('button[data-action="view-from-seat"]');
+      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
+      steps.sheetAfterView = await page.evaluate(() => document.querySelector('#cinema-seat-panel').dataset.state);
+      steps.share = (await canvasShare(page)).heightShare;
+      await page.waitForTimeout(600);
+      await page.tap('button[data-task="watch"]');
+      await page.tap(PRIMARY);
+      await waitForFilm(page, ['playing']);
+      await page.waitForTimeout(2000);
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.waitForTimeout(800);
+      steps.landscape = await playerLayout(page);
+      steps.playingAfterRotate = (await film(page)).snapshot.state;
+      await page.tap(PRIMARY);
+      steps.paused = (await waitForFilm(page, ['paused'])).snapshot.state;
+      await page.waitForTimeout(400);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(500);
+      await page.tap('button[data-task="seats"]');
+      await page.tap('button[data-action="seat-panel"]');
+      await page.waitForTimeout(800);
+    });
+    const end = await state(page);
+    const pressed = await page.evaluate(() => [...document.querySelectorAll('button[data-seat][aria-pressed="true"]')].map((b) => b.dataset.seat));
+    report.ui.flows.mobile = { ...steps, end: { selected: end.seats.selected, pressed } };
+    check('flow B (phone): full-screen map → select → "Xem từ ghế này" clears the sheet away → play → rotate (still playing, player fits) → pause → back to the map with the seats kept', steps.sheetAfterView === 'closed' && steps.share > 0.55 && steps.playingAfterRotate === 'playing' && steps.landscape.insideWindow && !steps.landscape.overlaps.stage && steps.paused === 'paused' && JSON.stringify(end.seats.selected) === '["E03","E04"]' && JSON.stringify(pressed) === '["E03","E04"]', report.ui.flows.mobile);
+    await screenshot(page, 'flow-b-mobile-end');
+    await context.close();
+  }
+  // E. No WebGL: map → seat → 2D player → pause; Khám phá says why it cannot work; never two players.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    await context.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+        return type === 'webgl' || type === 'webgl2' ? null : original.call(this, type, ...args);
+      };
+    });
+    const page = await context.newPage();
+    attachConsole(page, 'webgl-disabled');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page, 10_000);
+    const start = await page.evaluate(() => ({ task: document.querySelector('.cinema-app').dataset.task, panel: document.querySelector('.cinema-app').dataset.panel, canvases: document.querySelectorAll('canvas').length }));
+    await screenshot(page, 'flow-e-no-webgl-seats');
+    await page.tap('button[data-seat="D04"]');
+    await closeSeatPanel(page);
+    await page.tap('button[data-task="watch"]');
+    await page.tap(PRIMARY);
+    await waitForFilm(page, ['playing']);
+    await page.waitForTimeout(1200);
+    const flat = await page.evaluate(() => {
+      const stage = document.querySelector('.cinema-stage').getBoundingClientRect();
+      const video = document.querySelector('.cinema-video2d video').getBoundingClientRect();
+      const status = document.querySelector('.cinema-status').getBoundingClientRect();
+      return { videos: document.querySelectorAll('video').length, videoShare: Number(((video.width * video.height) / (stage.width * stage.height)).toFixed(2)), statusShare: Number(((status.width * status.height) / (stage.width * stage.height)).toFixed(2)) };
+    });
+    await screenshot(page, 'flow-e-no-webgl-2d-player');
+    await page.tap(PRIMARY);
+    const paused = (await waitForFilm(page, ['paused'])).snapshot.state;
+    await page.tap('button[data-task="explore"]');
+    const reason = await page.textContent('[data-dock="explore"] .cinema-dock__note');
+    await screenshot(page, 'flow-e-no-webgl-explore');
+    report.ui.flows.noWebgl = { start, flat, paused, reason };
+    check('flow E (no WebGL, phone): starts in Chọn ghế with the map, seat picked, the one film element plays flat and pauses; the error is a line, not a big box; Khám phá says why', start.task === 'seats' && start.panel === 'open' && start.canvases === 0 && (await seatsState(page)).selected.includes('D04') && flat.videos === 1 && flat.videoShare > 0.5 && flat.statusShare < 0.3 && paused === 'paused' && /Không có cảnh 3D/.test(reason), report.ui.flows.noWebgl);
+    await context.close();
+  }
+  // F. Reduced motion: the tour steps; preset changes and panels never animate.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    attachConsole(page, 'flow-reduced-motion');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await clickUi(page, 'button[data-action="tour"]');
+    const tour = (await state(page)).view.tour;
+    await page.click('button[data-action="tour-next"]');
+    await nextFrames(page);
+    const stepped = (await state(page)).view;
+    await page.click('button[data-action="tour-stop"]');
+    await selectPreset(page, 'seats');
+    const instant = (await state(page)).view.transitioning;
+    await page.click('button[data-task="seats"]');
+    const panelMotion = await page.evaluate(() => {
+      const panel = document.querySelector('#cinema-seat-panel');
+      const s = getComputedStyle(panel);
+      const toggle = document.querySelector('.cinema-switch__track');
+      return { transition: s.transitionDuration, animation: s.animationName, switchTransition: getComputedStyle(toggle).transitionDuration };
+    });
+    check('flow F (reduced motion): the tour shows stops one by one, views change without flying, panels and switches do not animate', tour?.steps && stepped.tour?.stopIndex === 1 && !stepped.transitioning && !instant && panelMotion.animation === 'none' && ['0s', ''].includes(panelMotion.transition) && panelMotion.switchTransition === '0s', { tour, panelMotion });
+    await context.close();
+  }
+  // D. Many task and panel switches: one canvas, one film element, steady objects, listeners and
+  // renderer resources; nothing renders once things settle with the film paused.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    attachConsole(page, 'flow-switching');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('HeapProfiler.enable');
+    const types = ['MediaController', 'HTMLVideoElement', 'Texture', 'Material', 'BufferGeometry', 'Object3D'];
+    const cycle = async () => {
+      for (const task of ['seats', 'watch', 'explore', 'seats']) await page.click(`button[data-task="${task}"]`);
+      await page.click('button[data-action="seat-panel"]');
+      await page.click('button[data-action="seat-panel"]');
+      await page.click('button[data-action="settings"]');
+      await page.click('button[data-action="settings"]');
+      await page.click('button[data-task="explore"]');
+    };
+    await cycle();
+    await page.waitForTimeout(600);
+    const first = await liveCounts(cdp, types);
+    const firstMemory = (await state(page)).view.memory;
+    const element = await page.evaluate(() => (window.__probeElement = window.__cinema.filmElement()) && true);
+    for (let i = 0; i < 15; i++) await cycle();
+    await page.waitForTimeout(500);
+    const r0 = (await state(page)).view.framesRendered;
+    await page.waitForTimeout(1500);
+    const r1 = (await state(page)).view.framesRendered;
+    const same = await page.evaluate(() => {
+      const ok = window.__probeElement === window.__cinema.filmElement();
+      delete window.__probeElement;
+      return ok;
+    });
+    const last = await liveCounts(cdp, types);
+    const lastMemory = (await state(page)).view.memory;
+    const extra = await page.evaluate(() => ({ canvases: document.querySelectorAll('canvas').length, listeners: window.__cinema.getState().seats.listeners, subscribers: window.__cinema.film().subscribers }));
+    report.ui.flows.switching = { first, last, firstMemory, lastMemory, idleRenders: r1 - r0, ...extra };
+    check('flow D: 64 task switches and 32 panel/menu toggles — one canvas, the same film element, no renders once settled (film paused)', element && same && extra.canvases === 1 && r1 - r0 === 0 && last.objects.HTMLVideoElement === 1 && last.objects.MediaController === 1, report.ui.flows.switching);
+    check('flow D: …live three.js objects, page listeners and renderer resources unchanged (heap +< 1 MiB)', JSON.stringify(first.objects) === JSON.stringify(last.objects) && JSON.stringify(first.listeners) === JSON.stringify(last.listeners) && JSON.stringify(firstMemory) === JSON.stringify(lastMemory) && last.heapMiB - first.heapMiB < 1, {
+      objects: [first.objects, last.objects],
+      listeners: [first.listeners, last.listeners],
+      heap: [first.heapMiB, last.heapMiB],
+    });
+    await context.close();
+  }
+}
+
+// Zoom 200 %: a 1440 × 900 and a 1280 × 720 window at 200 % are 720 × 450 and 640 × 360 CSS px
+// at a device pixel ratio of 2 (what the browser lays out).
+async function uiZoom(browser, base) {
+  report.ui.zoom = {};
+  for (const [name, viewport] of [
+    ['1440x900', { width: 720, height: 450 }],
+    ['1280x720', { width: 640, height: 360 }],
+  ]) {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+    const page = await context.newPage();
+    attachConsole(page, `zoom-${name}`);
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    const shares = {};
+    shares.explore = await canvasShare(page);
+    await screenshot(page, `zoom200-${name}-1-explore`);
+    await openSeatPanel(page);
+    await page.click('button[data-seat="F05"]');
+    shares.seats = await canvasShare(page);
+    const reach = await page.evaluate(() => {
+      const r = document.querySelector('button[data-action="view-from-seat"]').getBoundingClientRect();
+      return r.bottom <= innerHeight && r.right <= innerWidth && r.height > 0;
+    });
+    await screenshot(page, `zoom200-${name}-2-seats`);
+    await clickUi(page, PRIMARY);
+    await waitForFilm(page, ['playing']);
+    shares.watch = await canvasShare(page);
+    await screenshot(page, `zoom200-${name}-3-watch`);
+    await clickUi(page, PRIMARY);
+    await page.click('button[data-action="settings"]');
+    await page.click('button[data-action="inspect-tools"]');
+    const menu = await page.evaluate(() => {
+      const panel = document.querySelector('#cinema-settings');
+      const r = panel.getBoundingClientRect();
+      return { inside: r.bottom <= innerHeight + 0.5 && r.right <= innerWidth + 0.5 && r.x >= -0.5, scrolls: panel.scrollHeight > panel.clientHeight };
+    });
+    await screenshot(page, `zoom200-${name}-4-settings`);
+    report.ui.zoom[name] = { shares, menu };
+    check(`zoom 200 % (${name}): every task usable — no overflow, the view keeps ≥ 45 % of the height, seat actions and the settings menu stay on screen`, Object.values(shares).every((s) => s.overflowX <= 0 && s.overflowY <= 0) && shares.explore.heightShare >= 0.45 && shares.watch.heightShare >= 0.45 && reach && menu.inside, report.ui.zoom[name]);
+    await context.close();
+  }
+}
+
+/** Prompt 07 (baseline, before) next to Prompt 08 (after): same viewport, comparable state. */
+async function uiComparisons(browser) {
+  const baselineDir = path.join(outDir, 'baseline', 'ui');
+  if (!existsSync(baselineDir)) return;
+  const context = await browser.newContext({ viewport: { width: 1460, height: 520 } });
+  const page = await context.newPage();
+  for (const { name } of UI_VIEWPORTS) {
+    for (const [before, after, label] of [
+      ['b-map-closed', '1-explore', 'explore'],
+      ['c-map-open', '3-seats-open', 'map-open'],
+      ['e-watching', '5-watch', 'watching'],
+    ]) {
+      const a = path.join(baselineDir, `${name}-${before}.png`);
+      const b = path.join(outDir, `ui-${name}-${after}.png`);
+      if (!existsSync(a) || !existsSync(b)) continue;
+      const images = await Promise.all([a, b].map(async (file) => (await readFile(file)).toString('base64')));
+      await page.setContent(
+        `<body style="margin:0;background:#0f1013;color:#e9eaee;font:14px system-ui;display:flex;gap:20px">${images
+          .map((data, i) => `<figure style="margin:0;max-width:720px"><img style="max-width:720px;max-height:900px;display:block" src="data:image/png;base64,${data}"><figcaption style="padding:6px 8px">${i === 0 ? 'Prompt 07 (trước)' : 'Prompt 08 (sau)'} · ${name} · ${label}</figcaption></figure>`)
+          .join('')}</body>`,
+      );
+      await page.waitForFunction(() => [...document.images].every((image) => image.complete));
+      await screenshot(page, `compare-p07-p08-${name}-${label}`, { fullPage: true });
+    }
+  }
+  await context.close();
 }
 
 function distance(a, b) {

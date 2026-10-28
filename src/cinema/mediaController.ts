@@ -45,6 +45,11 @@ export interface MediaControllerOptions {
   element?: HTMLVideoElement;
   /** Buffering longer than this (ms) shows the slow-network notice (no automatic retry). */
   slowAfterMs?: number;
+  /**
+   * false: the source is attached later, with load() (or by play()). The page waits for its 3D
+   * scene first, so the film's metadata does not compete with it for bandwidth.
+   */
+  loadNow?: boolean;
 }
 
 const ERROR_MESSAGES: Record<number, [string, string]> = {
@@ -87,6 +92,7 @@ export class MediaController {
   private readonly slowAfterMs: number;
   private slowTimer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
+  private sourceAttached = false;
 
   constructor(film: FilmSource, options: MediaControllerOptions = {}) {
     this.film = film;
@@ -152,7 +158,14 @@ export class MediaController {
       this.state = 'error';
       return;
     }
-    video.src = film.src;
+    if (options.loadNow !== false) this.load();
+  }
+
+  /** Attaches the source (metadata only, by preload) once; later calls change nothing. */
+  load(): void {
+    if (this.disposed || this.state === 'error' || this.sourceAttached) return;
+    this.sourceAttached = true;
+    this.video.src = this.film.src;
   }
 
   get snapshot(): MediaSnapshot {
@@ -183,6 +196,7 @@ export class MediaController {
   async play(): Promise<'playing' | 'blocked' | 'cancelled' | 'error'> {
     if (this.disposed) return 'cancelled';
     if (this.state === 'error') return 'error';
+    this.load();
     const token = ++this.token;
     this.notice = null;
     this.started = true;

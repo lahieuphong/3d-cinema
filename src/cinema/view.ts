@@ -6,15 +6,18 @@ import {
   Group,
   Line,
   LineBasicMaterial,
+  Material,
   type Mesh,
   NeutralToneMapping,
-  type Object3D,
+  Object3D,
   PCFShadowMap,
   type PerspectiveCamera,
   Raycaster,
   Scene,
+  Texture,
   Vector2,
   Vector3,
+  WebGLRenderTarget,
 } from 'three';
 import { buildArchitecture, INTERIOR_MATERIALS, type Architecture, type ToggleablePart } from './architecture.ts';
 import { planCameraPath } from './cameraPath.ts';
@@ -49,6 +52,9 @@ import { chooseWalkStart, stepWalker, turnWalker, type StartPoint, type WalkerSt
 
 export { WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
 
+/** Development: three.js constructors whose live instances the lifecycle checks count after GC. */
+export const DEBUG_TYPES = { BufferGeometry, Material, Texture, Object3D, WebGLRenderTarget };
+
 /**
  * What the camera is doing, for the UI and for checks:
  * - `preset`: resting at (or orbiting from) an experience view;
@@ -61,7 +67,8 @@ export { WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
  */
 export type CameraState = 'preset' | 'inspection' | 'transition' | 'tour' | 'explore' | 'seat' | 'free';
 
-export type TourEndReason = 'finished' | 'input' | 'command' | 'hidden' | 'context-lost';
+/** `task`: the page left Khám phá, where the tour belongs. */
+export type TourEndReason = 'finished' | 'input' | 'command' | 'hidden' | 'context-lost' | 'task';
 
 export interface TourStatus {
   steps: boolean;

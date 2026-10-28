@@ -131,8 +131,9 @@ export class RenderHost {
     // This renderer's listener leaves the page-wide textures while its context is still alive.
     this.sharedTextures.dispose();
     this.renderer.dispose();
-    // Release the GL context now instead of waiting for GC, so remounts never pile up contexts.
-    this.renderer.forceContextLoss();
+    // Release the GL context now instead of waiting for GC, so remounts never pile up contexts
+    // (a context that is already lost has nothing left to release).
+    if (!this.contextLost) this.renderer.forceContextLoss();
     this.canvas.remove();
   }
 
@@ -200,6 +201,4 @@ export class RenderHost {
   };
 }
 
-export function prefersReducedMotion(): boolean {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-}
+export { prefersReducedMotion } from './quality.ts';

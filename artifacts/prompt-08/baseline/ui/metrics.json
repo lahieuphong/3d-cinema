@@ -1,0 +1,616 @@
+{
+  "ui": "prompt-07",
+  "base": "http://localhost:4199/",
+  "browser": "156.0.8078.47",
+  "viewports": {
+    "desktop-1440x900": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 986,
+            "height": 701
+          },
+          "heightShare": 0.778,
+          "areaShare": 0.533,
+          "overflowX": 0,
+          "panelOpen": true
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 1398,
+            "height": 701
+          },
+          "heightShare": 0.778,
+          "areaShare": 0.756,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 986,
+            "height": 701
+          },
+          "heightShare": 0.778,
+          "areaShare": 0.533,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 986,
+            "height": 701
+          },
+          "heightShare": 0.778,
+          "areaShare": 0.533,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 1398,
+            "height": 701
+          },
+          "heightShare": 0.778,
+          "areaShare": 0.756,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    },
+    "laptop-1280x720": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 826,
+            "height": 521
+          },
+          "heightShare": 0.723,
+          "areaShare": 0.467,
+          "overflowX": 0,
+          "panelOpen": true
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 1238,
+            "height": 521
+          },
+          "heightShare": 0.723,
+          "areaShare": 0.699,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 826,
+            "height": 521
+          },
+          "heightShare": 0.723,
+          "areaShare": 0.467,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 826,
+            "height": 521
+          },
+          "heightShare": 0.723,
+          "areaShare": 0.467,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 1238,
+            "height": 521
+          },
+          "heightShare": 0.723,
+          "areaShare": 0.699,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    },
+    "tablet-portrait-820x1180": {
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 17,
+            "y": 143,
+            "width": 785,
+            "height": 936
+          },
+          "heightShare": 0.793,
+          "areaShare": 0.76,
+          "overflowX": 0,
+          "panelOpen": false
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 17,
+            "y": 143,
+            "width": 785,
+            "height": 936
+          },
+          "heightShare": 0.793,
+          "areaShare": 0.76,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 17,
+            "y": 143,
+            "width": 377,
+            "height": 901
+          },
+          "heightShare": 0.764,
+          "areaShare": 0.351,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 17,
+            "y": 143,
+            "width": 377,
+            "height": 901
+          },
+          "heightShare": 0.764,
+          "areaShare": 0.351,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 17,
+            "y": 143,
+            "width": 785,
+            "height": 936
+          },
+          "heightShare": 0.793,
+          "areaShare": 0.76,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    },
+    "tablet-landscape-1180x820": {
+      "viewport": {
+        "width": 1180,
+        "height": 820
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 726,
+            "height": 621
+          },
+          "heightShare": 0.757,
+          "areaShare": 0.466,
+          "overflowX": 0,
+          "panelOpen": true
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 1138,
+            "height": 621
+          },
+          "heightShare": 0.757,
+          "areaShare": 0.73,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 726,
+            "height": 621
+          },
+          "heightShare": 0.757,
+          "areaShare": 0.466,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 726,
+            "height": 621
+          },
+          "heightShare": 0.757,
+          "areaShare": 0.466,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 21,
+            "y": 95,
+            "width": 1138,
+            "height": 621
+          },
+          "heightShare": 0.757,
+          "areaShare": 0.73,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    },
+    "mobile-390x844": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 13,
+            "y": 182,
+            "width": 364,
+            "height": 562
+          },
+          "heightShare": 0.666,
+          "areaShare": 0.622,
+          "overflowX": 0,
+          "panelOpen": false
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 13,
+            "y": 182,
+            "width": 364,
+            "height": 562
+          },
+          "heightShare": 0.666,
+          "areaShare": 0.622,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 13,
+            "y": 182,
+            "width": 364,
+            "height": 149
+          },
+          "heightShare": 0.177,
+          "areaShare": 0.165,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 13,
+            "y": 182,
+            "width": 364,
+            "height": 149
+          },
+          "heightShare": 0.177,
+          "areaShare": 0.165,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 13,
+            "y": 182,
+            "width": 364,
+            "height": 562
+          },
+          "heightShare": 0.666,
+          "areaShare": 0.622,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    },
+    "mobile-narrow-360x640": {
+      "viewport": {
+        "width": 360,
+        "height": 640
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 13,
+            "y": 223,
+            "width": 334,
+            "height": 317
+          },
+          "heightShare": 0.496,
+          "areaShare": 0.46,
+          "overflowX": 0,
+          "panelOpen": false
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 13,
+            "y": 223,
+            "width": 334,
+            "height": 317
+          },
+          "heightShare": 0.496,
+          "areaShare": 0.46,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 13,
+            "y": 223,
+            "width": 334,
+            "height": 2
+          },
+          "heightShare": 0.003,
+          "areaShare": 0.003,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 13,
+            "y": 223,
+            "width": 334,
+            "height": 2
+          },
+          "heightShare": 0.003,
+          "areaShare": 0.003,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 13,
+            "y": 223,
+            "width": 334,
+            "height": 317
+          },
+          "heightShare": 0.496,
+          "areaShare": 0.46,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    },
+    "mobile-landscape-844x390": {
+      "viewport": {
+        "width": 844,
+        "height": 390
+      },
+      "states": {
+        "loaded": {
+          "canvas": {
+            "x": 18,
+            "y": 67,
+            "width": 808,
+            "height": 248
+          },
+          "heightShare": 0.636,
+          "areaShare": 0.609,
+          "overflowX": 0,
+          "panelOpen": false
+        },
+        "mapClosed": {
+          "canvas": {
+            "x": 18,
+            "y": 67,
+            "width": 808,
+            "height": 248
+          },
+          "heightShare": 0.636,
+          "areaShare": 0.609,
+          "overflowX": 0
+        },
+        "mapOpen": {
+          "canvas": {
+            "x": 18,
+            "y": 67,
+            "width": 521,
+            "height": 248
+          },
+          "heightShare": 0.636,
+          "areaShare": 0.393,
+          "overflowX": 0
+        },
+        "seatViewMapOpen": {
+          "canvas": {
+            "x": 18,
+            "y": 67,
+            "width": 521,
+            "height": 248
+          },
+          "heightShare": 0.636,
+          "areaShare": 0.393,
+          "overflowX": 0
+        },
+        "watching": {
+          "canvas": {
+            "x": 18,
+            "y": 67,
+            "width": 808,
+            "height": 248
+          },
+          "heightShare": 0.636,
+          "areaShare": 0.609,
+          "overflowX": 0
+        }
+      },
+      "errors": []
+    }
+  },
+  "network": {
+    "beforePlay": [
+      {
+        "at": 1793155001575,
+        "path": "/media/big-buck-bunny-trailer-poster.jpg",
+        "range": null,
+        "status": 200,
+        "type": "image/jpeg",
+        "contentRange": null,
+        "bytes": 100075
+      },
+      {
+        "at": 1793155001597,
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=8257536-",
+        "status": 206,
+        "type": "video/mp4",
+        "contentRange": "bytes 8257536-8343659/8343660",
+        "bytes": 86124
+      }
+    ],
+    "afterPlay": [],
+    "video": {
+      "inDocument": false
+    }
+  },
+  "timing": [
+    {
+      "throttle": "none (local)",
+      "run": 0,
+      "htmlResponseEnd": 2,
+      "firstContentfulPaint": null,
+      "shell": 230,
+      "sceneReady": 291,
+      "bytesToShell": 307597,
+      "bytesToReady": 407972,
+      "resources": [
+        {
+          "name": "/assets/index-mKu4zhlh.css",
+          "transfer": 4098,
+          "body": 15678,
+          "end": 8
+        },
+        {
+          "name": "/assets/index-B943LeqB.js",
+          "transfer": 302591,
+          "body": 989198,
+          "end": 30
+        },
+        {
+          "name": "/media/big-buck-bunny-trailer-poster.jpg",
+          "transfer": 100375,
+          "body": 100075,
+          "end": 232
+        },
+        {
+          "name": "/media/big-buck-bunny-trailer-720p.mp4",
+          "transfer": 300,
+          "body": 0,
+          "end": 304
+        }
+      ]
+    },
+    {
+      "throttle": "none (local)",
+      "run": 1,
+      "htmlResponseEnd": 2,
+      "firstContentfulPaint": null,
+      "shell": 227,
+      "sceneReady": 288,
+      "bytesToShell": 307597,
+      "bytesToReady": 407972,
+      "resources": [
+        {
+          "name": "/assets/index-B943LeqB.js",
+          "transfer": 302591,
+          "body": 989198,
+          "end": 29
+        },
+        {
+          "name": "/assets/index-mKu4zhlh.css",
+          "transfer": 4098,
+          "body": 15678,
+          "end": 8
+        },
+        {
+          "name": "/media/big-buck-bunny-trailer-poster.jpg",
+          "transfer": 100375,
+          "body": 100075,
+          "end": 229
+        },
+        {
+          "name": "/media/big-buck-bunny-trailer-720p.mp4",
+          "transfer": 300,
+          "body": 0,
+          "end": 302
+        },
+        {
+          "name": "/media/big-buck-bunny-trailer-720p.mp4",
+          "transfer": 300,
+          "body": 0,
+          "end": 305
+        }
+      ]
+    },
+    {
+      "throttle": "fast-3g-like 1.6 Mbit/s, 150 ms RTT",
+      "run": 0,
+      "htmlResponseEnd": 180,
+      "firstContentfulPaint": null,
+      "shell": 2088,
+      "sceneReady": 2153,
+      "bytesToShell": 307597,
+      "bytesToReady": 307597,
+      "resources": [
+        {
+          "name": "/assets/index-B943LeqB.js",
+          "transfer": 302591,
+          "body": 989198,
+          "end": 1892
+        },
+        {
+          "name": "/assets/index-mKu4zhlh.css",
+          "transfer": 4098,
+          "body": 15678,
+          "end": 383
+        }
+      ]
+    },
+    {
+      "throttle": "fast-3g-like 1.6 Mbit/s, 150 ms RTT",
+      "run": 1,
+      "htmlResponseEnd": 181,
+      "firstContentfulPaint": null,
+      "shell": 2086,
+      "sceneReady": 2157,
+      "bytesToShell": 307597,
+      "bytesToReady": 307597,
+      "resources": [
+        {
+          "name": "/assets/index-B943LeqB.js",
+          "transfer": 302591,
+          "body": 989198,
+          "end": 1887
+        },
+        {
+          "name": "/assets/index-mKu4zhlh.css",
+          "transfer": 4098,
+          "body": 15678,
+          "end": 383
+        }
+      ]
+    }
+  ]
+}

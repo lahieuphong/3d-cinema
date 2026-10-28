@@ -14,7 +14,7 @@ let unmount: (() => void) | undefined;
 // inspector and coming back.
 const session: CinemaSession = (() => {
   const { seats, config } = createAuditoriumLayout();
-  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null, media: null };
+  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null, media: null, task: null };
 })();
 // Bumped on every render so a slow lazy import cannot mount over a newer page.
 let generation = 0;

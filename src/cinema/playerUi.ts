@@ -7,14 +7,27 @@ export interface PlayerHandlers {
   onPause(): void;
   onReplay(): void;
   onSeek(seconds: number): void;
-  onMuted(muted: boolean): void;
+  /** Turns the sound off or on, from the element's own state (its events arrive a moment later). */
+  onToggleMute(): void;
   onVolume(volume: number): void;
   /** Load the source again after an error or a long wait (never automatic). */
   onRetry(): void;
 }
 
 export interface PlayerUi {
+  /** Controls, title and credits (Xem phim). */
   readonly root: HTMLElement;
+  /** Play/pause with the state, for the header while another task is shown (after the first play). */
+  readonly mini: HTMLButtonElement;
+  /** Loading, waiting, notices and errors with "Thử lại": a chip over the view, so it never shifts the controls. */
+  readonly status: HTMLElement;
+  /** Polite live region (state changes and problems only); placed where it is never hidden. */
+  readonly live: HTMLElement;
+  /**
+   * The attribution line on its own, for wherever the film is on screen without the player (the
+   * licence asks for it wherever the work is shown).
+   */
+  readonly credit: HTMLElement;
   /** Mirrors the media; only the parts that `change` touches are written. */
   update(snapshot: MediaSnapshot, change: MediaChange | 'all'): void;
   /** Playback is impossible for now (no 3D context): play is disabled and `reason` is shown. */
@@ -67,9 +80,21 @@ export function primaryAction(snapshot: MediaSnapshot): 'play' | 'pause' | 'repl
   return 'play';
 }
 
+/** The mini control's words for each state. */
+const MINI: Partial<Record<MediaState, string>> = {
+  loading: 'Đang tải…',
+  buffering: 'Đang tải…',
+  playing: 'Đang phát',
+  paused: 'Tạm dừng',
+  ready: 'Tạm dừng',
+  ended: 'Đã hết',
+};
+
 /**
  * The film player's controls, under the 3D view (never over the canvas, the explore stick, the way
- * back or the seat sheet). Built once; media events only update text, values and attributes.
+ * back or the seat sheet). Built once; media events only update text, values and attributes, and
+ * never per frame. A small copy of the main button (`mini`) keeps play/pause in reach from the
+ * other tasks once the film has been started.
  *
  * Input stays here: it is outside the canvas, so presses never pick seats or turn the camera, and
  * `data-keys="own"` keeps arrow keys and Space on its controls away from the explore walker. No
@@ -119,17 +144,32 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   const credit = el('span', 'cinema-player__credit');
   credit.append(link(film.credit, film.creditUrl), ' · ', link(film.license, film.licenseUrl));
   credit.title = `${film.credit} · ${film.license}`;
+  info.append(title, credit);
+  root.append(controls, info);
+
+  const shortCredit = el('p', 'cinema-filmcredit');
+  shortCredit.append(`${film.title}: `, link(film.credit, film.creditUrl), ' · ', link(film.license, film.licenseUrl));
+
+  const chip = el('div', 'cinema-filmstatus');
+  chip.dataset.keys = 'own';
   const status = el('span', 'cinema-player__status');
   const retry = el('button', 'cinema-button cinema-button--compact cinema-player__retry', 'Thử lại');
   retry.type = 'button';
   retry.dataset.action = 'media-retry';
   retry.hidden = true;
-  info.append(title, credit, status, retry);
+  chip.append(status, retry);
+
+  const mini = el('button', 'cinema-mini');
+  mini.type = 'button';
+  mini.dataset.action = 'media-mini';
+  mini.hidden = true;
+  const miniText = el('span', 'cinema-mini__text');
+  mini.append(iconSvg(), miniText);
 
   // State changes and problems only; never the running time.
   const live = el('p', 'visually-hidden');
   live.setAttribute('aria-live', 'polite');
-  root.append(controls, info, live);
+  live.dataset.filmLive = '';
 
   let last: MediaSnapshot | null = null;
   let unavailable: string | null = null;
@@ -137,18 +177,16 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   let seeking = false;
   let announced = '';
 
-  primary.addEventListener(
-    'click',
-    () => {
-      if (!last || primary.disabled) return;
-      const action = primaryAction(last);
-      if (action === 'pause') handlers.onPause();
-      else if (action === 'replay') handlers.onReplay();
-      else handlers.onPlay();
-    },
-    { signal },
-  );
-  mute.addEventListener('click', () => last && handlers.onMuted(!last.muted), { signal });
+  const runPrimary = () => {
+    if (!last || primary.disabled) return;
+    const action = primaryAction(last);
+    if (action === 'pause') handlers.onPause();
+    else if (action === 'replay') handlers.onReplay();
+    else handlers.onPlay();
+  };
+  primary.addEventListener('click', runPrimary, { signal });
+  mini.addEventListener('click', runPrimary, { signal });
+  mute.addEventListener('click', () => handlers.onToggleMute(), { signal });
   retry.addEventListener('click', () => handlers.onRetry(), { signal });
   volume.addEventListener('input', () => handlers.onVolume(Number(volume.value)), { signal });
   seek.addEventListener('pointerdown', () => (seeking = true), { signal });
@@ -239,9 +277,19 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     const message = unavailable ?? (snapshot.error ? snapshot.error.message : snapshot.notice ? NOTICES[snapshot.notice] : (STATUS[snapshot.state] ?? ''));
     text(status, message);
     status.classList.toggle('cinema-player__status--error', snapshot.state === 'error');
-    status.classList.toggle('cinema-player__status--busy', !snapshot.error && !snapshot.notice && (snapshot.state === 'loading' || snapshot.state === 'buffering'));
-    retry.hidden = !(snapshot.state === 'error' || snapshot.notice === 'slow');
+    status.classList.toggle('cinema-player__status--busy', !unavailable && !snapshot.error && !snapshot.notice && (snapshot.state === 'loading' || snapshot.state === 'buffering'));
+    retry.hidden = unavailable !== null || !(snapshot.state === 'error' || snapshot.notice === 'slow');
     retry.textContent = snapshot.state === 'error' ? 'Thử lại' : 'Tải lại';
+    chip.hidden = message === '';
+    chip.dataset.kind = snapshot.state === 'error' ? 'error' : 'info';
+
+    // The mini control: only once the film has been started (nothing to pause before that).
+    mini.hidden = !snapshot.started || snapshot.state === 'error' || unavailable !== null;
+    setIcon(mini, action === 'pause' ? ICONS.pause : action === 'replay' ? ICONS.replay : ICONS.play);
+    const miniState = MINI[snapshot.state] ?? '';
+    text(miniText, miniState);
+    set(mini, 'aria-label', `${label} phim${miniState ? ` · ${miniState}` : ''}`);
+    mini.dataset.state = snapshot.state;
 
     const spoken = snapshot.error?.message ?? (snapshot.notice ? NOTICES[snapshot.notice] : (ANNOUNCE[snapshot.state] ?? ''));
     if (spoken && spoken !== announced) {
@@ -252,6 +300,10 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
 
   const ui: PlayerUi = {
     root,
+    mini,
+    status: chip,
+    live,
+    credit: shortCredit,
     update(snapshot, change) {
       last = snapshot;
       if (change === 'all' || change === 'state' || change === 'notice') renderState(snapshot);
@@ -265,6 +317,10 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     dispose() {
       listeners.abort();
       root.remove();
+      chip.remove();
+      mini.remove();
+      live.remove();
+      shortCredit.remove();
     },
   };
   return ui;
@@ -273,16 +329,20 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
 function iconButton(className: string): HTMLButtonElement {
   const button = el('button', `cinema-button cinema-player__button ${className}`);
   button.type = 'button';
+  button.append(iconSvg());
+  return button;
+}
+
+function iconSvg(): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
   svg.append(document.createElementNS('http://www.w3.org/2000/svg', 'path'));
-  button.append(svg);
-  return button;
+  return svg;
 }
 
-function setIcon(button: HTMLButtonElement, d: string): void {
+function setIcon(button: HTMLElement, d: string): void {
   const path = button.querySelector('path')!;
   if (path.getAttribute('d') !== d) path.setAttribute('d', d);
 }

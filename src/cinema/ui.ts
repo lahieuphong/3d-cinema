@@ -1,8 +1,7 @@
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
-import type { AuditoriumLayout } from './layout.ts';
 import { QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
-import type { ViewStatus } from './renderHost.ts';
+import { CINEMA_TASKS, type CinemaTask, type PanelState } from './taskLayout.ts';
 
 export const TOGGLEABLE_PARTS: ReadonlyArray<{ part: ToggleablePart; label: string }> = [
   { part: 'ceiling', label: 'Trần' },
@@ -11,24 +10,36 @@ export const TOGGLEABLE_PARTS: ReadonlyArray<{ part: ToggleablePart; label: stri
 ];
 
 export interface CinemaUiHandlers {
+  onTask(task: CinemaTask): void;
   onPreset(id: CameraPresetId): void;
   onReset(): void;
   /** Starts the tour, or stops it while it runs. */
   onTour(): void;
   /** Reduced-motion tour: previous (−1) or next (+1) stop. */
   onTourStep(delta: number): void;
-  /** Starts exploring, or stops it while exploring. */
+  /** Starts walking ("Đi bộ"), or stops it while walking. */
   onExplore(): void;
   onToggle(part: ToggleablePart, visible: boolean): void;
   onQuality(level: QualityLevel): void;
   onOpenInspector(): void;
-  /** Opens or closes the seat panel (map, details, selected list). */
-  onSeatPanel(): void;
   /** Leaves a seat view for the view it was opened from. */
   onReturn(): void;
+  /** The action next to "Góc nhìn" in Xem phim (view from the chosen seat, or go choose one). */
+  onWatchAction(): void;
+  /** Builds the 3D scene again (after a failure, or a context the browser does not give back). */
+  onRetryScene(): void;
 }
 
-export type UiStatus = ViewStatus | { kind: 'loading' };
+/**
+ * - `loading`: `code` while the 3D part of the app downloads, `scene` while the room is built;
+ * - `context-lost`: `stuck` once the browser has not given the context back for a while;
+ * - `error`: `retry` offers to build the scene again (not for a browser without WebGL).
+ */
+export type UiStatus =
+  | { kind: 'loading'; step?: 'code' | 'scene' }
+  | { kind: 'ready' }
+  | { kind: 'context-lost'; stuck?: boolean }
+  | { kind: 'error'; message: string; retry?: boolean };
 
 /** What the tour bar shows; null hides it. */
 export interface UiTourStatus {
@@ -39,17 +50,28 @@ export interface UiTourStatus {
 }
 
 export interface CinemaUi {
+  root: HTMLElement;
   /** Element the 3D canvas (and the explore stick) is mounted into. */
   viewport: HTMLElement;
-  /** The row holding the viewport; the seat panel goes in here next to (or under) it. */
-  main: HTMLElement;
-  /** The column of the 3D view; the film player goes in here, under the view. */
+  /** The 3D view with its overlays (caption, tour bar, way back, notices, status). */
+  stage: HTMLElement;
+  /** The column of the view and the task's controls under it. */
   screen: HTMLElement;
-  /** Root of the page, for page-wide live regions. */
-  root: HTMLElement;
-  /** The toolbar button that opens the seat panel (focus returns here when it closes). */
-  seatPanelButton: HTMLButtonElement;
-  setSeatPanelOpen(open: boolean): void;
+  /** The row of that column and the seat panel. */
+  main: HTMLElement;
+  /** Each task's controls, under the view; only the current task's are shown. */
+  dock: Record<CinemaTask, HTMLElement>;
+  /** In the header, for the film's small play/pause control while another task is shown. */
+  miniSlot: HTMLElement;
+  /** "Góc nhìn: …" line of Xem phim, placed by the page next to the player. */
+  watchView: HTMLElement;
+  /** Under the caption, over the view: for the film's credit while the player is not shown. */
+  creditSlot: HTMLElement;
+  taskButton(task: CinemaTask): HTMLButtonElement;
+  setTask(task: CinemaTask): void;
+  /** Mirrors the seat panel; a full-screen sheet makes the rest of the page inert (modal). */
+  setPanel(state: PanelState): void;
+  setSeatCount(count: number): void;
   /** A short visual notice over the viewport (screen readers get the panel's live region). */
   setNotice(text: string): void;
   /** Shows the "back" button over the viewport with this label, or hides it (null). */
@@ -63,37 +85,57 @@ export interface CinemaUi {
   setCaption(text: string): void;
   setStatus(status: UiStatus): void;
   setTransitioning(active: boolean): void;
+  /** Camera, display and inspection controls need the scene: off (with the reason) while there is none. */
+  setSceneControls(available: boolean, reason?: string): void;
+  setWatchView(text: string, action: string | null): void;
+  /** Closes the settings and "Góc khác" menus. */
+  closeMenus(): void;
   /** Without 3D: shows the film's own element in the viewport area, labelled as the 2D mode. */
   showVideo2d(video: HTMLVideoElement, label: string): void;
+  hideVideo2d(): void;
   dispose(): void;
 }
 
+const ICONS = {
+  explore: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm3.6-11.6-2.1 5.1-5.1 2.1 2.1-5.1z',
+  seats: 'M7 4h10a2 2 0 0 1 2 2v5h1a1 1 0 0 1 1 1v6h-2v2h-2v-2H7v2H5v-2H3v-6a1 1 0 0 1 1-1h1V6a2 2 0 0 1 2-2zm0 2v6h10V6zm-2 8v2h14v-2z',
+  watch: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 2v10h14V7zm5 2 5 3-5 3z',
+  settings: 'M4 6h9v2H4zm13 0h3v2h-3zm-3-2h2v6h-2zM4 16h3v2H4zm7 0h9v2h-9zm-3-2h2v6H8z',
+  more: 'M7 10l5 5 5-5z',
+};
+
+/** An inline icon (decorative: the control around it carries the name). */
+export function icon(d: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.classList.add('cinema-icon');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  svg.append(path);
+  return svg;
+}
+
 /**
- * Builds the /cinema page chrome: header with seat counts; a toolbar with the visitor views, the
- * tour and explore modes, reset and quality; a collapsible "Kiểm tra" (inspection) row with the
- * technical views, the cut-away switches and the seat inspector; the viewport with caption, tour
- * bar and status overlay. State is mirrored onto `data-*` attributes of the root element so
+ * Builds the /cinema page chrome around three tasks: Khám phá (camera views, tour, walking),
+ * Chọn ghế (selection summary and the seat panel) and Xem phim (the player).
+ *
+ * - Header: title, the task switch, the film's mini control (while another task is shown) and
+ *   "Cài đặt" (quality, plus the inspection tools folded inside).
+ * - The view: canvas with caption, tour bar, way back, notices and status over it.
+ * - The dock under the view: the current task's controls only, so panels never stack up.
+ * Menus are non-modal popovers: Escape, a press elsewhere or picking an action closes them and
+ * focus returns to their button; a press on the 3D view that closes one goes no further (it never
+ * selects a seat or turns the camera). State is mirrored onto `data-*` attributes of the root so
  * automated checks can wait on it.
  */
-export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, handlers: CinemaUiHandlers): CinemaUi {
+export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): CinemaUi {
   const listeners = new AbortController();
   const { signal } = listeners;
-  const { rowLabels, seatsPerRow } = layout.config.seating;
 
   const root = el('div', 'cinema-app');
   root.dataset.status = 'loading';
-
-  const header = el('header', 'cinema-header');
-  const title = el('h1', 'cinema-title', 'Phòng chiếu 3D');
-  const badge = el('span', 'cinema-badge', 'Tham quan & khám phá');
-  title.append(' ', badge);
-  const stats = el('dl', 'cinema-stats');
-  stats.append(
-    stat('Số hàng', `${layout.rows.length} (${rowLabels[0]}–${rowLabels[rowLabels.length - 1]})`),
-    stat('Ghế mỗi hàng', String(seatsPerRow)),
-    stat('Tổng số ghế', String(layout.seats.length)),
-  );
-  header.append(title, stats);
 
   const button = (label: string, className = 'cinema-button') => {
     const element = el('button', className, label);
@@ -111,31 +153,80 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     return element;
   };
 
-  const toolbar = el('div', 'cinema-toolbar');
-  const viewGroup = group('Góc nhìn');
-  for (const preset of CAMERA_PRESETS.filter((p) => p.space === 'experience')) viewGroup.append(presetButton(preset.id));
+  // ------------------------------------------------------------------ menus
+  const menus: Array<{ toggle: HTMLButtonElement; panel: HTMLElement }> = [];
+  const menuOpen = (menu: { panel: HTMLElement }) => menu.panel.dataset.open === 'true';
+  const setMenu = (menu: { toggle: HTMLButtonElement; panel: HTMLElement }, open: boolean, focusToggle = false) => {
+    menu.panel.dataset.open = String(open);
+    menu.toggle.setAttribute('aria-expanded', String(open));
+    if (!open && focusToggle) menu.toggle.focus();
+  };
+  const menu = (toggle: HTMLButtonElement, panel: HTMLElement) => {
+    const entry = { toggle, panel };
+    menus.push(entry);
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', panel.id);
+    panel.dataset.open = 'false';
+    toggle.addEventListener(
+      'click',
+      () => {
+        const open = !menuOpen(entry);
+        for (const other of menus) if (other !== entry && menuOpen(other)) setMenu(other, false);
+        setMenu(entry, open);
+      },
+      { signal },
+    );
+    panel.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setMenu(entry, false, true);
+      },
+      { signal },
+    );
+    return entry;
+  };
 
-  const modeGroup = group('Trải nghiệm');
-  const tourButton = button('Tham quan');
-  tourButton.dataset.action = 'tour';
-  tourButton.setAttribute('aria-pressed', 'false');
-  tourButton.addEventListener('click', () => handlers.onTour(), { signal });
-  const exploreButton = button('Khám phá');
-  exploreButton.dataset.action = 'explore';
-  exploreButton.setAttribute('aria-pressed', 'false');
-  exploreButton.addEventListener('click', () => handlers.onExplore(), { signal });
-  const seatPanelButton = button('Sơ đồ ghế');
-  seatPanelButton.dataset.action = 'seat-panel';
-  seatPanelButton.setAttribute('aria-expanded', 'false');
-  seatPanelButton.setAttribute('aria-controls', 'cinema-seat-panel');
-  seatPanelButton.addEventListener('click', () => handlers.onSeatPanel(), { signal });
-  const resetButton = button('Về góc ban đầu');
-  resetButton.dataset.action = 'reset';
-  resetButton.addEventListener('click', () => handlers.onReset(), { signal });
-  modeGroup.append(tourButton, exploreButton, seatPanelButton, resetButton);
+  // ------------------------------------------------------------------ header
+  const header = el('header', 'cinema-header');
+  const title = el('h1', 'cinema-title', 'Phòng chiếu 3D');
+
+  const tasks = el('div', 'cinema-tasks');
+  tasks.setAttribute('role', 'group');
+  tasks.setAttribute('aria-label', 'Tác vụ');
+  const taskButtons = new Map<CinemaTask, HTMLButtonElement>();
+  const seatCount = el('span', 'cinema-tasks__count');
+  seatCount.setAttribute('aria-hidden', 'true');
+  for (const { id, label } of CINEMA_TASKS) {
+    const element = el('button', 'cinema-tasks__button');
+    element.type = 'button';
+    element.dataset.task = id;
+    element.setAttribute('aria-pressed', 'false');
+    element.append(icon(ICONS[id]), el('span', 'cinema-tasks__label', label));
+    if (id === 'seats') element.append(seatCount);
+    element.addEventListener('click', () => handlers.onTask(id), { signal });
+    taskButtons.set(id, element);
+    tasks.append(element);
+  }
+
+  const headerEnd = el('div', 'cinema-header__end');
+  const miniSlot = el('div', 'cinema-header__mini');
+
+  const settings = el('div', 'cinema-menu');
+  const settingsButton = button('', 'cinema-button cinema-menu__toggle');
+  settingsButton.dataset.action = 'settings';
+  settingsButton.setAttribute('aria-label', 'Cài đặt');
+  settingsButton.append(icon(ICONS.settings), el('span', 'cinema-menu__label', 'Cài đặt'));
+  const settingsPanel = el('div', 'cinema-popover cinema-settings');
+  settingsPanel.id = 'cinema-settings';
+  settingsPanel.setAttribute('role', 'group');
+  settingsPanel.setAttribute('aria-label', 'Cài đặt');
 
   const qualityGroup = group('Chất lượng hiển thị');
-  qualityGroup.classList.add('cinema-toolbar__group--quality');
+  qualityGroup.classList.add('cinema-settings__row');
+  qualityGroup.append(el('span', 'cinema-settings__heading', 'Chất lượng hiển thị'));
   const qualityButtons = new Map<QualityLevel, HTMLButtonElement>();
   for (const level of QUALITY_LEVELS) {
     const element = button(QUALITY_LABELS[level], 'cinema-button cinema-button--compact');
@@ -146,13 +237,14 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     qualityButtons.set(level, element);
     qualityGroup.append(element);
   }
+  const qualityHint = el('p', 'cinema-settings__hint', 'Tiết kiệm: ghế ít chi tiết hơn, bóng và độ nét thấp hơn, nhẹ máy hơn.');
 
-  // Inspection tools, collapsed by default: technical views, cut-away switches, seat inspector.
-  const inspectPanel = el('div', 'cinema-toolbar cinema-toolbar--inspect');
+  // Inspection tools, folded inside the settings: technical views, cut-away switches, seat inspector.
+  const inspectToggle = button('Công cụ kiểm tra', 'cinema-button cinema-button--compact cinema-settings__disclosure');
+  inspectToggle.dataset.action = 'inspect-tools';
+  const inspectPanel = el('div', 'cinema-settings__tools');
   inspectPanel.id = 'cinema-inspect-tools';
   inspectPanel.hidden = true;
-  const inspectToggle = button('Kiểm tra', 'cinema-button cinema-button--compact');
-  inspectToggle.dataset.action = 'inspect-tools';
   inspectToggle.setAttribute('aria-expanded', 'false');
   inspectToggle.setAttribute('aria-controls', inspectPanel.id);
   inspectToggle.addEventListener(
@@ -163,13 +255,13 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     },
     { signal },
   );
-  qualityGroup.append(inspectToggle);
-
   const inspectViews = group('Góc kiểm tra');
+  inspectViews.classList.add('cinema-settings__row');
   for (const preset of CAMERA_PRESETS.filter((p) => p.space === 'inspection')) {
     inspectViews.append(presetButton(preset.id, 'cinema-button cinema-button--compact'));
   }
   const visibilityGroup = group('Hiện thành phần');
+  visibilityGroup.classList.add('cinema-settings__row');
   const toggles = new Map<ToggleablePart, HTMLInputElement>();
   for (const { part, label } of TOGGLEABLE_PARTS) {
     const { wrapper, input } = switchControl(label, part, true, (checked) => handlers.onToggle(part, checked), signal);
@@ -181,13 +273,26 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   inspectorButton.addEventListener('click', () => handlers.onOpenInspector(), { signal });
   inspectViews.append(inspectorButton);
   inspectPanel.append(inspectViews, visibilityGroup);
+  settingsPanel.append(qualityGroup, qualityHint, inspectToggle, inspectPanel);
+  settings.append(settingsButton, settingsPanel);
+  const settingsMenu = menu(settingsButton, settingsPanel);
+  // A technical view needs the room in sight: picking one closes the menu.
+  for (const preset of CAMERA_PRESETS.filter((p) => p.space === 'inspection')) {
+    presetButtons.get(preset.id)!.addEventListener('click', () => setMenu(settingsMenu, false, true), { signal });
+  }
 
-  toolbar.append(viewGroup, modeGroup, qualityGroup);
+  headerEnd.append(miniSlot, settings);
+  header.append(title, tasks, headerEnd);
 
-  const stage = el('main', 'cinema-stage');
+  // ------------------------------------------------------------------ the view
+  const stage = el('div', 'cinema-stage');
   const viewport = el('div', 'cinema-viewport');
   const caption = el('p', 'cinema-caption');
   caption.setAttribute('aria-live', 'polite');
+  // Caption and film credit stack in one corner, so they never overlap each other.
+  const overlay = el('div', 'cinema-overlay');
+  const creditSlot = el('div', 'cinema-overlay__credit');
+  overlay.append(caption, creditSlot);
 
   const tourBar = el('div', 'cinema-tourbar');
   tourBar.hidden = true;
@@ -214,23 +319,97 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
 
   const status = el('div', 'cinema-status');
   status.setAttribute('role', 'status');
-  stage.append(viewport, caption, tourBar, returnButton, notice, status);
+  stage.append(viewport, overlay, tourBar, returnButton, notice, status);
+
+  // ------------------------------------------------------------------ the dock
+  const dockElement = el('div', 'cinema-dock');
+  const dockPanel = (task: CinemaTask) => {
+    const section = el('section', 'cinema-dock__panel');
+    section.dataset.dock = task;
+    section.setAttribute('aria-label', CINEMA_TASKS.find((t) => t.id === task)!.label);
+    dockElement.append(section);
+    return section;
+  };
+  const dock: Record<CinemaTask, HTMLElement> = { explore: dockPanel('explore'), seats: dockPanel('seats'), watch: dockPanel('watch') };
+
+  // Khám phá: the visitor views (the rarer ones fold into "Góc khác" on narrow screens), the tour
+  // and walking. Labels never change with state (pressed shows it), so the row never re-wraps.
+  const views = group('Góc nhìn');
+  views.classList.add('cinema-explore__views');
+  const moreToggle = button('', 'cinema-button cinema-more__toggle');
+  moreToggle.dataset.action = 'more-views';
+  moreToggle.append(el('span', '', 'Góc khác'), icon(ICONS.more));
+  const morePanel = el('div', 'cinema-more');
+  morePanel.id = 'cinema-more-views';
+  const resetButton = button('Về góc ban đầu');
+  resetButton.dataset.action = 'reset';
+  resetButton.addEventListener('click', () => handlers.onReset(), { signal });
+  morePanel.append(presetButton('seats'), presetButton('seatEye'), resetButton);
+  views.append(presetButton('overview'), moreToggle, morePanel);
+  const moreMenu = menu(moreToggle, morePanel);
+  for (const element of morePanel.querySelectorAll('button')) {
+    element.addEventListener('click', () => menuOpen(moreMenu) && setMenu(moreMenu, false, true), { signal });
+  }
+
+  const modes = group('Tham quan và đi bộ');
+  modes.classList.add('cinema-explore__modes');
+  const tourButton = button('Tham quan');
+  tourButton.dataset.action = 'tour';
+  tourButton.setAttribute('aria-pressed', 'false');
+  tourButton.addEventListener('click', () => handlers.onTour(), { signal });
+  const exploreButton = button('Đi bộ');
+  exploreButton.dataset.action = 'explore';
+  exploreButton.setAttribute('aria-pressed', 'false');
+  exploreButton.addEventListener('click', () => handlers.onExplore(), { signal });
+  modes.append(tourButton, exploreButton);
+  const exploreRow = el('div', 'cinema-explore');
+  const sceneNote = el('p', 'cinema-dock__note');
+  sceneNote.hidden = true;
+  exploreRow.append(views, modes);
+  dock.explore.append(exploreRow, sceneNote);
+
+  // Xem phim: where the camera is, and the one camera action that fits.
+  const watchView = el('div', 'cinema-watchview');
+  const watchText = el('span', 'cinema-watchview__text');
+  const watchAction = button('', 'cinema-button cinema-button--compact cinema-watchview__action');
+  watchAction.dataset.action = 'watch-seat';
+  watchAction.hidden = true;
+  watchAction.addEventListener('click', () => handlers.onWatchAction(), { signal });
+  watchView.append(watchText, watchAction);
+
   const screen = el('div', 'cinema-screen');
-  screen.append(stage);
-  const main = el('div', 'cinema-main');
+  screen.append(stage, dockElement);
+  const main = el('main', 'cinema-main');
   main.append(screen);
 
-  root.append(header, toolbar, inspectPanel, main);
+  root.append(header, main);
   host.replaceChildren(root);
 
-  const controls = [
+  // Menus close on a press anywhere else. On the 3D view that press is used up, so dismissing a
+  // menu never selects a seat or turns the camera.
+  window.addEventListener(
+    'pointerdown',
+    (event) => {
+      const target = event.target as Node | null;
+      let closed = false;
+      for (const entry of menus) {
+        if (!menuOpen(entry) || entry.panel.contains(target) || entry.toggle.contains(target)) continue;
+        setMenu(entry, false);
+        closed = true;
+      }
+      if (closed && target && viewport.contains(target)) event.stopPropagation();
+    },
+    { capture: true, signal },
+  );
+
+  const sceneControls = [
     ...presetButtons.values(),
+    moreToggle,
     tourButton,
     exploreButton,
     resetButton,
     ...toggles.values(),
     ...qualityButtons.values(),
-    inspectToggle,
     inspectorButton,
     previousStop,
     nextStop,
@@ -238,17 +417,34 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     returnButton,
   ];
   let announced = '';
+  let video2d: HTMLElement | null = null;
 
   const ui: CinemaUi = {
-    viewport,
-    main,
-    screen,
     root,
-    seatPanelButton,
-    setSeatPanelOpen(open) {
-      seatPanelButton.setAttribute('aria-expanded', String(open));
-      seatPanelButton.setAttribute('aria-pressed', String(open));
-      root.dataset.seatPanel = String(open);
+    viewport,
+    stage,
+    screen,
+    main,
+    dock,
+    miniSlot,
+    watchView,
+    creditSlot,
+    taskButton: (task) => taskButtons.get(task)!,
+    setTask(task) {
+      root.dataset.task = task;
+      for (const [id, element] of taskButtons) element.setAttribute('aria-pressed', String(id === task));
+      for (const [id, section] of Object.entries(dock)) section.hidden = id !== task;
+      if (menuOpen(moreMenu)) setMenu(moreMenu, false);
+    },
+    setPanel(state) {
+      root.dataset.panel = state;
+      root.dataset.seatPanel = String(state !== 'closed');
+      // The full-screen sheet is modal: everything else is out of reach until it closes.
+      header.inert = state === 'expanded';
+      screen.inert = state === 'expanded';
+    },
+    setSeatCount(count) {
+      seatCount.textContent = count > 0 ? String(count) : '';
     },
     setNotice(text) {
       clearTimeout(noticeTimer);
@@ -268,7 +464,7 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     },
     setTour(next) {
       root.dataset.tour = next ? (next.steps ? 'steps' : 'playing') : 'off';
-      // Same label either way (pressed shows it is on), so the toolbar never re-wraps and resizes the view.
+      // Same label either way (pressed shows it is on), so the dock never re-wraps and resizes the view.
       tourButton.setAttribute('aria-pressed', String(next !== null));
       tourBar.hidden = next === null;
       if (!next) {
@@ -300,23 +496,45 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
       for (const [value, element] of qualityButtons) element.setAttribute('aria-pressed', String(value === level));
     },
     setCaption(text) {
-      caption.textContent = text;
+      // The caption is a live region: rewriting the same sentence would read it again.
+      if (caption.textContent !== text) caption.textContent = text;
     },
     setStatus(next) {
-      renderStatus(root, status, next);
-      // Without 3D every camera and display control goes; the seat panel (2D map) stays usable.
-      if (next.kind === 'error') for (const control of controls) control.disabled = true;
+      renderStatus(root, status, next, handlers.onRetryScene);
     },
     setTransitioning(active) {
       root.dataset.transitioning = String(active);
     },
+    setSceneControls(available, reason) {
+      for (const control of sceneControls) control.disabled = !available;
+      sceneNote.hidden = available || !reason;
+      sceneNote.textContent = available ? '' : (reason ?? '');
+      root.dataset.scene = String(available);
+    },
+    setWatchView(text, action) {
+      if (watchText.textContent !== text) watchText.textContent = text;
+      watchAction.hidden = action === null;
+      if (action !== null && watchAction.textContent !== action) watchAction.textContent = action;
+    },
+    closeMenus() {
+      for (const entry of menus) if (menuOpen(entry)) setMenu(entry, false);
+    },
     showVideo2d(video, label) {
+      if (video2d) return;
       const box = el('div', 'cinema-video2d');
       video.className = 'cinema-video2d__video';
       video.setAttribute('aria-label', label);
       box.append(el('p', 'cinema-video2d__label', label), video);
       stage.classList.add('cinema-stage--video2d');
       stage.append(box);
+      video2d = box;
+    },
+    hideVideo2d() {
+      if (!video2d) return;
+      video2d.querySelector('video')?.remove();
+      video2d.remove();
+      video2d = null;
+      stage.classList.remove('cinema-stage--video2d');
     },
     dispose() {
       clearTimeout(noticeTimer);
@@ -325,6 +543,8 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
     },
   };
 
+  ui.setTask('explore');
+  ui.setPanel('closed');
   ui.setStatus({ kind: 'loading' });
   ui.setTransitioning(false);
   ui.setTour(null);
@@ -333,26 +553,45 @@ export function createCinemaUi(host: HTMLElement, layout: AuditoriumLayout, hand
   return ui;
 }
 
+const LOADING_TEXT = {
+  code: 'Đang tải phần 3D của trang…',
+  scene: 'Đang dựng phòng chiếu 3D…',
+};
+
 /**
- * Shows `next` in a status overlay and mirrors it on `root.dataset.status`.
- * Shared by the auditorium and the seat inspector.
+ * Shows `next` in a status overlay and mirrors it on `root.dataset.status`. Shared by the
+ * auditorium and the seat inspector. A retry button appears when `next` offers one and `onRetry`
+ * is given; a failure never keeps a spinner.
  */
-export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiStatus): void {
+export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiStatus, onRetry?: () => void): void {
   root.dataset.status = next.kind;
   status.replaceChildren();
   status.hidden = next.kind === 'ready';
   status.setAttribute('role', next.kind === 'error' ? 'alert' : 'status');
   status.classList.toggle('cinema-status--error', next.kind === 'error');
+  const retry = (label: string) => {
+    const element = el('button', 'cinema-button cinema-status__retry', label);
+    element.type = 'button';
+    element.dataset.action = 'retry-scene';
+    element.addEventListener('click', () => onRetry?.(), { once: true });
+    return element;
+  };
   if (next.kind === 'loading') {
-    status.append(el('span', 'cinema-status__spinner'), el('span', '', 'Đang khởi tạo cảnh 3D…'));
+    status.append(el('span', 'cinema-status__spinner'), el('span', '', LOADING_TEXT[next.step ?? 'scene']));
   } else if (next.kind === 'context-lost') {
-    status.append(el('span', '', 'Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…'));
+    if (next.stuck && onRetry) {
+      status.append(
+        el('strong', '', 'Cảnh 3D chưa được khôi phục'),
+        el('span', 'cinema-status__hint', 'Trình duyệt chưa trả lại ngữ cảnh WebGL. Dựng lại cảnh sẽ giữ nguyên ghế đã chọn và vị trí phim.'),
+        retry('Dựng lại cảnh 3D'),
+      );
+    } else {
+      status.append(el('span', '', 'Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…'));
+    }
   } else if (next.kind === 'error') {
-    status.append(
-      el('strong', '', 'Không thể hiển thị cảnh 3D'),
-      el('span', '', next.message),
-      el('span', 'cinema-status__hint', 'Hãy bật tăng tốc phần cứng (WebGL) hoặc mở trang bằng trình duyệt khác.'),
-    );
+    status.append(el('strong', '', 'Không thể hiển thị cảnh 3D'), el('span', '', next.message));
+    if (next.retry && onRetry) status.append(retry('Thử lại'));
+    else status.append(el('span', 'cinema-status__hint', 'Hãy bật tăng tốc phần cứng (WebGL) hoặc mở trang bằng trình duyệt khác.'));
   }
 }
 
@@ -387,10 +626,4 @@ export function switchControl(
   input.addEventListener('change', () => onChange(input.checked), { signal });
   wrapper.append(input, el('span', 'cinema-switch__track'), el('span', 'cinema-switch__label', label));
   return { wrapper, input };
-}
-
-function stat(term: string, value: string): HTMLDivElement {
-  const item = el('div', 'cinema-stats__item');
-  item.append(el('dt', '', term), el('dd', '', value));
-  return item;
 }

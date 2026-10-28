@@ -1,0 +1,36 @@
+{
+ "sourceFrames": 812,
+ "candidateFrames": 814,
+ "sourceStillPairs": 376,
+ "meanMatchDiff": 1.72,
+ "worstMatchDiff": 6.88,
+ "repeats": 16,
+ "visibleRepeats": 13,
+ "repeatAt": [
+  32.54,
+  32.58,
+  32.62,
+  32.67,
+  32.71,
+  32.74,
+  32.78,
+  32.82,
+  32.86,
+  32.9,
+  32.94,
+  32.98,
+  33.03
+ ],
+ "sourceFramesSkipped": 14,
+ "visibleSkips": 0,
+ "skipAt": [],
+ "firstSourceFrameShown": 0,
+ "lastSourceFrameShown": 811,
+ "medianOffsetSeconds": {
+  "0-1s": 0.044,
+  "1-5s": 0.044,
+  "5-15s": 0.044,
+  "15-25s": 0.043,
+  "25-33s": 0.044
+ }
+}

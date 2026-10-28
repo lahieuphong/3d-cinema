@@ -50,6 +50,10 @@ export function loadQuality(): { level: QualityLevel; source: 'stored' | 'device
   return { level: defaultQuality(readDeviceHints()), source: 'device' };
 }
 
+export function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
 export function saveQuality(level: QualityLevel): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, level);

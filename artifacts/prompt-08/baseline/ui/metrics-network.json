@@ -1,0 +1,380 @@
+{
+  "ui": "prompt-07",
+  "base": "http://localhost:4199/",
+  "browser": "156.0.8078.47",
+  "viewports": {},
+  "network": {
+    "beforePlay": [
+      {
+        "path": "/media/big-buck-bunny-trailer-poster.jpg",
+        "range": null,
+        "status": 200,
+        "bytes": 100075,
+        "state": "finished",
+        "type": "image/jpeg",
+        "contentRange": null,
+        "enc": 100075,
+        "data": 100075,
+        "total": 100345
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=0-",
+        "status": 206,
+        "bytes": 3145728,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 0-8343659/8343660",
+        "enc": 0,
+        "data": 3145728
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=4161536-",
+        "status": 206,
+        "bytes": 262144,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 4161536-8343659/8343660",
+        "enc": 0,
+        "data": 262144
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=3145728-",
+        "status": null,
+        "bytes": 0,
+        "state": "cancelled"
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=5210112-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 5210112-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=6160384-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 6160384-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=7143424-",
+        "status": 206,
+        "bytes": 327680,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 7143424-8343659/8343660",
+        "enc": 0,
+        "data": 327680
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=8257536-",
+        "status": 206,
+        "bytes": 86124,
+        "state": "finished",
+        "type": "video/mp4",
+        "contentRange": "bytes 8257536-8343659/8343660",
+        "enc": 86124,
+        "data": 86124,
+        "total": 86474
+      }
+    ],
+    "afterPlay4s": [
+      {
+        "path": "/media/big-buck-bunny-trailer-poster.jpg",
+        "range": null,
+        "status": 200,
+        "bytes": 100075,
+        "state": "finished",
+        "type": "image/jpeg",
+        "contentRange": null,
+        "enc": 100075,
+        "data": 100075,
+        "total": 100345
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=0-",
+        "status": 206,
+        "bytes": 3145728,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 0-8343659/8343660",
+        "enc": 0,
+        "data": 3145728
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=4161536-",
+        "status": 206,
+        "bytes": 262144,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 4161536-8343659/8343660",
+        "enc": 0,
+        "data": 262144
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=3145728-",
+        "status": null,
+        "bytes": 0,
+        "state": "cancelled"
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=5210112-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 5210112-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=6160384-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 6160384-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=7143424-",
+        "status": 206,
+        "bytes": 327680,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 7143424-8343659/8343660",
+        "enc": 0,
+        "data": 327680
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=8257536-",
+        "status": 206,
+        "bytes": 86124,
+        "state": "finished",
+        "type": "video/mp4",
+        "contentRange": "bytes 8257536-8343659/8343660",
+        "enc": 86124,
+        "data": 86124,
+        "total": 86474
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=3145728-",
+        "status": 206,
+        "bytes": 2818048,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 3145728-8343659/8343660",
+        "enc": 2818048,
+        "data": 2818048
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=4423680-",
+        "status": 206,
+        "bytes": 851968,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 4423680-8343659/8343660",
+        "enc": 786432,
+        "data": 851968
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=5406720-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "open",
+        "type": "video/mp4",
+        "contentRange": "bytes 5406720-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      }
+    ],
+    "afterEnd": [
+      {
+        "path": "/media/big-buck-bunny-trailer-poster.jpg",
+        "range": null,
+        "status": 200,
+        "bytes": 100075,
+        "state": "finished",
+        "type": "image/jpeg",
+        "contentRange": null,
+        "enc": 100075,
+        "data": 100075,
+        "total": 100345
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=0-",
+        "status": 206,
+        "bytes": 3145728,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 0-8343659/8343660",
+        "enc": 0,
+        "data": 3145728
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=4161536-",
+        "status": 206,
+        "bytes": 262144,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 4161536-8343659/8343660",
+        "enc": 0,
+        "data": 262144
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=3145728-",
+        "status": null,
+        "bytes": 0,
+        "state": "cancelled"
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=5210112-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 5210112-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=6160384-",
+        "status": 206,
+        "bytes": 196608,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 6160384-8343659/8343660",
+        "enc": 0,
+        "data": 196608
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=7143424-",
+        "status": 206,
+        "bytes": 327680,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 7143424-8343659/8343660",
+        "enc": 0,
+        "data": 327680
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=8257536-",
+        "status": 206,
+        "bytes": 86124,
+        "state": "finished",
+        "type": "video/mp4",
+        "contentRange": "bytes 8257536-8343659/8343660",
+        "enc": 86124,
+        "data": 86124,
+        "total": 86474
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=3145728-",
+        "status": 206,
+        "bytes": 2818048,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 3145728-8343659/8343660",
+        "enc": 2818048,
+        "data": 2818048
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=4423680-",
+        "status": 206,
+        "bytes": 851968,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 4423680-8343659/8343660",
+        "enc": 786432,
+        "data": 851968
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=5406720-",
+        "status": 206,
+        "bytes": 2359296,
+        "state": "cancelled",
+        "type": "video/mp4",
+        "contentRange": "bytes 5406720-8343659/8343660",
+        "enc": 2359296,
+        "data": 2359296
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=6356992-",
+        "status": 206,
+        "bytes": 1986668,
+        "state": "finished",
+        "type": "video/mp4",
+        "contentRange": "bytes 6356992-8343659/8343660",
+        "enc": 1986668,
+        "data": 1986668,
+        "total": 1987020
+      },
+      {
+        "path": "/media/big-buck-bunny-trailer-720p.mp4",
+        "range": "bytes=7471104-",
+        "status": 206,
+        "bytes": 872556,
+        "state": "finished",
+        "type": "video/mp4",
+        "contentRange": "bytes 7471104-8343659/8343660",
+        "enc": 872556,
+        "data": 872556,
+        "total": 872907
+      }
+    ],
+    "video": null,
+    "summary": {
+      "beforePlay": {
+        "mp4Requests": 7,
+        "mp4Bytes": 4214892,
+        "posterRequests": 1
+      },
+      "afterPlay4s": {
+        "mp4Requests": 10,
+        "mp4Bytes": 8081516
+      },
+      "afterEnd": {
+        "mp4Requests": 12,
+        "mp4Bytes": 13103428,
+        "fileBytes": 8343660
+      }
+    }
+  },
+  "timing": []
+}

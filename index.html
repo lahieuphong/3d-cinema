@@ -6,10 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <title>Phòng chiếu 3D</title>
+    <style>
+      /* Before the app's own code and styles arrive: a plain message, no fake progress. */
+      html, body { margin: 0; height: 100%; background: #0f1013; color: #e9eaee; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+      #app { height: 100%; }
+      .boot { display: grid; place-content: center; gap: 12px; height: 100%; padding: 16px; box-sizing: border-box; text-align: center; color: #a3a7b1; font-size: 0.95rem; }
+      .boot button { justify-self: center; min-height: 44px; padding: 8px 16px; border: 1px solid #2a2d34; border-radius: 8px; background: #17191e; color: #e9eaee; font: inherit; cursor: pointer; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
-    <noscript>Trang này cần JavaScript và WebGL để hiển thị phòng chiếu 3D.</noscript>
+    <div id="app"><div class="boot" role="status">Đang tải trang…</div></div>
+    <noscript><p class="boot">Trang này cần JavaScript và WebGL để hiển thị phòng chiếu 3D.</p></noscript>
+    <script>
+      // If the app's code has not taken over after a while, say so (it replaces #app when it starts).
+      setTimeout(function () {
+        var boot = document.querySelector('#app > .boot');
+        if (!boot) return;
+        boot.textContent = 'Trang đang tải lâu hơn bình thường. Hãy kiểm tra kết nối mạng.';
+        var reload = document.createElement('button');
+        reload.type = 'button';
+        reload.textContent = 'Tải lại trang';
+        reload.onclick = function () { location.reload(); };
+        boot.appendChild(reload);
+      }, 15000);
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

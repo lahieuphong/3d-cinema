@@ -95,6 +95,26 @@ function setup(options: ConstructorParameters<typeof MediaController>[1] = {}, f
 afterEach(() => vi.useRealTimers());
 
 describe('media controller', () => {
+  it('can wait to fetch anything until load() or play() (the page lets its 3D scene arrive first)', async () => {
+    const video = new FakeVideo();
+    const controller = new MediaController(DEMO_FILM, { element: video as unknown as HTMLVideoElement, loadNow: false });
+    expect(video.src).toBe('');
+    expect(controller.snapshot.state).toBe('idle');
+    controller.load();
+    controller.load();
+    expect(video.src).toBe(DEMO_FILM.src);
+    const later = new FakeVideo();
+    const waiting = new MediaController(DEMO_FILM, { element: later as unknown as HTMLVideoElement, loadNow: false });
+    void waiting.play();
+    expect(later.src).toBe(DEMO_FILM.src);
+    expect(later.paused).toBe(false);
+    waiting.dispose();
+    controller.load();
+    controller.dispose();
+    controller.load();
+    expect(video.src).toBe('');
+  });
+
   it('starts paused, without autoplay or loop, metadata only, inline, with sound as left', () => {
     const { video, controller } = setup();
     expect(video.preload).toBe('metadata');

@@ -1,17 +1,20 @@
-import { BufferGeometry, Material, Object3D, Texture, WebGLRenderTarget } from 'three';
 import type { ToggleablePart } from './architecture.ts';
 import { DEFAULT_PRESET, describePreset, formatMetres, presetInfo, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
 import { createAuditoriumLayout, type Vec3 } from './layout.ts';
 import { DEMO_FILM, devFilm } from './media.ts';
 import { MediaController, type MediaControllerOptions } from './mediaController.ts';
 import { createPlayerUi } from './playerUi.ts';
-import { loadQuality, saveQuality } from './quality.ts';
-import { prefersReducedMotion } from './renderHost.ts';
+import { loadQuality, prefersReducedMotion, saveQuality } from './quality.ts';
 import { createSeatPanel } from './seatPanel.ts';
+import { createSeatSummary } from './seatSummary.ts';
 import type { SeatSelection } from './selection.ts';
+import { initialTaskLayout, reduceTaskLayout, SHEET_LAYOUT_QUERY, type CinemaTask, type TaskLayout, type TaskLayoutEvent } from './taskLayout.ts';
 import { createCinemaUi, TOGGLEABLE_PARTS } from './ui.ts';
 import { validateLayout } from './validation.ts';
-import { CinemaView, WebGLUnavailableError, type TourEndReason } from './view.ts';
+import type { CinemaView, CinemaViewCallbacks, TourEndReason } from './view.ts';
+
+/** The 3D part of the page (three.js, the room, the renderer): a separate download. */
+type SceneModule = typeof import('./view.ts');
 
 declare global {
   interface Window {
@@ -35,7 +38,7 @@ declare global {
       /** The film's element, to check it is the same one across camera, seat and quality changes. */
       filmElement(): HTMLVideoElement;
       /** Constructors whose live instances the lifecycle check counts after garbage collection. */
-      types: Record<string, unknown>;
+      readonly types: Record<string, unknown>;
     };
   }
 }
@@ -47,6 +50,8 @@ export interface CinemaSession {
   seatPanelOpen: boolean | null;
   /** Where the film was and how it sounded when the page was last left (it always comes back paused). */
   media: MediaControllerOptions['resume'] | null;
+  /** The task shown when the page was left (null: start in Khám phá). */
+  task: CinemaTask | null;
 }
 
 export interface CinemaPageOptions {
@@ -63,11 +68,26 @@ const TOUR_ENDED: Record<Exclude<TourEndReason, 'command'>, string> = {
   input: 'Đã dừng tham quan tại đây. Kéo để nhìn quanh, hoặc chọn một góc.',
   hidden: 'Tham quan đã dừng khi chuyển sang tab khác. Kéo để nhìn quanh, hoặc bấm Tham quan để xem lại.',
   'context-lost': 'Tham quan đã dừng vì mất ngữ cảnh WebGL.',
+  task: 'Đã dừng tham quan tại đây khi chuyển tác vụ.',
 };
+const NO_SCENE_CONTROLS =
+  'Không có cảnh 3D trên trình duyệt này nên không dùng được góc nhìn, tham quan và đi bộ. Sơ đồ ghế và phim (dạng 2D) vẫn dùng được.';
+const NO_SCENE_SEAT_VIEW = 'Không xem được góc nhìn từ ghế: cảnh 3D không khả dụng trên trình duyệt này. Sơ đồ vẫn dùng được.';
+/** How long a lost WebGL context may take to come back before "Dựng lại cảnh 3D" is offered. */
+const CONTEXT_WAIT_MS = 5000;
 
-/** Mounts the /cinema page into `host`. Returns a function that tears everything down. */
+/**
+ * Mounts the /cinema page into `host`. Returns a function that tears everything down.
+ *
+ * The page's own controls (tasks, seat map, player) are built first and work at once; the 3D part
+ * downloads in parallel and the room is built once it arrives. Without it (no WebGL, a failed
+ * download, a broken build) the map and the film (shown flat, in 2D) stay usable, and a failure
+ * that may pass offers "Thử lại", which rebuilds only the scene: the seat selection, the film's
+ * element and place, and the quality choice are untouched.
+ */
 export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): () => void {
   document.title = 'Phòng chiếu 3D';
+  let sceneModule: Promise<SceneModule> = import('./view.ts');
   const layout = createAuditoriumLayout();
   if (import.meta.env.DEV) {
     const problems = validateLayout(layout);
@@ -81,23 +101,33 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   let activePreset: CameraPresetId | null = DEFAULT_PRESET;
   let touring = false;
   let exploring = false;
+  let scene: SceneModule | null = null;
   let view: CinemaView | null = null;
+  let sceneFailed = false;
+  let disposed = false;
+  let contextTimer: ReturnType<typeof setTimeout> | undefined;
   const { selection } = options.session;
   // The view a seat view returns to: the preset it was opened from, else the overview.
   let returnPreset: CameraPresetId | null = null;
+  // The seat whose eye the camera is at, or null.
+  let viewingSeat: string | null = null;
   const touch = window.matchMedia?.('(any-pointer: coarse)').matches ?? false;
+  const sheetQuery = window.matchMedia?.(SHEET_LAYOUT_QUERY);
+  const isSheet = () => sheetQuery?.matches ?? false;
+  let tasks: TaskLayout = initialTaskLayout(options.session.task ?? 'explore', options.session.seatPanelOpen, isSheet());
 
   // The film: one controller (one element, one audio stream) for the life of this mount. Leaving
   // the page records where it was; the next mount starts paused there, with the same sound.
   const film = (import.meta.env.DEV ? devFilm(location.search) : null) ?? DEMO_FILM;
-  const media = new MediaController(film, { resume: options.session.media ?? undefined });
-  const poster = film.poster ? loadImage(film.poster) : null;
+  // The film's metadata and poster wait for the 3D part (they would share the connection with it).
+  const media = new MediaController(film, { resume: options.session.media ?? undefined, loadNow: false });
+  let poster: HTMLImageElement | null = null;
   const player = createPlayerUi(film, {
     onPlay: () => void media.play(),
     onPause: () => media.pause(),
     onReplay: () => void media.replay(),
     onSeek: (seconds) => media.seek(seconds),
-    onMuted: (muted) => media.setMuted(muted),
+    onToggleMute: () => media.setMuted(!media.video.muted),
     onVolume: (volume) => media.setVolume(volume),
     onRetry: () => media.retry(),
   });
@@ -131,6 +161,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
 
   const leaveSeatView = () => {
     returnPreset = null;
+    viewingSeat = null;
     ui.setReturn(null);
   };
 
@@ -145,6 +176,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     }
     activePreset = id;
     ui.setActivePreset(id);
+    updateWatchView();
     if (!view) return;
     const pose = view.setPreset(id, animate);
     ui.setCaption(describePreset(id, layout, pose));
@@ -155,7 +187,20 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     ui.setActivePreset(null);
   };
 
-  const ui = createCinemaUi(host, layout, {
+  /** Leaving Khám phá ends the tour and walking where the camera is (it does not move). */
+  const stopExploreActivities = () => {
+    if (!view) return;
+    if (touring) view.stopTour('task');
+    if (exploring) {
+      view.stopExplore();
+      setExploring(false);
+      ui.setCaption('Đã dừng đi bộ tại đây khi chuyển tác vụ.');
+    }
+    updateWatchView();
+  };
+
+  const ui = createCinemaUi(host, {
+    onTask: (task) => dispatch({ type: 'task', task }),
     onPreset: (id) => applyPreset(id, true),
     onReset: () => {
       autoHidden.clear();
@@ -180,14 +225,14 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       if (exploring) {
         view.stopExplore();
         setExploring(false);
-        ui.setCaption('Đã dừng khám phá tại đây. Kéo để nhìn quanh, hoặc chọn một góc.');
+        ui.setCaption('Đã dừng đi bộ tại đây. Kéo để nhìn quanh, hoặc chọn một góc.');
         return;
       }
       touring = false;
       leaveSeatView();
       leavePreset();
       setExploring(true);
-      ui.setCaption('Đang tới điểm bắt đầu khám phá…');
+      ui.setCaption('Đang tới điểm bắt đầu đi bộ…');
       view.startExplore();
     },
     onToggle: (part, visible) => {
@@ -200,8 +245,13 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       ui.setQuality(level);
     },
     onOpenInspector: () => options.openInspector(),
-    onSeatPanel: () => panel.setOpen(!panel.open, { returnFocus: ui.seatPanelButton }),
     onReturn: () => applyPreset(returnPreset ?? DEFAULT_PRESET, true),
+    onWatchAction: () => {
+      const active = selection.active;
+      if (active && active !== viewingSeat && view) viewFromSeat(active);
+      else dispatch({ type: 'task', task: 'seats' });
+    },
+    onRetryScene: () => retryScene(),
   });
 
   const viewFromSeat = (id: string) => {
@@ -212,26 +262,87 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     touring = false;
     setExploring(false);
     leavePreset();
+    viewingSeat = id;
     view.viewFromSeat(id);
     ui.setCaption(
       `Ghế ${seat.id}: hàng ${seat.rowLabel}, ghế số ${seat.seatNumber}, mắt cao ${formatMetres(layout.config.viewer.eyeHeight)} trên sàn hàng. Kéo để nhìn quanh.`,
     );
     ui.setReturn(`Trở về ${presetInfo(returnPreset).label.toLowerCase()}`);
+    updateWatchView();
   };
 
-  ui.screen.append(player.root);
+  // Xem phim says where the camera is, and offers the one camera move that fits.
+  const updateWatchView = () => {
+    const active = selection.active;
+    if (!view) {
+      ui.setWatchView(sceneFailed ? 'Không có cảnh 3D: phim phát dạng 2D.' : 'Phòng chiếu 3D đang được dựng…', null);
+      summary.setViewing(null);
+      return;
+    }
+    summary.setViewing(viewingSeat);
+    const where = viewingSeat ? `Đang xem từ ghế ${viewingSeat}` : activePreset ? `Góc nhìn: ${presetInfo(activePreset).label}` : 'Góc nhìn: tự do';
+    const action = active && active !== viewingSeat ? `Xem từ ghế ${active}` : viewingSeat ? 'Đổi ghế' : 'Chọn ghế';
+    ui.setWatchView(where, action);
+  };
 
-  const panel = createSeatPanel(ui.main, ui.root, layout, selection, {
-    onViewFromSeat: viewFromSeat,
-    onOpenChange: (open) => {
-      ui.setSeatPanelOpen(open);
-      options.session.seatPanelOpen = open;
+  const summary = createSeatSummary(ui.dock.seats, selection, {
+    onTogglePanel: () => dispatch({ type: 'panel', open: tasks.panel === 'closed' }),
+    onViewFromSeat: (id) => {
+      dispatch({ type: 'view-from-seat' });
+      viewFromSeat(id);
     },
   });
-  // Open by default on wide screens; on phones it would take half the screen, so it waits for the button.
-  const panelOpen = options.session.seatPanelOpen ?? (window.matchMedia?.('(min-width: 1100px)').matches ?? false);
-  panel.setOpen(panelOpen, { returnFocus: ui.seatPanelButton });
-  ui.setSeatPanelOpen(panelOpen);
+  const panel = createSeatPanel(ui.main, ui.root, layout, selection, {
+    onViewFromSeat: (id) => {
+      dispatch({ type: 'view-from-seat' });
+      viewFromSeat(id);
+    },
+    onClose: () => dispatch({ type: 'panel', open: false }),
+    onExpand: (expanded) => dispatch({ type: 'expand', expanded }),
+    onEscape: () => dispatch({ type: 'escape' }),
+  });
+  ui.dock.watch.append(player.root);
+  player.root.append(ui.watchView);
+  ui.miniSlot.append(player.mini);
+  ui.stage.append(player.status);
+  ui.root.append(player.live);
+  ui.creditSlot.append(player.credit);
+
+  const focusable = (element: Element) =>
+    element instanceof HTMLElement && element.isConnected && element.getClientRects().length > 0 && !element.closest('[inert]');
+
+  /** Applies a task or panel change; focus that was in something now hidden goes to the control that leads back to it. */
+  function dispatch(event: TaskLayoutEvent): void {
+    const previous = tasks;
+    const result = reduceTaskLayout(tasks, event, isSheet());
+    tasks = result.state;
+    options.session.task = tasks.task;
+    options.session.seatPanelOpen = tasks.panelChoice;
+    if (result.stopExploreActivities) stopExploreActivities();
+    const focused = document.activeElement;
+    renderLayout();
+    if (focused && focused !== document.body && !focusable(focused)) {
+      const target = previous.panel === 'expanded' && tasks.panel === 'open' ? panel.expandButton : tasks.task === 'seats' ? summary.toggle : ui.taskButton(tasks.task);
+      (focusable(target) ? target : ui.taskButton(tasks.task)).focus();
+    }
+  }
+
+  function renderLayout(): void {
+    ui.setTask(tasks.task);
+    ui.setPanel(tasks.panel);
+    panel.setState(tasks.panel);
+    summary.setPanelOpen(tasks.panel !== 'closed');
+    updateWatchView();
+  }
+  const onSheetChange = () => dispatch({ type: 'layout' });
+  sheetQuery?.addEventListener('change', onSheetChange);
+  renderLayout();
+
+  const unsubscribeSelection = selection.subscribe((change) => {
+    if (change.selection) ui.setSeatCount(selection.selectedCount);
+    if (change.active || change.selection) updateWatchView();
+  });
+  ui.setSeatCount(selection.selectedCount);
 
   // The user's stored choice, else a conservative default from device capabilities.
   const quality = loadQuality();
@@ -242,81 +353,157 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   const onMotionChange = () => view?.setReducedMotion(motionQuery?.matches ?? false);
   motionQuery?.addEventListener('change', onMotionChange);
 
-  try {
-    view = new CinemaView(
-      ui.viewport,
-      layout,
-      {
-        onStatus: (status) => {
-          ui.setStatus(status);
-          // No context, no screen: the film pauses and waits for the user once the room is back.
-          if (status.kind === 'context-lost') {
-            media.suspend('context-lost');
-            player.setUnavailable('Cảnh 3D đang được khôi phục; chưa phát được.');
-          } else {
-            player.setUnavailable(null);
-          }
-        },
-        onCameraState: (state) => {
-          ui.setCameraState(state);
-          ui.setTransitioning(state === 'transition');
-        },
-        onArrive: restoreAutoHidden,
-        onManualCamera: () => {
-          // Looking around from a seat keeps its caption; an orbit no longer matches the preset.
-          if (activePreset && presetInfo(activePreset).space === 'experience' && activePreset !== 'seatEye') {
-            ui.setCaption(FREE_CAMERA_CAPTION);
-          }
-        },
-        onTour: (status, ended) => {
-          ui.setTour(status);
-          if (status) {
-            if (!touring) return;
-            ui.setCaption(status.steps ? TOUR_STEPS_CAPTION : TOUR_CAPTION);
-            return;
-          }
-          touring = false;
-          if (ended === 'finished') {
-            activePreset = 'overview';
-            ui.setActivePreset('overview');
-          }
-          if (ended && ended !== 'command') ui.setCaption(TOUR_ENDED[ended]);
-        },
-        onExploreStart: (relocatedTo) => {
-          const how = touch
-            ? 'kéo cần điều khiển ở góc dưới để đi, kéo phần còn lại để nhìn quanh.'
-            : 'W A S D hoặc phím mũi tên để đi, kéo để nhìn quanh.';
-          ui.setCaption(`${relocatedTo ? `Đã đưa bạn tới ${relocatedTo.label}. ` : ''}Khám phá: ${how} Bấm Khám phá lần nữa để dừng.`);
-        },
-        onSeatTap: (id) => {
-          // Same rules as the map: the seat becomes the active one, and its selection toggles.
-          selection.setActive(id);
-          const result = selection.toggle(id);
-          const max = selection.maxSelected;
-          ui.setNotice(
-            result.ok
-              ? `${result.selected ? 'Đã chọn' : 'Đã bỏ chọn'} ${id} · ${selection.selectedCount}/${max} ghế`
-              : result.reason === 'reserved'
-                ? `${id} đã được đặt — không chọn được`
-                : `Đã đủ ${max} ghế — bỏ bớt để chọn ${id}`,
-          );
-        },
-      },
-      { quality: quality.level, reducedMotion: prefersReducedMotion(), touchStick: touch, selection, media: { controller: media, poster } },
-    );
-    applyPreset(DEFAULT_PRESET, false);
-  } catch (error) {
-    console.error('[cinema] Could not start the 3D view:', error);
-    const message =
-      error instanceof WebGLUnavailableError ? error.message : 'Đã xảy ra lỗi khi dựng cảnh. Xem chi tiết trong console.';
-    ui.setStatus({ kind: 'error', message });
-    // Seat selection does not need the renderer: the map stays usable, only the seat views are gone.
-    ui.seatPanelButton.disabled = false;
-    panel.setOpen(true, { returnFocus: ui.seatPanelButton });
-    panel.setViewAvailable(false, 'Không xem được góc nhìn từ ghế: cảnh 3D không khả dụng trên trình duyệt này. Sơ đồ vẫn dùng được.');
+  const callbacks: CinemaViewCallbacks = {
+    onStatus: (status) => {
+      ui.setStatus(status);
+      clearTimeout(contextTimer);
+      // No context, no screen: the film pauses and waits for the user once the room is back.
+      if (status.kind === 'context-lost') {
+        media.suspend('context-lost');
+        player.setUnavailable('Cảnh 3D đang được khôi phục; chưa phát được.');
+        contextTimer = setTimeout(() => ui.setStatus({ kind: 'context-lost', stuck: true }), CONTEXT_WAIT_MS);
+      } else {
+        player.setUnavailable(null);
+        ui.setSceneControls(true);
+        media.load();
+      }
+    },
+    onCameraState: (state) => {
+      ui.setCameraState(state);
+      ui.setTransitioning(state === 'transition');
+    },
+    onArrive: restoreAutoHidden,
+    onManualCamera: () => {
+      // Looking around from a seat keeps its caption; an orbit no longer matches the preset.
+      if (activePreset && presetInfo(activePreset).space === 'experience' && activePreset !== 'seatEye') {
+        ui.setCaption(FREE_CAMERA_CAPTION);
+      }
+    },
+    onTour: (status, ended) => {
+      ui.setTour(status);
+      if (status) {
+        if (!touring) return;
+        ui.setCaption(status.steps ? TOUR_STEPS_CAPTION : TOUR_CAPTION);
+        return;
+      }
+      touring = false;
+      if (ended === 'finished') {
+        activePreset = 'overview';
+        ui.setActivePreset('overview');
+      }
+      if (ended && ended !== 'command') ui.setCaption(TOUR_ENDED[ended]);
+      updateWatchView();
+    },
+    onExploreStart: (relocatedTo) => {
+      const how = touch
+        ? 'kéo cần điều khiển ở góc dưới để đi, kéo phần còn lại để nhìn quanh.'
+        : 'W A S D hoặc phím mũi tên để đi, kéo để nhìn quanh.';
+      ui.setCaption(`${relocatedTo ? `Đã đưa bạn tới ${relocatedTo.label}. ` : ''}Đi bộ: ${how} Bấm Đi bộ lần nữa để dừng.`);
+    },
+    onSeatTap: (id) => {
+      // Same rules as the map: the seat becomes the active one, and its selection toggles.
+      selection.setActive(id);
+      const result = selection.toggle(id);
+      const max = selection.maxSelected;
+      ui.setNotice(
+        result.ok
+          ? `${result.selected ? 'Đã chọn' : 'Đã bỏ chọn'} ${id} · ${selection.selectedCount}/${max} ghế`
+          : result.reason === 'reserved'
+            ? `${id} đã được đặt — không chọn được`
+            : `Đã đủ ${max} ghế — bỏ bớt để chọn ${id}`,
+      );
+    },
+  };
+
+  /** No scene (no WebGL, a failed download or build): the map and the flat film carry on. */
+  const failScene = (message: string, retry: boolean) => {
+    const first = !sceneFailed;
+    sceneFailed = true;
+    ui.setStatus({ kind: 'error', message, retry });
+    ui.setSceneControls(false, NO_SCENE_CONTROLS);
+    panel.setViewAvailable(false, NO_SCENE_SEAT_VIEW);
+    summary.setViewAvailable(false);
+    player.setUnavailable(null);
+    media.load();
     // The same film, element and controls, shown flat in place of the room (never both).
     ui.showVideo2d(media.video, `Đang xem video ở chế độ 2D (không có cảnh 3D): ${film.title}`);
-  }
+    updateWatchView();
+    // Seat selection does not need the renderer: with nothing to explore, it is where the page starts.
+    if (first && tasks.task === 'explore') dispatch({ type: 'panel', open: true });
+  };
+
+  const createView = (module: SceneModule) => {
+    poster ??= film.poster ? loadImage(film.poster) : null;
+    try {
+      view = new module.CinemaView(ui.viewport, layout, callbacks, {
+        quality: quality.level,
+        reducedMotion: prefersReducedMotion(),
+        touchStick: touch,
+        selection,
+        media: { controller: media, poster },
+      });
+    } catch (error) {
+      view = null;
+      console.error('[cinema] Could not start the 3D view:', error);
+      const unavailable = error instanceof module.WebGLUnavailableError;
+      failScene(unavailable ? error.message : 'Đã xảy ra lỗi khi dựng cảnh. Xem chi tiết trong console.', !unavailable);
+      return;
+    }
+    if (sceneFailed) {
+      // Back after a failure: the room takes the flat film's place.
+      sceneFailed = false;
+      ui.hideVideo2d();
+      panel.setViewAvailable(true);
+      summary.setViewAvailable(true);
+    }
+    for (const { part } of TOGGLEABLE_PARTS) if (!visibility[part]) view.setPartVisible(part, false);
+    ui.setQuality(quality.level);
+    const seat = viewingSeat;
+    if (seat) {
+      // A rebuilt scene comes back to the same seat.
+      returnPreset ??= DEFAULT_PRESET;
+      viewingSeat = null;
+      viewFromSeat(seat);
+    } else {
+      applyPreset(activePreset ?? DEFAULT_PRESET, false);
+    }
+  };
+
+  const startScene = async () => {
+    ui.setSceneControls(false);
+    player.setUnavailable('Phòng chiếu 3D đang được dựng; phim phát được khi cảnh sẵn sàng.');
+    if (!scene) {
+      ui.setStatus({ kind: 'loading', step: 'code' });
+      try {
+        scene = await sceneModule;
+      } catch (error) {
+        if (disposed) return;
+        console.error('[cinema] Could not load the 3D part of the page:', error);
+        failScene('Không tải được phần 3D của trang (mạng có thể đã bị gián đoạn).', true);
+        return;
+      }
+      if (disposed) return;
+    }
+    ui.setStatus({ kind: 'loading', step: 'scene' });
+    // Let "Đang dựng…" reach the screen before the room is built (a moment of busy main thread).
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => setTimeout(resolve, 0));
+      setTimeout(resolve, 100);
+    });
+    if (disposed || view) return;
+    createView(scene);
+  };
+
+  /** "Thử lại" / "Dựng lại cảnh 3D": the scene only; selection, film and quality stay as they are. */
+  const retryScene = () => {
+    clearTimeout(contextTimer);
+    view?.dispose();
+    view = null;
+    if (!scene) sceneModule = import('./view.ts');
+    void startScene();
+  };
+
+  void startScene();
 
   if (import.meta.env.DEV) {
     window.__cinema = {
@@ -325,6 +512,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         preset: activePreset,
         touring,
         exploring,
+        task: tasks.task,
+        panel: tasks.panel,
         qualitySource: quality.source,
         visibility: { ...visibility },
         seats: {
@@ -342,6 +531,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         if (!view) return;
         touring = false;
         setExploring(false);
+        leaveSeatView();
         leavePreset();
         view.debugSetCamera(position, target, mode);
         ui.setCaption(FREE_CAMERA_CAPTION);
@@ -377,12 +567,17 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       },
       screenPixels: (points, area) => view?.debugScreenPixels(points, area) ?? null,
       filmElement: () => media.video,
-      types: { BufferGeometry, Material, Texture, Object3D, WebGLRenderTarget, MediaController, HTMLVideoElement },
+      get types() {
+        return { ...(scene?.DEBUG_TYPES ?? {}), MediaController, HTMLVideoElement };
+      },
     };
   }
 
   return () => {
+    disposed = true;
+    clearTimeout(contextTimer);
     motionQuery?.removeEventListener('change', onMotionChange);
+    sheetQuery?.removeEventListener('change', onSheetChange);
     document.removeEventListener('visibilitychange', onVisibility);
     // Remember the film's place and sound, then stop it before anything else goes.
     const { currentTime, muted, volume, started } = media.snapshot;
@@ -390,9 +585,11 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     media.pause();
     view?.dispose();
     view = null;
+    unsubscribeSelection();
     unsubscribePlayer();
     player.dispose();
     media.dispose();
+    summary.dispose();
     panel.dispose();
     ui.dispose();
     if (import.meta.env.DEV) delete window.__cinema;

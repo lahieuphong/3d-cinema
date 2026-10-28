@@ -1,19 +1,26 @@
 import type { AuditoriumLayout, SeatData } from './layout.ts';
 import type { SeatSelection, SeatStatus, SelectionChange } from './selection.ts';
-import { el } from './ui.ts';
+import type { PanelState } from './taskLayout.ts';
+import { el, icon } from './ui.ts';
 
 export interface SeatPanelHandlers {
   /** "Xem từ ghế này" for the active seat. */
   onViewFromSeat(seatId: string): void;
-  /** The panel was opened or closed (the page resizes the 3D view). */
-  onOpenChange(open: boolean): void;
+  /** "Đóng" (or "Trở lại phòng 3D" from the full-screen sheet). */
+  onClose(): void;
+  /** "Mở rộng" / "Thu nhỏ" (sheets only). */
+  onExpand(expanded: boolean): void;
+  /** Escape inside the panel. */
+  onEscape(): void;
 }
 
 export interface SeatPanel {
   element: HTMLElement;
+  readonly state: PanelState;
   readonly open: boolean;
-  /** `returnFocus`: when closing, focus goes back to the button that toggles the panel. */
-  setOpen(open: boolean, options?: { returnFocus?: HTMLElement }): void;
+  /** The sheet's "Mở rộng" / "Thu nhỏ" button (focus goes back here when the full screen closes). */
+  expandButton: HTMLButtonElement;
+  setState(state: PanelState): void;
   /** Disables "view from this seat" (no 3D) with the reason shown next to it. */
   setViewAvailable(available: boolean, reason?: string): void;
   dispose(): void;
@@ -21,18 +28,35 @@ export interface SeatPanel {
 
 const STATUS_TEXT: Record<SeatStatus, string> = { available: 'còn trống', selected: 'đang chọn', reserved: 'đã đặt' };
 
+const ICONS = {
+  expand: 'M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z',
+  collapse: 'M8 4h2v6H4V8h4zm6 0h2v4h4v2h-6zM4 14h6v6H8v-4H4zm10 0h6v2h-4v4h-2z',
+};
+
+/** Elements that can take focus inside `container`, in order, skipping hidden ones. */
+export function focusables(container: HTMLElement): HTMLElement[] {
+  const candidates = container.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]');
+  return [...candidates].filter(
+    (element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled && element.getClientRects().length > 0,
+  );
+}
+
 /**
- * Seat selection panel: demo notice, the 2D map, the active seat's details and the selected list.
- * Everything is generated from SeatData and reads the shared SeatSelection; nothing here keeps a
- * second copy of seat state.
+ * Seat selection panel: header (title, count, expand and close), then a scrolling body (demo
+ * notice, the 2D map, the selected list, room figures) and a fixed footer with the active seat and
+ * its actions, so "Xem từ ghế này" stays in reach while the map scrolls. Everything is generated
+ * from SeatData and reads the shared SeatSelection; nothing here keeps a second copy of seat state.
  *
  * Map: HTML, one button per seat inside an ARIA grid (rows A–J, screen at the top, seat numbers
  * left → right as in the room). Roving tabindex: the grid is one Tab stop; arrow keys move by row
  * and column, Home/End go to the ends of a row (Ctrl+Home/End to A01/J11), Enter or Space toggles.
  * Each seat's accessible name is its ID and state; selected seats have aria-pressed="true",
- * reserved ones aria-disabled="true". The panel is a non-modal region (no focus trap); Escape
- * inside it closes it and returns focus to its toggle.
- * Announcements go to a polite live region outside the panel, one short sentence per change.
+ * reserved ones aria-disabled="true".
+ *
+ * Presentation (the page decides, see taskLayout): a non-modal region beside the view or as a
+ * sheet under it (no focus trap; Escape closes it); or, on phones, a full-screen modal dialog
+ * (`expanded`): focus stays inside (Tab wraps), the rest of the page is inert, Escape returns to
+ * the sheet. Announcements go to a polite live region outside the panel, one short sentence per change.
  */
 export function createSeatPanel(
   host: HTMLElement,
@@ -44,25 +68,38 @@ export function createSeatPanel(
   const listeners = new AbortController();
   const { signal } = listeners;
   const max = selection.maxSelected;
+  const { rowLabels, seatsPerRow } = layout.config.seating;
 
   const panel = el('aside', 'cinema-seats');
   panel.id = 'cinema-seat-panel';
-  panel.setAttribute('role', 'region');
-  panel.setAttribute('aria-label', 'Chọn ghế');
   panel.hidden = true;
 
   const header = el('div', 'cinema-seats__header');
   const title = el('h2', 'cinema-seats__title', 'Chọn ghế');
-  const close = el('button', 'cinema-button cinema-button--compact', 'Đóng');
+  title.id = 'cinema-seat-panel-title';
+  panel.setAttribute('aria-labelledby', title.id);
+  const badge = el('span', 'cinema-seats__badge');
+  title.append(' ', badge);
+  const expand = el('button', 'cinema-button cinema-button--compact cinema-seats__expand');
+  expand.type = 'button';
+  expand.dataset.action = 'seat-panel-expand';
+  const expandLabel = el('span', '');
+  expand.append(icon(ICONS.expand), expandLabel);
+  const close = el('button', 'cinema-button cinema-button--compact cinema-seats__close', 'Đóng');
   close.type = 'button';
   close.dataset.action = 'seat-panel-close';
-  header.append(title, close);
+  header.append(title, expand, close);
+
+  const body = el('div', 'cinema-seats__body');
   const demo = el('p', 'cinema-seats__demo', 'Dữ liệu ghế minh họa — chưa giữ chỗ thực tế.');
 
-  // Active seat.
+  // Active seat (footer).
   const info = el('section', 'cinema-seats__info');
   info.setAttribute('aria-label', 'Ghế đang xem');
-  const infoEmpty = el('p', 'cinema-seats__muted', 'Chọn một ghế trên sơ đồ hoặc trong khán phòng để xem thông tin.');
+  // The same rows with or without an active seat (only text and disabled states change), so the
+  // footer never changes height and nothing in the map moves under a finger.
+  const infoSeat = el('div', 'cinema-seats__seat');
+  const infoEmpty = el('p', 'cinema-seats__muted', 'Chọn một ghế trên sơ đồ hoặc trong phòng 3D để xem thông tin.');
   const details = el('dl', 'cinema-seats__details');
   const detail = (term: string) => {
     const item = el('div', '');
@@ -80,13 +117,14 @@ export function createSeatPanel(
   const toggleActive = el('button', 'cinema-button cinema-button--compact');
   toggleActive.type = 'button';
   toggleActive.dataset.action = 'toggle-active-seat';
-  const viewFrom = el('button', 'cinema-button cinema-button--compact', 'Xem từ ghế này');
+  const viewFrom = el('button', 'cinema-button cinema-button--compact cinema-seats__view', 'Xem từ ghế này');
   viewFrom.type = 'button';
   viewFrom.dataset.action = 'view-from-seat';
   infoActions.append(toggleActive, viewFrom);
   const viewHint = el('p', 'cinema-seats__muted');
   viewHint.hidden = true;
-  info.append(infoEmpty, details, infoActions, viewHint);
+  infoSeat.append(infoEmpty, details);
+  info.append(infoSeat, infoActions, viewHint);
 
   // Selected list.
   const chosen = el('section', 'cinema-seats__chosen');
@@ -99,6 +137,19 @@ export function createSeatPanel(
   clear.type = 'button';
   clear.dataset.action = 'clear-selection';
   chosen.append(count, list, limit, clear);
+
+  // Room figures.
+  const stats = el('dl', 'cinema-stats');
+  const stat = (term: string, value: string) => {
+    const item = el('div', 'cinema-stats__item');
+    item.append(el('dt', '', term), el('dd', '', value));
+    return item;
+  };
+  stats.append(
+    stat('Số hàng', `${layout.rows.length} (${rowLabels[0]}–${rowLabels[rowLabels.length - 1]})`),
+    stat('Ghế mỗi hàng', String(seatsPerRow)),
+    stat('Tổng số ghế', String(layout.seats.length)),
+  );
 
   // Map.
   const mapSection = el('section', 'cinema-seats__map');
@@ -157,9 +208,11 @@ export function createSeatPanel(
   swipe.setAttribute('aria-hidden', 'true');
   mapSection.append(help, swipe, scroller, legend);
 
-  // The map comes first so nothing above it changes height as seats are picked: the details and
-  // the list below grow and shrink, and a press on the map must land where it started.
-  panel.append(header, demo, mapSection, info, chosen);
+  // The map comes first in the body so nothing above it changes height as seats are picked: the
+  // list below grows and shrinks, and a press on the map must land where it started. The count
+  // in the header has a fixed width.
+  body.append(demo, mapSection, chosen, stats);
+  panel.append(header, body, info);
   host.append(panel);
 
   const announcer = el('div', 'visually-hidden');
@@ -169,6 +222,7 @@ export function createSeatPanel(
 
   let rovingId = layout.seats[0].id;
   let viewAvailable = true;
+  let state: PanelState = 'closed';
 
   const label = (seat: SeatData) => {
     const status = selection.status(seat.id);
@@ -200,8 +254,12 @@ export function createSeatPanel(
     const seat = id ? selection.seat(id) : undefined;
     infoEmpty.hidden = Boolean(seat);
     details.hidden = !seat;
-    infoActions.hidden = !seat;
-    if (!seat) return;
+    if (!seat) {
+      toggleActive.textContent = 'Chọn ghế này';
+      toggleActive.disabled = true;
+      viewFrom.disabled = true;
+      return;
+    }
     const status = selection.status(seat.id);
     infoId.textContent = seat.id;
     infoRow.textContent = seat.rowLabel;
@@ -215,7 +273,8 @@ export function createSeatPanel(
 
   const paintList = () => {
     const ids = selection.selectedIds;
-    count.textContent = `Đã chọn ${ids.length}/${max} ghế`;
+    badge.textContent = `${ids.length}/${max}`;
+    count.textContent = ids.length === 0 ? 'Chưa chọn ghế nào.' : `Đã chọn ${ids.length}/${max} ghế`;
     list.replaceChildren(
       ...ids.map((id) => {
         const item = el('li', 'cinema-seats__chip');
@@ -338,19 +397,55 @@ export function createSeatPanel(
     },
     { signal },
   );
+  close.addEventListener('click', () => handlers.onClose(), { signal });
+  expand.addEventListener('click', () => handlers.onExpand(state !== 'expanded'), { signal });
+  panel.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handlers.onEscape();
+        return;
+      }
+      // Full screen: Tab wraps inside the dialog.
+      if (event.key !== 'Tab' || state !== 'expanded') return;
+      const items = focusables(panel);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    { signal },
+  );
 
-  let toggleButton: HTMLElement | undefined;
   const api: SeatPanel = {
     element: panel,
-    get open() {
-      return !panel.hidden;
+    expandButton: expand,
+    get state() {
+      return state;
     },
-    setOpen(open, options) {
-      if (options?.returnFocus) toggleButton = options.returnFocus;
-      if (open === !panel.hidden) return;
-      panel.hidden = !open;
-      if (!open && panel.contains(document.activeElement)) toggleButton?.focus();
-      handlers.onOpenChange(open);
+    get open() {
+      return state !== 'closed';
+    },
+    setState(next) {
+      state = next;
+      panel.hidden = next === 'closed';
+      panel.dataset.state = next;
+      const modal = next === 'expanded';
+      // A region beside or under the view; a dialog only while it covers the whole screen.
+      panel.setAttribute('role', modal ? 'dialog' : 'region');
+      if (modal) panel.setAttribute('aria-modal', 'true');
+      else panel.removeAttribute('aria-modal');
+      expandLabel.textContent = modal ? 'Thu nhỏ' : 'Mở rộng';
+      expand.querySelector('path')!.setAttribute('d', modal ? ICONS.collapse : ICONS.expand);
+      close.textContent = modal ? 'Trở lại phòng 3D' : 'Đóng';
+      if (modal && !panel.contains(document.activeElement)) close.focus();
     },
     setViewAvailable(available, reason) {
       viewAvailable = available;
@@ -365,20 +460,11 @@ export function createSeatPanel(
       announcer.remove();
     },
   };
-  close.addEventListener('click', () => api.setOpen(false), { signal });
-  panel.addEventListener(
-    'keydown',
-    (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      api.setOpen(false);
-    },
-    { signal },
-  );
 
   for (const seat of layout.seats) paintSeat(seat.id);
   setRoving(selection.active ?? layout.seats.find((seat) => selection.status(seat.id) !== 'reserved')!.id);
   paintInfo();
   paintList();
+  api.setState('closed');
   return api;
 }
