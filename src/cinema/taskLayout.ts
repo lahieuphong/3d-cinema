@@ -9,6 +9,18 @@ export type CinemaTask = 'explore' | 'seats' | 'watch';
 /** Screens where the seat panel is a sheet under the view rather than a side panel (same as the CSS). */
 export const SHEET_LAYOUT_QUERY = '(orientation: portrait) and (max-width: 1024px)';
 
+/**
+ * Phones, upright or on their side: the room fills the screen and every control sits in the
+ * floating control hub (`data-layout="immersive"`; the CSS keys off that attribute).
+ */
+export const IMMERSIVE_LAYOUT_QUERY = '(max-width: 599px), (orientation: landscape) and (max-height: 500px)';
+
+/**
+ * Where the seat panel goes: beside the view (`side`), as a sheet under it (`sheet`), or, on phones
+ * (`immersive`), only ever as the full-screen map: there is no room for half a map over the scene.
+ */
+export type PanelLayout = 'side' | 'sheet' | 'immersive';
+
 export const CINEMA_TASKS: ReadonlyArray<{ id: CinemaTask; label: string }> = [
   { id: 'explore', label: 'Khám phá' },
   { id: 'seats', label: 'Chọn ghế' },
@@ -48,11 +60,17 @@ export interface TaskLayoutResult {
   stopExploreActivities: boolean;
 }
 
+const panelLayout = (layout: PanelLayout | boolean): PanelLayout => (typeof layout === 'boolean' ? (layout ? 'sheet' : 'side') : layout);
+
 /**
- * Applies `event`. `sheet` is true while the panel is laid out as a sheet (portrait phones and
- * tablets), where it starts closed; side panels start open.
+ * Applies `event` for the current `layout` (`true`/`false` are `sheet`/`side`). Sheets start closed
+ * and side panels open; on phones (`immersive`) the map is either closed or the full-screen dialog,
+ * and Escape or "Xem từ ghế này" closes it outright.
  */
-export function reduceTaskLayout(state: TaskLayout, event: TaskLayoutEvent, sheet: boolean): TaskLayoutResult {
+export function reduceTaskLayout(state: TaskLayout, event: TaskLayoutEvent, layout: PanelLayout | boolean): TaskLayoutResult {
+  const mode = panelLayout(layout);
+  const sheet = mode !== 'side';
+  const shown: PanelState = mode === 'immersive' ? 'expanded' : 'open';
   const result = (next: Partial<TaskLayout>, stopExploreActivities = false): TaskLayoutResult => ({
     state: { ...state, ...next },
     stopExploreActivities,
@@ -60,30 +78,34 @@ export function reduceTaskLayout(state: TaskLayout, event: TaskLayoutEvent, shee
   switch (event.type) {
     case 'task': {
       if (event.task === state.task) return result({});
-      // The panel only shows with seat selection; it comes back the way the user left it.
-      const panel: PanelState = event.task === 'seats' && (state.panelChoice ?? !sheet) ? 'open' : 'closed';
+      // The panel only shows with seat selection; it comes back the way the user left it (never by
+      // itself over a phone's whole screen).
+      const panel: PanelState = event.task === 'seats' && mode !== 'immersive' && (state.panelChoice ?? !sheet) ? 'open' : 'closed';
       return result({ task: event.task, panel }, state.task === 'explore');
     }
     case 'panel':
       if (event.open) {
         const left = state.task === 'explore';
-        return result({ task: 'seats', panel: state.panel === 'expanded' ? 'expanded' : 'open', panelChoice: true }, left);
+        return result({ task: 'seats', panel: state.panel === 'expanded' ? 'expanded' : shown, panelChoice: true }, left);
       }
       return result({ panel: 'closed', panelChoice: state.task === 'seats' ? false : state.panelChoice });
     case 'expand':
-      if (!sheet || state.task !== 'seats' || state.panel === 'closed') return result({});
+      if (mode !== 'sheet' || state.task !== 'seats' || state.panel === 'closed') return result({});
       return result({ panel: event.expanded ? 'expanded' : 'open' });
     case 'escape':
-      if (state.panel === 'expanded') return result({ panel: 'open' });
-      if (state.panel === 'open') return result({ panel: 'closed', panelChoice: false });
+      if (state.panel === 'expanded' && mode !== 'immersive') return result({ panel: 'open' });
+      if (state.panel !== 'closed') return result({ panel: 'closed', panelChoice: false });
       return result({});
     case 'view-from-seat':
       return sheet && state.panel !== 'closed' ? result({ panel: 'closed', panelChoice: false }) : result({});
     case 'layout':
-      return !sheet && state.panel === 'expanded' ? result({ panel: 'open' }) : result({});
+      if (mode === 'side' && state.panel === 'expanded') return result({ panel: 'open' });
+      if (mode === 'immersive' && state.panel === 'open') return result({ panel: 'expanded' });
+      return result({});
   }
 }
 
-export function initialTaskLayout(task: CinemaTask = 'explore', panelChoice: boolean | null = null, sheet = false): TaskLayout {
-  return { task, panel: task === 'seats' && (panelChoice ?? !sheet) ? 'open' : 'closed', panelChoice };
+export function initialTaskLayout(task: CinemaTask = 'explore', panelChoice: boolean | null = null, layout: PanelLayout | boolean = false): TaskLayout {
+  const mode = panelLayout(layout);
+  return { task, panel: task === 'seats' && mode !== 'immersive' && (panelChoice ?? mode === 'side') ? 'open' : 'closed', panelChoice };
 }

@@ -115,28 +115,40 @@ async function waitForStatus(page, timeout = 30_000) {
 }
 
 const currentTask = (page) => page.evaluate(() => document.querySelector('.cinema-app')?.dataset.task ?? null);
+/** Phones (Prompt 13): no task switch or dock; every control is in the control hub. */
+const isImmersive = (page) => page.evaluate(() => document.querySelector('.cinema-app')?.dataset.layout === 'immersive');
 
 async function ensureTask(page, task) {
+  // On a phone the tasks are not shown: controls are reached through the hub (see reveal).
+  if (await isImmersive(page)) return;
   if ((await currentTask(page)) !== task) await page.click(`button[data-task="${task}"]`);
   await page.waitForFunction((t) => document.querySelector('.cinema-app').dataset.task === t, task);
 }
 
-/** Closes "Cài đặt" and "Góc khác" with their own buttons, if open. */
+/** Opens the phone layout's control hub (its button), if closed. */
+async function openHubPanel(page) {
+  if ((await page.getAttribute('.cinema-hub__toggle', 'aria-expanded')) !== 'true') await page.click('.cinema-hub__toggle');
+  await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+}
+
+/** Closes "Cài đặt" and "Góc khác" with their own buttons, if open (and the phone's hub). */
 async function closeMenus(page) {
   await page.evaluate(() => {
-    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"]')) toggle.click();
+    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"], .cinema-hub__toggle[aria-expanded="true"]')) toggle.click();
   });
 }
 
 /**
  * Makes a control reachable the way a visitor would: its task, "Cài đặt" (and the inspection
- * tools inside it), "Góc khác" or the seat panel. Returns what had to be opened ('' if nothing).
+ * tools inside it), "Góc khác" or the seat panel; on a phone, the control hub (and the inspection
+ * tools inside it). Returns what had to be opened ('' if nothing).
  */
 async function reveal(page, selector) {
   const where = await page.evaluate((sel) => {
     const element = document.querySelector(sel);
     if (!element) return 'missing';
     if (element.getClientRects().length > 0 && !element.closest('[inert]')) return '';
+    if (element.closest('.cinema-hub')) return element.closest('#cinema-inspect-tools') ? 'hub-inspect' : 'hub';
     if (element.closest('#cinema-inspect-tools')) return 'inspect';
     if (element.closest('#cinema-settings')) return 'settings';
     if (element.closest('#cinema-more-views')) return 'more';
@@ -145,7 +157,13 @@ async function reveal(page, selector) {
     if (element.closest('.cinema-filmstatus')) return 'watch';
     return element.closest('[data-dock]')?.dataset.dock ?? 'other';
   }, selector);
-  if (where === 'inspect' || where === 'settings') {
+  if (where === 'hub' || where === 'hub-inspect') {
+    await openHubPanel(page);
+    if (where === 'hub-inspect' && (await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) !== 'true') {
+      await page.click('button[data-action="inspect-tools"]');
+    }
+    await page.locator(selector).scrollIntoViewIfNeeded();
+  } else if (where === 'inspect' || where === 'settings') {
     if ((await page.getAttribute('button[data-action="settings"]', 'aria-expanded')) !== 'true') await page.click('button[data-action="settings"]');
     if (where === 'inspect' && (await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) !== 'true') {
       await page.click('button[data-action="inspect-tools"]');
@@ -161,16 +179,17 @@ async function reveal(page, selector) {
   return where;
 }
 
-/** Clicks a control after revealing it; a settings menu opened for it is closed again. */
+/** Clicks a control after revealing it; a settings menu (or the phone's hub) opened for it is closed again. */
 async function clickUi(page, selector, options) {
   const opened = await reveal(page, selector);
   await page.click(selector, options);
-  if (opened === 'settings' || opened === 'inspect') await closeMenus(page);
+  if (['settings', 'inspect', 'hub', 'hub-inspect'].includes(opened)) await closeMenus(page);
 }
 
 async function tapUi(page, selector) {
-  await reveal(page, selector);
+  const opened = await reveal(page, selector);
   await page.tap(selector);
+  if (opened === 'hub' || opened === 'hub-inspect') await closeMenus(page);
 }
 
 async function focusUi(page, selector) {
@@ -452,6 +471,7 @@ async function main() {
       ['ui-focus', () => uiFocus(browser, base)],
       ['ui-states', () => uiStates(browser, base)],
       ['ui-flows', () => uiFlows(browser, base)],
+      ['mobile-hub', () => mobileHub(browser, base)],
       ['ui-zoom', () => uiZoom(browser, base)],
       ['landing-layouts', () => landingLayouts(browser, base)],
       ['landing-network', () => landingNetwork(browser, base)],
@@ -1561,10 +1581,28 @@ const seatsState = async (page) => (await state(page)).seats;
 const seatLook = (page, id) => page.evaluate((seatId) => window.__cinema.seatLook(seatId), id);
 const seatPoint = (page, id) => page.evaluate((seatId) => window.__cinema.seatScreenPoint(seatId), id);
 
+/**
+ * The first seat that can be picked from where the camera is (not reserved, not in `except`), and
+ * its point; `avoid` (a box) is kept clear by 24 px (a touch that close is adjusted onto it).
+ * Which seats are in sight depends on the view's shape (a phone's overview shows few), hence a search.
+ */
+const firstVisibleSeat = (page, except = [], avoid = null) =>
+  page.evaluate(([skip, box]) => {
+    for (const { id } of window.__cinema.layout.seats) {
+      if (skip.includes(id) || document.querySelector(`button[data-seat="${id}"]`)?.getAttribute('aria-disabled') === 'true') continue;
+      const point = window.__cinema.seatScreenPoint(id);
+      if (box && point.x >= box.x - 24 && point.x <= box.x + box.w + 24 && point.y >= box.y - 24 && point.y <= box.y + box.h + 24) continue;
+      if (point.visible) return { id, ...point };
+    }
+    return null;
+  }, [except, avoid]);
+
 /** Chọn ghế, then "Sơ đồ ghế" / "Mở sơ đồ" if the panel is not open yet. */
 async function openSeatPanel(page) {
   await ensureTask(page, 'seats');
   if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') {
+    // On a phone "Mở sơ đồ" is in the hub (and opens the full-screen map).
+    if (await isImmersive(page)) await openHubPanel(page);
     await page.click('button[data-action="seat-panel"]');
   }
   await page.waitForSelector('#cinema-seat-panel:not([hidden])');
@@ -1887,14 +1925,12 @@ async function seatChecks(page) {
   await closeSeatPanel(page);
 }
 
-// Phone: the bottom sheet, real taps in 3D and in the map, two-finger and cancelled touches,
-// the stick with a second finger, rotation with the sheet open, Escape/close returning focus.
+// Phone (the control hub, Prompt 13): real taps on seats in the full-screen room, the full-screen map
+// from the hub, two-finger and cancelled touches, the stick with a second finger, turning the phone
+// with the map open, Escape returning focus to the hub's button.
 async function mobileSeatChecks(page, context) {
   const cdp = await context.newCDPSession(page);
   await selectPreset(page, 'overview');
-  await page.tap('button[data-task="seats"]');
-  await page.tap('button[data-action="seat-panel"]');
-  await page.waitForSelector('#cinema-seat-panel:not([hidden])');
   await page.waitForTimeout(300);
   const tapAt = async (p) => {
     await touch(cdp, 'touchStart', [[p.x, p.y, 1]]);
@@ -1902,10 +1938,12 @@ async function mobileSeatChecks(page, context) {
     await touch(cdp, 'touchEnd', []);
     await page.waitForTimeout(100);
   };
-  let p = await seatPoint(page, 'F05');
-  await tapAt(p);
+  let p = await firstVisibleSeat(page);
+  if (p) await tapAt(p);
   let s = await seatsState(page);
-  check('mobile: a real tap on a seat in 3D selects it', p.visible && s.selected.includes('F05'), { p, selected: s.selected });
+  check('mobile: a real tap on a seat in 3D selects it (the room in full view)', p && s.selected.includes(p.id), { p, selected: s.selected });
+  const tapped = p?.id;
+  await openSeatPanel(page);
   await page.tap('button[data-seat="B07"]');
   s = await seatsState(page);
   check('mobile: tapping a seat in the map selects it', s.selected.includes('B07'));
@@ -1915,11 +1953,12 @@ async function mobileSeatChecks(page, context) {
     return { scrolls: map.scrollWidth > map.clientWidth, seat: { width: seat.width, height: seat.height }, page: document.documentElement.scrollWidth - innerWidth };
   });
   check('mobile: seats stay ≥ 36 px; the map scrolls sideways instead of shrinking, the page does not', overflow.seat.width >= 36 && overflow.page <= 0, overflow);
-  await screenshot(page, 'seats-4-mobile-sheet');
+  await screenshot(page, 'seats-4-mobile-map');
+  await closeSeatPanel(page);
 
   const before = JSON.stringify((await seatsState(page)).selected);
   // Two fingers, one on a seat, lifted one after the other.
-  p = await seatPoint(page, 'G06');
+  p = await firstVisibleSeat(page, [tapped, 'B07']);
   await touch(cdp, 'touchStart', [[p.x, p.y, 1]]);
   await touch(cdp, 'touchStart', [[p.x, p.y, 1], [p.x + 80, p.y - 40, 2]]);
   await page.waitForTimeout(80);
@@ -1967,27 +2006,30 @@ async function mobileSeatChecks(page, context) {
   await tapUi(page, 'button[data-action="explore"]');
   await selectPreset(page, 'overview');
 
-  // Rotate with the sheet open: it becomes a side panel; selection and picking still right.
+  // Turned with the map open: it stays the full-screen dialog (no half-map on a phone); closed, a
+  // tap in the landscape room still picks the right seat.
   await openSeatPanel(page);
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(400);
-  // With the panel open beside it, the view has less room by design.
-  const landscape = await layoutChecks(page, 'mobile landscape with the seat panel', { minShare: 0.35 });
-  const lp = await seatPoint(page, 'E10');
-  if (lp.visible) await tapAt(lp);
-  check('mobile: in landscape with the panel beside the view, tapping still picks the right seat', lp.visible && (await seatsState(page)).selected.includes('E10') && landscape.overflowX <= 0, lp);
+  const rotated = await page.evaluate(() => ({ panel: document.querySelector('.cinema-app').dataset.panel, modal: document.querySelector('#cinema-seat-panel').getAttribute('aria-modal'), overflow: document.documentElement.scrollWidth - innerWidth }));
   await screenshot(page, 'seats-5-mobile-landscape');
+  await closeSeatPanel(page);
+  await page.waitForTimeout(300);
+  const landscape = await layoutChecks(page, 'mobile landscape after the map', { minShare: 0.9 });
+  const lp = await firstVisibleSeat(page, (await seatsState(page)).selected);
+  if (lp) await tapAt(lp);
+  check('mobile: turned to landscape with the map open it stays the full-screen dialog; closed, a tap in 3D still picks the right seat', rotated.panel === 'expanded' && rotated.modal === 'true' && rotated.overflow <= 0 && lp && (await seatsState(page)).selected.includes(lp.id) && landscape.overflowX <= 0, { rotated, lp });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
 
-  // Escape inside the sheet closes it and focus goes back to its button.
+  // Escape in the full-screen map closes it and focus goes back to the hub's button.
+  await openSeatPanel(page);
   await page.focus('button[data-seat][tabindex="0"]');
   await page.keyboard.press('Escape');
   const closed = await page.isHidden('#cinema-seat-panel');
   const focusBack = await page.evaluate(() => document.activeElement?.dataset?.action ?? null);
-  check('mobile: Escape in the sheet closes it and returns focus to "Mở sơ đồ" (non-modal, no trap)', closed && focusBack === 'seat-panel', { focusBack });
-  await page.tap('button[data-action="seat-panel"]');
-  await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+  check('mobile: Escape in the full-screen map closes it and returns focus to the control hub\'s button', closed && focusBack === 'hub', { focusBack });
+  await openSeatPanel(page);
   await clickUi(page, 'button[data-action="clear-selection"]');
   await closeSeatPanel(page);
 }
@@ -3296,8 +3338,9 @@ async function filmFixtures(browser, base) {
   }
 }
 
-// Phones: the player between the view and the seat sheet in portrait, a single row in landscape;
-// never over the stick or the way back; safe areas.
+// Phones (the control hub, Prompt 13): the film plays from the hub over the room, which fills the
+// screen; it keeps playing through the full-screen map, a seat view and walking; the way back, the
+// stick, the hub's button and the film's notices never overlap; pausing stays one press away.
 async function filmMobile(browser, base) {
   for (const [name, viewport] of [
     ['portrait', { width: 390, height: 844 }],
@@ -3309,58 +3352,57 @@ async function filmMobile(browser, base) {
     await page.goto(`${base}cinema`);
     await waitForStatus(page);
     await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'ready');
+    const boxes = () =>
+      page.evaluate(() => {
+        const rect = (s) => {
+          const e = document.querySelector(s);
+          return e && e.getClientRects().length > 0 ? e.getBoundingClientRect() : null;
+        };
+        const overlap = (a, b) => Boolean(a && b && a.x < b.right - 0.5 && b.x < a.right - 0.5 && a.y < b.bottom - 0.5 && b.y < a.bottom - 0.5);
+        const toggle = rect('.cinema-hub__toggle');
+        const back = rect('button[data-action="return"]');
+        const chip = rect('.cinema-filmstatus');
+        const stick = rect('.cinema-stick');
+        const caption = rect('.cinema-caption');
+        const credit = rect('.cinema-filmcredit');
+        return {
+          stick: Boolean(stick),
+          overlaps: {
+            backToggle: overlap(back, toggle),
+            chipToggle: overlap(chip, toggle),
+            chipBack: overlap(chip, back),
+            stickToggle: overlap(stick, toggle),
+            stickCaption: overlap(stick, caption),
+            stickCredit: overlap(stick, credit),
+            stickBack: overlap(stick, back),
+          },
+          pause: document.querySelector('.cinema-hub button[data-action="media-primary"]').getAttribute('aria-label'),
+        };
+      });
     await tapUi(page, PRIMARY);
     await waitForFilm(page, ['playing']);
     await page.waitForTimeout(1500);
-    const playing = await playerLayout(page);
-    check(`film mobile ${name}: Xem phim — player under the view, inside the window, the 3D view keeps most of the space`, !playing.overlaps.stage && playing.insideWindow && playing.overflowX <= 0 && playing.stageShare > playing.playerShare * 3, playing);
+    const playing = await canvasShare(page);
+    const chipShown = await page.isVisible('.cinema-filmstatus');
+    check(`film mobile ${name}: plays from the control hub; the room fills the screen with nothing over it but the credit and the hub's button`, playing.areaShare > 0.98 && playing.overflowX <= 0 && playing.overflowY <= 0 && !chipShown, { playing, chipShown });
     await screenshot(page, `film-mobile-${name}-playing`);
-    // Chọn ghế while the film plays: the player gives way to the seats; the header keeps a pause button.
-    await page.tap('button[data-task="seats"]');
-    // A side panel (landscape) opens with the task; a sheet (portrait) waits for "Mở sơ đồ".
-    if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') await page.tap('button[data-action="seat-panel"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
-    await page.waitForTimeout(300);
-    const seats = await page.evaluate(() => {
-      const rect = (s) => document.querySelector(s)?.getBoundingClientRect();
-      const mini = document.querySelector('button[data-action="media-mini"]');
-      const a = rect('#cinema-seat-panel');
-      const b = rect('.cinema-stage');
-      return {
-        mini: mini && mini.getClientRects().length > 0 ? mini.getAttribute('aria-label') : null,
-        overlap: a.x < b.right - 0.5 && b.x < a.right - 0.5 && a.y < b.bottom - 0.5 && b.y < a.bottom - 0.5,
-        playerShown: document.querySelector('.cinema-player').getClientRects().length > 0,
-      };
-    });
-    check(`film mobile ${name}: Chọn ghế while playing — panel and view apart, player out of the way, "Tạm dừng phim" in the header`, !seats.overlap && !seats.playerShown && /Tạm dừng phim/.test(seats.mini ?? ''), seats);
+    // The full-screen map while the film plays, then the view from a seat.
+    await openSeatPanel(page);
     await page.click('button[data-seat="F06"]');
     await page.click('button[data-action="view-from-seat"]');
     await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
-    if (await page.isVisible('#cinema-seat-panel')) await closeSeatPanel(page);
-    await page.tap('button[data-task="watch"]');
     await page.waitForTimeout(400);
-    const seat = await playerLayout(page);
-    check(`film mobile ${name}: seat view — the way back button and the player do not overlap`, !seat.overlaps.returnButton, seat);
+    const seat = await boxes();
+    check(`film mobile ${name}: seat view — the way back, the hub's button and any film notice do not overlap`, !seat.overlaps.backToggle && !seat.overlaps.chipToggle && !seat.overlaps.chipBack, seat);
     await screenshot(page, `film-mobile-${name}-seat-view`);
     await tapUi(page, 'button[data-action="explore"]');
     await page.waitForFunction(() => window.__cinema.getState().view.owner === 'driver', null, { timeout: 8000 });
-    const explore = await page.evaluate(() => {
-      const rect = (s) => {
-        const e = document.querySelector(s);
-        return e && e.getClientRects().length > 0 ? e.getBoundingClientRect() : null;
-      };
-      const overlap = (a, b) => Boolean(a && b && a.x < b.right - 0.5 && b.x < a.right - 0.5 && a.y < b.bottom - 0.5 && b.y < a.bottom - 0.5);
-      const stick = rect('.cinema-stick');
-      return {
-        stick: Boolean(stick),
-        overlaps: { dock: overlap(stick, rect('.cinema-dock')), caption: overlap(stick, rect('.cinema-caption')), back: overlap(stick, rect('button[data-action="return"]')) },
-        mini: rect('button[data-action="media-mini"]') ? document.querySelector('button[data-action="media-mini"]').getAttribute('aria-label') : null,
-      };
-    });
-    check(`film mobile ${name}: walking — the stick overlaps neither the dock, the caption nor the way back; the header keeps "Tạm dừng phim"`, explore.stick && !Object.values(explore.overlaps).some(Boolean) && /Tạm dừng phim/.test(explore.mini ?? ''), explore);
+    await page.waitForTimeout(300);
+    const explore = await boxes();
+    check(`film mobile ${name}: walking — the stick overlaps neither the hub's button, the caption, the credit nor the way back; "Tạm dừng" is in the hub`, explore.stick && !explore.overlaps.stickToggle && !explore.overlaps.stickCaption && !explore.overlaps.stickCredit && !explore.overlaps.stickBack && explore.pause === 'Tạm dừng', explore);
     await screenshot(page, `film-mobile-${name}-explore`);
     const f = await film(page);
-    check(`film mobile ${name}: still playing through Chọn ghế, the seat view and walking`, f.snapshot.state === 'playing', f.snapshot.state);
+    check(`film mobile ${name}: still playing through the map, the seat view and walking`, f.snapshot.state === 'playing', f.snapshot.state);
     await context.close();
   }
 }
@@ -3444,6 +3486,8 @@ async function uiLayouts(browser, base) {
     await waitForCameraToSettle(page);
     const touchScreen = Boolean(options.hasTouch);
     const portraitPhone = options.viewport.width < 600;
+    // Phones (Prompt 13): the room fills the screen; controls are in the hub; the map opens full screen.
+    const immersive = await isImmersive(page);
     const shares = {};
     const chrome = {};
     const small = {};
@@ -3477,8 +3521,7 @@ async function uiLayouts(browser, base) {
     await page.waitForTimeout(300);
     if (await page.isVisible('#cinema-seat-panel')) await closeSeatPanel(page);
     await shot('2-seats');
-    await page.click('button[data-action="seat-panel"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await openSeatPanel(page);
     const counts = [];
     for (const id of ['F05', 'F06', 'A01', 'A02', 'A03', 'A06', 'A07', 'A08']) {
       await page.click(`button[data-seat="${id}"]`);
@@ -3486,9 +3529,11 @@ async function uiLayouts(browser, base) {
     }
     await page.click('button[data-seat="F06"]');
     await shot('3-seats-open');
-    if (await page.isVisible('button[data-action="seat-panel-expand"]')) {
-      await page.click('button[data-action="seat-panel-expand"]');
-      await page.waitForTimeout(200);
+    if (immersive || (await page.isVisible('button[data-action="seat-panel-expand"]'))) {
+      if (!immersive) {
+        await page.click('button[data-action="seat-panel-expand"]');
+        await page.waitForTimeout(200);
+      }
       const dialog = await page.evaluate(() => {
         const panel = document.querySelector('#cinema-seat-panel');
         const r = panel.getBoundingClientRect();
@@ -3501,12 +3546,12 @@ async function uiLayouts(browser, base) {
           focusInside: panel.contains(document.activeElement),
         };
       });
-      check(`ui ${name}: "Mở rộng" makes the sheet a full-screen dialog — the map is the page, no strip of 3D left, the rest inert`, dialog.role === 'dialog' && dialog.modal === 'true' && dialog.inert && dialog.coverage > 0.85 && !dialog.canvasShown && dialog.focusInside, dialog);
+      check(`ui ${name}: ${immersive ? 'the map opens as' : '"Mở rộng" makes the sheet'} a full-screen dialog — the map is the page, no strip of 3D left, the rest inert`, dialog.role === 'dialog' && dialog.modal === 'true' && dialog.inert && dialog.coverage > 0.85 && !dialog.canvasShown && dialog.focusInside, dialog);
       await shot('4-seats-expanded');
       await page.click('button[data-action="seat-panel-close"]');
       await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });
       const back = await page.evaluate(() => ({ task: document.querySelector('.cinema-app').dataset.task, focus: document.activeElement?.dataset.action ?? null, inert: document.querySelector('.cinema-header').inert }));
-      check(`ui ${name}: "Trở lại phòng 3D" closes it; focus returns to "Mở sơ đồ", nothing left inert`, back.task === 'seats' && back.focus === 'seat-panel' && !back.inert, back);
+      check(`ui ${name}: "Trở lại phòng 3D" closes it; focus returns to ${immersive ? "the control hub's button" : '"Mở sơ đồ"'}, nothing left inert`, back.task === 'seats' && back.focus === (immersive ? 'hub' : 'seat-panel') && !back.inert, back);
     } else {
       await closeSeatPanel(page);
     }
@@ -3530,7 +3575,8 @@ async function uiLayouts(browser, base) {
     const pausedBox = await chromeBox(page);
 
     report.ui.canvas[name] = shares;
-    check(`ui ${name}: the film's CC BY attribution is on screen in every task (beside the view, or in the player)`, Object.entries(credits).every(([k, text]) => k === '4-seats-expanded' || (/Blender Foundation/.test(text) && /CC BY 3\.0/.test(text))), credits);
+    // The full-screen map covers the room (and the film): no attribution needed while it does.
+    check(`ui ${name}: the film's CC BY attribution is on screen in every task (beside the view, or in the player)`, Object.entries(credits).every(([k, text]) => k === '4-seats-expanded' || (immersive && k === '3-seats-open') || (/Blender Foundation/.test(text) && /CC BY 3\.0/.test(text))), credits);
     report.ui.chrome[name] = { explore: [chrome['1-explore'], touring, stopped], seats: [chrome['2-seats'], ...counts.slice(-1), summaryFull], watch: [ready, playingBox, pausedBox], exploreWithMini };
     const min = 0.55;
     check(`ui ${name}: Khám phá and Xem phim keep the 3D view ≥ ${Math.round(min * 100)} % of the viewport height (measured canvas)`, shares['1-explore'].heightShare >= min && shares['5-watch'].heightShare >= min, {
@@ -3543,7 +3589,8 @@ async function uiLayouts(browser, base) {
     check(`ui ${name}: chrome and canvas keep their size while the tour starts and stops`, same([chrome['1-explore'], touring, stopped]), [chrome['1-explore'], touring, stopped]);
     // The side panel shares the row with the view: picking seats in it never resizes anything.
     check(`ui ${name}: selecting 1→8 seats never resizes the chrome or the view`, same(counts) && (portraitPhone || options.viewport.width < 1025 ? same([chrome['2-seats'], summaryFull]) : true), { counts: counts.map((c) => c.dock), summary: [chrome['2-seats'], summaryFull] });
-    check(`ui ${name}: Xem phim keeps its size through ready → playing → paused; the header's mini control never resizes the view`, same([ready, playingBox, pausedBox]) && miniShown && exploreWithMini.header === chrome['1-explore'].header && exploreWithMini.canvas === chrome['1-explore'].canvas, {
+    // Phones have no header: pausing is in the control hub.
+    check(`ui ${name}: Xem phim keeps its size through ready → playing → paused; the header's mini control (the hub on phones) never resizes the view`, same([ready, playingBox, pausedBox]) && (miniShown || immersive) && exploreWithMini.header === chrome['1-explore'].header && exploreWithMini.canvas === chrome['1-explore'].canvas, {
       watch: [ready, playingBox, pausedBox],
       exploreWithMini,
       explore: chrome['1-explore'],
@@ -3669,22 +3716,21 @@ async function uiFocus(browser, base) {
     await context.close();
   }
   {
-    // Phone: the full-screen sheet traps focus, Escape steps back out, focus returns.
+    // Phone (the control hub, Prompt 13): the map opens full screen from the hub, traps focus, takes
+    // every press; Escape closes it (no half-open sheet on a phone) and focus returns to the hub's button.
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
     const page = await context.newPage();
     attachConsole(page, 'ui-sheet-focus');
     await page.goto(`${base}cinema`);
     await waitForStatus(page);
-    await page.tap('button[data-task="seats"]');
-    await page.tap('button[data-action="seat-panel"]');
-    await page.tap('button[data-action="seat-panel-expand"]');
+    await openSeatPanel(page);
     await page.waitForTimeout(200);
     const inside = [];
     for (let i = 0; i < 40; i++) {
       await page.keyboard.press('Tab');
       inside.push(await page.evaluate(() => document.querySelector('#cinema-seat-panel').contains(document.activeElement)));
     }
-    await page.focus('button[data-action="seat-panel-expand"]');
+    await page.focus('button[data-action="seat-panel-close"]');
     await page.keyboard.press('Shift+Tab');
     const wrapped = await page.evaluate(() => document.querySelector('#cinema-seat-panel').contains(document.activeElement));
     const behind = await page.evaluate(() => {
@@ -3692,14 +3738,12 @@ async function uiFocus(browser, base) {
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + 10);
       return Boolean(hit && document.querySelector('#cinema-seat-panel').contains(hit));
     });
-    check('sheet: full screen traps focus (Tab and Shift+Tab stay inside) and takes every press', inside.every(Boolean) && wrapped && behind, { inside: inside.filter(Boolean).length, wrapped });
+    check('map (phone): full screen traps focus (Tab and Shift+Tab stay inside) and takes every press', inside.every(Boolean) && wrapped && behind, { inside: inside.filter(Boolean).length, wrapped });
     await page.focus('button[data-seat="F05"]');
     await page.keyboard.press('Escape');
-    const stepped = await page.evaluate(() => ({ state: document.querySelector('#cinema-seat-panel').dataset.state, focus: document.activeElement?.dataset.seat ?? document.activeElement?.dataset.action, modal: document.querySelector('#cinema-seat-panel').hasAttribute('aria-modal'), inert: document.querySelector('.cinema-header').inert }));
-    await page.keyboard.press('Escape');
-    const closed = await page.evaluate(() => ({ hidden: document.querySelector('#cinema-seat-panel').hidden, focus: document.activeElement?.dataset.action ?? null }));
+    const closed = await page.evaluate(() => ({ hidden: document.querySelector('#cinema-seat-panel').hidden, focus: document.activeElement?.dataset.action ?? null, inert: document.querySelector('.cinema-screen').inert }));
     const sheetArea = await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight - 120)?.closest('#cinema-seat-panel') !== null);
-    check('sheet: Escape leaves full screen (focus stays on the seat, page usable again), Escape again closes it and focus goes to "Mở sơ đồ"; nothing of it takes presses', stepped.state === 'open' && stepped.focus === 'F05' && !stepped.modal && !stepped.inert && closed.hidden && closed.focus === 'seat-panel' && !sheetArea, { stepped, closed });
+    check("map (phone): Escape closes it at once, focus goes to the control hub's button, the room is usable again and nothing of the map takes presses", closed.hidden && closed.focus === 'hub' && !closed.inert && !sheetArea, closed);
     await context.close();
   }
 }
@@ -3847,7 +3891,8 @@ async function uiStates(browser, base) {
     attachConsole(page, 'ui-media-error');
     await page.goto(`${base}cinema?film=missing.mp4`);
     await waitForStatus(page);
-    await page.tap('button[data-task="watch"]');
+    // On a phone the chip shows over the room without the hub (no task to switch to).
+    await ensureTask(page, 'watch');
     await waitForFilm(page, ['error']);
     const chip = await page.evaluate(() => {
       const c = document.querySelector('.cinema-filmstatus').getBoundingClientRect();
@@ -3870,16 +3915,552 @@ async function uiStates(browser, base) {
     attachConsole(page, 'ui-seat-states');
     await page.goto(`${base}cinema`);
     await waitForStatus(page);
-    await page.tap('button[data-task="seats"]');
+    // The summary is in the control hub on a phone; the map opens full screen from it.
+    await ensureTask(page, 'seats');
     const empty = await page.textContent('.cinema-summary__text');
-    await page.tap('button[data-action="seat-panel"]');
+    await openSeatPanel(page);
     for (const id of ['A01', 'A02', 'A03', 'A06', 'A07', 'A08', 'A09', 'A10', 'A11']) await page.click(`button[data-seat="${id}"]`);
     const limit = await page.textContent('.cinema-seats__limit');
     await screenshot(page, 'ui-state-6-limit-reached-sheet');
     await closeSeatPanel(page);
     const full = await page.textContent('.cinema-summary__text');
+    // The summary is shown in the hub on a phone.
+    if (await isImmersive(page)) await openHubPanel(page);
     await screenshot(page, 'ui-state-7-summary-eight');
+    await closeMenus(page);
     check('seats on a phone: the summary says when nothing is chosen and when the limit is reached; the 9th is refused with the reason; all labelled demo', /Chưa chọn ghế nào/.test(empty) && /Minh họa/.test(empty) && /Đã đủ 8 ghế/.test(limit) && /Đã đủ 8\/8/.test(full), { empty, limit, full });
+    await context.close();
+  }
+}
+
+// Phones (Prompt 13): the room fills the screen and one floating control (the hub) holds every
+// control. Fills the viewport at 360/390/430 px and on its side, the renderer follows, menu and
+// scrim, keyboard and focus, dragging the button (no camera move, no seat), the card of a seat
+// tapped in the room, the full-screen map, sound, walking, the tour, quality, listeners, leaving
+// while the film plays, and the problems that must stay in sight (no WebGL, a film that fails).
+async function mobileHub(browser, base) {
+  report.ui.hub = {};
+  const PHONE = { deviceScaleFactor: 2, hasTouch: true, isMobile: true };
+  const isOpen = async (page) => (await page.getAttribute('.cinema-hub__toggle', 'aria-expanded')) === 'true';
+  const openHub = async (page) => {
+    if (!(await isOpen(page))) await page.tap('.cinema-hub__toggle');
+    await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+  };
+  const dismissHint = async (page) => {
+    if (await page.isVisible('[data-action="hub-hint-close"]')) await page.tap('[data-action="hub-hint-close"]');
+  };
+  const geometry = (page) =>
+    page.evaluate(() => {
+      const box = (element) => {
+        const r = element?.getBoundingClientRect();
+        return r && r.width > 0 ? { x: r.x, y: r.y, w: r.width, h: r.height } : null;
+      };
+      const canvas = document.querySelector('.cinema-canvas');
+      const hub = document.querySelector('.cinema-hub');
+      const visible = (e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[inert]');
+      const s = window.__cinema?.getState();
+      return {
+        viewport: { w: innerWidth, h: innerHeight },
+        layout: document.querySelector('.cinema-app').dataset.layout,
+        canvas: box(canvas),
+        buffer: canvas ? { w: canvas.width, h: canvas.height } : null,
+        aspect: s?.view?.camera.aspect ?? null,
+        overflow: { x: document.documentElement.scrollWidth - innerWidth, y: document.documentElement.scrollHeight - innerHeight },
+        toggle: box(hub.querySelector('.cinema-hub__toggle')),
+        panel: box(hub.querySelector('.cinema-hub__panel')),
+        // What can be pressed over the room outside the hub (the credit's links are expected).
+        outside: [...document.querySelectorAll('button, a[href], input')]
+          .filter((e) => visible(e) && !hub.contains(e))
+          .map((e) => e.closest('.cinema-filmcredit') ? 'credit' : e.getAttribute('aria-label') || e.textContent.trim().slice(0, 30)),
+        // Buttons and stand-alone links; links inside a line of text (the credit) are exempt (WCAG 2.5.8).
+        smallTargets: [...hub.querySelectorAll('.cinema-hub__panel button, .cinema-hub__panel a[href]')]
+          .filter((e) => visible(e) && !e.closest('.cinema-player__credit') && e.getBoundingClientRect().height < 44)
+          .map((e) => e.getAttribute('aria-label') || e.textContent.trim().slice(0, 30)),
+        caption: { fresh: document.querySelector('.cinema-caption').dataset.fresh, shown: visible(document.querySelector('.cinema-caption')) },
+      };
+    });
+  const visibleSeat = firstVisibleSeat;
+  const inside =(b, v, margin = 0) => b && b.x >= margin - 0.5 && b.y >= margin - 0.5 && b.x + b.w <= v.w - margin + 0.5 && b.y + b.h <= v.h - margin + 0.5;
+  const overlaps = (a, b) => a && b && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const fills = (g) => g.canvas && Math.abs(g.canvas.x) < 1 && Math.abs(g.canvas.y) < 1 && Math.abs(g.canvas.w - g.viewport.w) < 1 && Math.abs(g.canvas.h - g.viewport.h) < 1;
+  const followsSize = (g) => g.buffer && Math.abs(g.buffer.w / g.buffer.h - g.viewport.w / g.viewport.h) < 0.01 && Math.abs(g.aspect - g.viewport.w / g.viewport.h) < 0.01;
+
+  // A. Sizes: closed (the room and one button), open (a panel that fits, every control reachable).
+  for (const [name, viewport] of [
+    ['narrow-360x640', { width: 360, height: 640 }],
+    ['phone-390x844', { width: 390, height: 844 }],
+    ['large-430x932', { width: 430, height: 932 }],
+    ['landscape-844x390', { width: 844, height: 390 }],
+  ]) {
+    const context = await browser.newContext({ viewport, ...PHONE });
+    const page = await context.newPage();
+    attachConsole(page, `hub-${name}`);
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await page.waitForTimeout(400);
+    const hint = await page.isVisible('.cinema-hub__hint');
+    await dismissHint(page);
+    const closed = await geometry(page);
+    await screenshot(page, `hub-${name}-1-closed`);
+    await openHub(page);
+    await page.waitForTimeout(200);
+    const open = await geometry(page);
+    await screenshot(page, `hub-${name}-2-open`);
+    // The last control is reachable inside the panel (it scrolls, never past the screen).
+    const last = await page.evaluate(() => {
+      const panel = document.querySelector('.cinema-hub__panel');
+      const link = panel.querySelector('[data-action="hub-home"]');
+      link.scrollIntoView({ block: 'nearest' });
+      const p = panel.getBoundingClientRect();
+      const l = link.getBoundingClientRect();
+      return { within: l.top >= p.top - 0.5 && l.bottom <= p.bottom + 0.5, scrolls: panel.querySelector('.cinema-hub__body').scrollHeight > panel.querySelector('.cinema-hub__body').clientHeight };
+    });
+    await screenshot(page, `hub-${name}-3-open-end`);
+    report.ui.hub[name] = { hint, closed, open, last };
+    check(
+      `hub ${name}: the room fills the viewport (canvas = viewport, renderer buffer and camera aspect follow), no page scroll, one round button inside the screen`,
+      closed.layout === 'immersive' && fills(closed) && followsSize(closed) && closed.overflow.x <= 0 && closed.overflow.y <= 0 && inside(closed.toggle, closed.viewport, 8) && closed.toggle.w >= 48 && closed.toggle.w <= 56,
+      { canvas: closed.canvas, buffer: closed.buffer, aspect: closed.aspect, toggle: closed.toggle, overflow: closed.overflow },
+    );
+    check(`hub ${name}: closed, nothing else to press over the room but the film's credit links`, closed.outside.every((label) => label === 'credit'), closed.outside);
+    check(
+      `hub ${name}: open, the panel fits the screen, leaves the button visible, scrolls inside to its last control; every control ≥ 44 px`,
+      inside(open.panel, open.viewport) && !overlaps(open.panel, open.toggle) && last.within && open.smallTargets.length === 0,
+      { panel: open.panel, toggle: open.toggle, last, small: open.smallTargets },
+    );
+    await context.close();
+  }
+
+  // B. One phone, the interactions.
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+  const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  attachConsole(page, 'hub-phone');
+  await page.goto(`${base}cinema`);
+  await waitForStatus(page);
+  await page.waitForTimeout(300);
+  const firstHint = await page.isVisible('.cinema-hub__hint');
+  await dismissHint(page);
+  await page.reload();
+  await waitForStatus(page);
+  await page.waitForTimeout(500);
+  const hintAgain = await page.isVisible('.cinema-hub__hint');
+  check('hub: the first-visit hint shows once, can be dismissed, and is not shown again on the next visit', firstHint && !hintAgain, { firstHint, hintAgain });
+  await page.waitForTimeout(5300);
+  const later = await geometry(page);
+  check('hub: the caption shows for a moment, then leaves the room clear (it stays in the hub)', later.caption.fresh === 'false' && !later.caption.shown && /Tổng quan/.test((await page.textContent('.cinema-hub__now')) ?? ''), later.caption);
+
+  // The card for a seat tapped in the room, then the view from it and the way back.
+  const point = await visibleSeat(page);
+  await page.touchscreen.tap(point.x, point.y);
+  await page.waitForSelector('.cinema-seatcard:not([hidden])', { timeout: 3000 });
+  const card = { seat: point.id, text: await page.textContent('.cinema-seatcard__text'), view: await page.isVisible('[data-action="card-view-seat"]'), selected: (await state(page)).seats.selected };
+  await screenshot(page, 'hub-4-seat-card');
+  await page.tap('[data-action="card-view-seat"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 8000 });
+  const seatView = { cardHidden: await page.isHidden('.cinema-seatcard'), viewing: (await state(page)).view.state, back: await page.isVisible('[data-action="return"]') };
+  await page.waitForTimeout(400);
+  await screenshot(page, 'hub-5-seat-view');
+  await page.tap('[data-action="return"]');
+  await page.waitForFunction(() => window.__cinema.getState().view.state === 'preset', null, { timeout: 8000 });
+  report.ui.hub.card = { card, seatView };
+  check('hub: a seat tapped in the room picks the seat under the finger and shows a card with "Xem từ ghế này", which goes there and clears the card; "Trở về" comes back', (card.text ?? '').includes(card.seat) && card.view && card.selected.includes(card.seat) && seatView.cardHidden && seatView.viewing === 'seat' && seatView.back, report.ui.hub.card);
+  await waitForCameraToSettle(page);
+
+  // The scrim takes a press over the room: the panel closes, nothing in the room moves or is picked.
+  const camera = async () => (await state(page)).view.camera.position;
+  let before = { camera: await camera(), selected: (await state(page)).seats.selected };
+  // Outside the panel, on a seat in sight if there is one, so a press that leaked through would pick it.
+  await openHub(page);
+  const panelBox = (await geometry(page)).panel;
+  const free = (await visibleSeat(page, before.selected, panelBox)) ?? { id: null, x: 24, y: (await geometry(page)).viewport.h - 24 };
+  await page.touchscreen.tap(free.x, free.y);
+  await page.waitForTimeout(400);
+  let after = { pressed: free, camera: await camera(), selected: (await state(page)).seats.selected, open: await isOpen(page) };
+  check('hub: a press outside the panel closes it and goes no further (no seat picked, camera still)', !after.open && JSON.stringify(after.selected) === JSON.stringify(before.selected) && distance(after.camera, before.camera) < 1e-6, { before, after });
+
+  // Dragging the button: it moves and snaps to the nearest side; no tap, no camera move, no seat.
+  before = { camera: await camera(), selected: (await state(page)).seats.selected };
+  const start = (await geometry(page)).toggle;
+  await touchDrag(cdp, page, [start.x + start.w / 2, start.y + start.h / 2], [-(start.x - 40), -320], 10);
+  // The snap is a 0.2 s slide: let frames run (headless Chrome only draws when asked).
+  for (let i = 0; i < 4; i++) {
+    await nextFrames(page);
+    await page.waitForTimeout(100);
+  }
+  const dropped = await geometry(page);
+  after = { camera: await camera(), selected: (await state(page)).seats.selected, open: await isOpen(page) };
+  await screenshot(page, 'hub-6-dragged');
+  check(
+    'hub: dragging the button moves it to the left edge (snapped, inside the safe area) without opening the panel, turning the camera or picking a seat',
+    dropped.toggle.x < 40 && inside(dropped.toggle, dropped.viewport, 8) && dropped.toggle.y < start.y - 200 && !after.open && distance(after.camera, before.camera) < 1e-6 && JSON.stringify(after.selected) === JSON.stringify(before.selected),
+    { start, dropped: dropped.toggle, after },
+  );
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(500);
+  const turned = await geometry(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(500);
+  const back = await geometry(page);
+  report.ui.hub.drag = { start, dropped: dropped.toggle, landscape: turned.toggle, portrait: back.toggle };
+  check('hub: after turning the phone (and back) the button stays on its side inside the screen; the room still fills it', inside(turned.toggle, turned.viewport, 8) && turned.toggle.x < 40 && fills(turned) && followsSize(turned) && inside(back.toggle, back.viewport, 8) && fills(back), report.ui.hub.drag);
+
+  // The seat map from the hub: full screen, then "Xem từ ghế này"; Escape closes it to the button.
+  await openHub(page);
+  await page.tap('button[data-action="seat-panel"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.panel === 'expanded');
+  const map = { hubHidden: await page.isHidden('.cinema-hub__toggle'), focusInPanel: await page.evaluate(() => Boolean(document.activeElement?.closest('#cinema-seat-panel'))) };
+  await page.tap('button[data-seat="E03"]');
+  await screenshot(page, 'hub-7-map');
+  await page.tap('#cinema-seat-panel button[data-action="view-from-seat"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 8000 });
+  map.closedForView = (await page.getAttribute('.cinema-app', 'data-panel')) === 'closed';
+  await openHub(page);
+  await page.tap('button[data-action="seat-panel"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.panel === 'expanded');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  map.escape = { panel: await page.getAttribute('.cinema-app', 'data-panel'), focus: await page.evaluate(() => document.activeElement?.getAttribute('aria-label')) };
+  report.ui.hub.map = map;
+  check('hub: "Mở sơ đồ" opens the full-screen map (the hub waits behind, focus in the map); "Xem từ ghế này" closes it on the view; Escape closes it with focus back on the button', map.hubHidden && map.focusInPanel && map.closedForView && map.escape.panel === 'closed' && map.escape.focus === 'Mở điều khiển rạp', map);
+  await page.tap('[data-action="return"]');
+  await waitForCameraToSettle(page);
+
+  // Keyboard: Enter opens with focus inside, Tab stays inside, Escape closes to the button.
+  await page.focus('.cinema-hub__toggle');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+  const keys = { focusAfterOpen: await page.evaluate(() => Boolean(document.activeElement?.closest('#cinema-hub-panel'))), expanded: await page.getAttribute('.cinema-hub__toggle', 'aria-expanded') };
+  let escaped = 0;
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    if (!(await page.evaluate(() => Boolean(document.activeElement?.closest('#cinema-hub-panel'))))) escaped++;
+  }
+  keys.tabEscapes = escaped;
+  keys.focusVisible = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle !== 'none');
+  await page.keyboard.press('Escape');
+  keys.afterEscape = { open: await isOpen(page), focus: await page.evaluate(() => document.activeElement?.getAttribute('aria-label')) };
+  report.ui.hub.keys = keys;
+  check('hub: keyboard — Enter opens it (aria-expanded, focus inside), 40 × Tab never leaves it, focus is visible, Escape closes it with focus on the button', keys.focusAfterOpen && keys.expanded === 'true' && keys.tabEscapes === 0 && keys.focusVisible && !keys.afterEscape.open && keys.afterEscape.focus === 'Mở điều khiển rạp', keys);
+
+  // Quality, sound and play from the panel: it stays open; the film keeps playing when it closes.
+  await openHub(page);
+  const quality = await page.getAttribute('.cinema-app', 'data-quality');
+  const other = quality === 'high' ? 'economy' : 'high';
+  await page.tap(`.cinema-hub button[data-quality="${other}"]`);
+  await waitForStatus(page);
+  const film = { quality: [quality, await page.getAttribute('.cinema-app', 'data-quality')], openAfterQuality: await isOpen(page) };
+  await page.tap('.cinema-hub button[data-action="media-primary"]');
+  await waitForFilm(page, ['playing']);
+  // The element's own volume events report the change a moment later.
+  const muted = (value) => page.waitForFunction((v) => document.querySelector('.cinema-player').dataset.muted === v, value, { timeout: 3000 }).then(() => true, () => false);
+  await page.tap('.cinema-hub button[data-action="media-mute"]');
+  film.muted = await muted('true');
+  await page.tap('.cinema-hub button[data-action="media-mute"]');
+  film.unmuted = await muted('false');
+  film.openAfterSound = await isOpen(page);
+  await screenshot(page, 'hub-8-playing-open');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
+  film.playingAfterClose = (await state(page)) && (await page.evaluate(() => window.__cinema.film().snapshot.state));
+  film.chipShown = await page.isVisible('.cinema-filmstatus');
+  await screenshot(page, 'hub-9-playing-closed');
+  await page.tap(`.cinema-hub__toggle`);
+  await page.tap(`.cinema-hub button[data-quality="${quality}"]`);
+  await page.tap('.cinema-hub button[data-action="media-primary"]');
+  await waitForFilm(page, ['paused']);
+  await page.keyboard.press('Escape');
+  report.ui.hub.film = film;
+  check('hub: quality, play and sound work from the panel and keep it open; closing it does not pause the film; no film chip over the room while all is well', film.quality[1] === other && film.openAfterQuality && film.muted && film.unmuted && film.openAfterSound && film.playingAfterClose === 'playing' && !film.chipShown, film);
+
+  // Walking and the tour start from the panel, which closes to show them; their controls fit.
+  await openHub(page);
+  await page.tap('.cinema-hub button[data-action="explore"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.explore === 'true');
+  await page.waitForTimeout(1500);
+  const walk = await page.evaluate(() => {
+    const stick = document.querySelector('.cinema-stick')?.getBoundingClientRect();
+    const toggle = document.querySelector('.cinema-hub__toggle').getBoundingClientRect();
+    return { stick: stick && stick.width ? { x: stick.x, y: stick.y, w: stick.width, h: stick.height } : null, toggle: { x: toggle.x, y: toggle.y, w: toggle.width, h: toggle.height }, open: document.querySelector('.cinema-hub__toggle').getAttribute('aria-expanded') };
+  });
+  await screenshot(page, 'hub-10-walking');
+  await openHub(page);
+  await page.tap('.cinema-hub button[data-action="explore"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.explore === 'false');
+  await openHub(page);
+  await page.tap('.cinema-hub button[data-action="tour"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.tour !== 'off');
+  const tour = { open: await isOpen(page), bar: await page.evaluate(() => { const r = document.querySelector('.cinema-tourbar').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }) };
+  await page.tap('[data-action="tour-stop"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.tour === 'off');
+  report.ui.hub.walkTour = { walk, tour };
+  check('hub: "Đi bộ" and "Tham quan" close the panel; the stick shows inside the screen clear of the button; the tour bar fits at the top and stops the tour', walk.open === 'false' && walk.stick && inside(walk.stick, { w: 390, h: 844 }) && !overlaps(walk.stick, walk.toggle) && !tour.open && inside(tour.bar, { w: 390, h: 844 }), report.ui.hub.walkTour);
+  // A view from the hub (the panel closes to show it).
+  await openHub(page);
+  await page.tap('.cinema-hub button[data-preset="overview"]');
+  await waitForCameraToSettle(page);
+
+  // Open/close cycles add no listeners and no frames while nothing moves (film paused).
+  const listenersBefore = (await liveCounts(cdp, [])).listeners;
+  const framesBefore = (await state(page)).view.framesRendered;
+  for (let i = 0; i < 6; i++) {
+    await openHub(page);
+    await page.waitForTimeout(150);
+    await page.tap('[data-action="hub-close"]');
+    await page.waitForTimeout(150);
+  }
+  await page.waitForTimeout(1200);
+  const framesIdle = (await state(page)).view.framesRendered;
+  await page.waitForTimeout(1000);
+  const listenersAfter = (await liveCounts(cdp, [])).listeners;
+  const quiet = { listenersBefore, listenersAfter, framesDuringCycles: framesIdle - framesBefore, framesIdle: (await state(page)).view.framesRendered - framesIdle };
+  report.ui.hub.quiet = quiet;
+  check('hub: 6 open/close cycles leave window/document listeners unchanged and nothing renders while the room is still', JSON.stringify(listenersBefore) === JSON.stringify(listenersAfter) && quiet.framesIdle === 0, quiet);
+
+  // Home from the hub while the film plays: nothing keeps playing, no video or canvas is left.
+  await openHub(page);
+  await page.tap('.cinema-hub button[data-action="media-primary"]');
+  await waitForFilm(page, ['playing']);
+  await page.tap('.cinema-hub [data-action="hub-home"]');
+  await page.waitForSelector('[data-landing] .hero');
+  await cdp.send('HeapProfiler.collectGarbage');
+  const left = await page.evaluate(() => ({ route: document.documentElement.dataset.route, videos: document.querySelectorAll('video').length, canvases: document.querySelectorAll('canvas').length, fullscreen: document.fullscreenElement !== null }));
+  const { result: proto } = await cdp.send('Runtime.evaluate', { expression: 'HTMLVideoElement.prototype' });
+  const { objects } = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.objectId });
+  left.liveVideos = (await cdp.send('Runtime.callFunctionOn', { objectId: objects.objectId, functionDeclaration: 'function () { return this.length; }', returnByValue: true })).result.value;
+  report.ui.hub.leave = left;
+  check('hub: "Về trang chủ" while the film plays — on the landing page no video element is alive (after GC), no canvas', left.route === 'landing' && left.liveVideos === 0 && left.canvases === 0, left);
+  await page.goBack();
+  await waitForStatus(page);
+  check('hub: Back returns to the room in the phone layout with one canvas and the button', (await page.getAttribute('.cinema-app', 'data-layout')) === 'immersive' && (await page.evaluate(() => document.querySelectorAll('canvas').length)) === 1 && (await page.isVisible('.cinema-hub__toggle')));
+  await context.close();
+
+  // C. Problems stay in sight without opening the hub: no WebGL, then a film that cannot load.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+    await context.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+        return type === 'webgl' || type === 'webgl2' ? null : original.call(this, type, ...args);
+      };
+    });
+    const page = await context.newPage();
+    attachConsole(page, 'webgl-disabled');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page, 10_000);
+    const noWebgl = await page.evaluate(() => ({
+      status: document.querySelector('.cinema-app').dataset.status,
+      message: document.querySelector('.cinema-status')?.textContent,
+      statusShown: document.querySelector('.cinema-status').getClientRects().length > 0,
+      panel: document.querySelector('.cinema-app').dataset.panel,
+      video2d: Boolean(document.querySelector('.cinema-video2d video')),
+    }));
+    await screenshot(page, 'hub-11-no-webgl');
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="media-primary"]');
+    await waitForFilm(page, ['playing']);
+    await page.tap('.cinema-hub button[data-action="media-primary"]');
+    await waitForFilm(page, ['paused']);
+    await page.tap('.cinema-hub button[data-action="seat-panel"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.panel === 'expanded');
+    await page.tap('button[data-seat="F04"]');
+    noWebgl.picked = await page.getAttribute('button[data-seat="F04"]', 'aria-pressed');
+    report.ui.hub.noWebgl = noWebgl;
+    check('hub, no WebGL: the reason stays on screen (not hidden in the menu), the 2D film plays and pauses from the hub, the map opens from it and picks a seat', noWebgl.status === 'error' && noWebgl.statusShown && /WebGL/.test(noWebgl.message ?? '') && noWebgl.panel === 'closed' && noWebgl.video2d && noWebgl.picked === 'true', noWebgl);
+    await context.close();
+  }
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+    const page = await context.newPage();
+    attachConsole(page, 'hub-film-error');
+    await page.goto(`${base}cinema?film=not-a-video.mp4`);
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'error', null, { timeout: 15_000 });
+    // First visit: the hint goes above the error, not over it.
+    await nextFrames(page);
+    const firstVisit = await page.evaluate(() => {
+      const box = (element) => {
+        if (!element || element.getClientRects().length === 0) return null;
+        const r = element.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      };
+      return { hint: box(document.querySelector('.cinema-hub__hint')), chip: box(document.querySelector('.cinema-filmstatus')), credit: box(document.querySelector('.cinema-filmcredit')) };
+    });
+    await screenshot(page, 'hub-12-film-error-hint');
+    report.ui.hub.hintOverError = firstVisit;
+    check('hub: on a first visit with a film problem, the hint shows above the problem chip and the credit, covering neither', firstVisit.hint && firstVisit.chip && firstVisit.credit && !overlaps(firstVisit.hint, firstVisit.chip) && !overlaps(firstVisit.hint, firstVisit.credit), firstVisit);
+    await dismissHint(page);
+    const chip = await page.evaluate(() => {
+      const element = document.querySelector('.cinema-filmstatus');
+      const r = element.getBoundingClientRect();
+      return { shown: element.getClientRects().length > 0, level: element.dataset.level, retry: document.querySelector('[data-action="media-retry"]').getClientRects().length > 0, box: { x: r.x, y: r.y, w: r.width, h: r.height } };
+    });
+    await screenshot(page, 'hub-12-film-error');
+    report.ui.hub.filmError = chip;
+    check('hub: a film that cannot be played shows its error and "Thử lại" over the room, without opening the hub', chip.shown && chip.level === 'error' && chip.retry && inside(chip.box, { w: 390, h: 844 }), chip);
+    await context.close();
+  }
+
+  // D. (Prompt 14) Wherever the button is dragged it covers none of the room's controls or the film's
+  // problems; closing by a press outside leaves the room drawing; a wide layout reached with the hub
+  // or the map open leaves nothing modal behind; full screen follows the Fullscreen API; leaving for
+  // the landing page leaves its listeners as they were.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    attachConsole(page, 'hub-overlays');
+    await page.goto(base);
+    await waitForLanding(page);
+    const landingListeners = (await liveCounts(cdp, [])).listeners;
+    // In-app, so the landing page's document stays: a film that fails, to show its chip.
+    await page.evaluate(() => {
+      history.pushState(null, '', '/cinema?film=not-a-video.mp4');
+      dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await waitForStatus(page);
+    await page.waitForFunction(() => window.__cinema.film().snapshot.state === 'error', null, { timeout: 15_000 });
+    await dismissHint(page);
+    const rect = (selector) =>
+      page.evaluate((s) => {
+        const e = document.querySelector(s);
+        if (!e || e.getClientRects().length === 0) return null;
+        const r = e.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      }, selector);
+    const dragTo = async ([tx, ty]) => {
+      const t = await rect('.cinema-hub__toggle');
+      await touchDrag(cdp, page, [t.x + t.w / 2, t.y + t.h / 2], [tx - (t.x + t.w / 2), ty - (t.y + t.h / 2)], 10);
+      for (let i = 0; i < 4; i++) {
+        await nextFrames(page);
+        await page.waitForTimeout(80);
+      }
+    };
+    const covers = {};
+    await dragTo([370, 20]);
+    covers.topRight = { toggle: await rect('.cinema-hub__toggle'), chip: await rect('.cinema-filmstatus') };
+    await dragTo([20, 20]);
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="tour"]');
+    await page.waitForTimeout(600);
+    covers.topLeft = { toggle: await rect('.cinema-hub__toggle'), bar: await rect('.cinema-tourbar'), chip: await rect('.cinema-filmstatus') };
+    await screenshot(page, 'hub-13-dragged-top-tour');
+    await page.tap('[data-action="tour-stop"]');
+    covers.tourStopped = (await page.getAttribute('.cinema-app', 'data-tour')) === 'off';
+    await dragTo([20, 824]);
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="explore"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.explore === 'true');
+    await page.waitForTimeout(1200);
+    covers.bottomLeft = { toggle: await rect('.cinema-hub__toggle'), stick: await rect('.cinema-stick') };
+    await screenshot(page, 'hub-14-dragged-walking');
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="explore"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.explore === 'false');
+    report.ui.hub.covers = covers;
+    check(
+      'hub: dragged to a top corner or the bottom left, the button covers neither the tour bar, the film\'s problem chip nor the walking stick; "Dừng" stays pressable; the chip never meets the tour bar',
+      !overlaps(covers.topRight.toggle, covers.topRight.chip) && !overlaps(covers.topLeft.toggle, covers.topLeft.bar) && !overlaps(covers.topLeft.bar, covers.topLeft.chip) && covers.tourStopped && !overlaps(covers.bottomLeft.toggle, covers.bottomLeft.stick),
+      covers,
+    );
+
+    // Closed by a press outside, the room keeps drawing: a drag right after renders new frames.
+    await openHub(page);
+    const panel = await rect('.cinema-hub__panel');
+    const outside = panel.y > 100 ? [200, 40] : [200, 820];
+    await page.touchscreen.tap(...outside);
+    await page.waitForTimeout(300);
+    const drawing = { open: await isOpen(page), frames: (await state(page)).view.framesRendered };
+    await touchDrag(cdp, page, [195, 420], [90, 0], 8);
+    await page.waitForTimeout(400);
+    drawing.framesAfter = (await state(page)).view.framesRendered;
+    report.ui.hub.drawing = drawing;
+    check('hub: after a press outside closes it, the room keeps drawing — a drag right after renders new frames', !drawing.open && drawing.framesAfter > drawing.frames, drawing);
+    await waitForCameraToSettle(page);
+
+    // A wide layout reached with the hub open, then with the map open: nothing modal stays behind.
+    const modalState = () =>
+      page.evaluate(() => ({
+        layout: document.querySelector('.cinema-app').dataset.layout,
+        panel: document.querySelector('.cinema-app').dataset.panel,
+        inert: document.querySelectorAll('[inert]').length,
+        scrim: document.querySelector('.cinema-hub__scrim').getClientRects().length > 0,
+        hubOpen: document.querySelector('.cinema-hub__toggle').getAttribute('aria-expanded'),
+        hubShown: document.querySelector('.cinema-hub__toggle').getClientRects().length > 0,
+        docks: document.querySelectorAll('.cinema-dock > .cinema-dock__panel').length,
+        header: document.querySelector('.cinema-header').getClientRects().length > 0,
+        modal: document.querySelector('#cinema-seat-panel').getAttribute('aria-modal'),
+        overflow: document.documentElement.scrollWidth - innerWidth,
+      }));
+    await openHub(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(400);
+    const wideFromHub = await modalState();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+    await openSeatPanel(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(400);
+    const wideFromMap = await modalState();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+    const phoneAgain = await modalState();
+    await closeSeatPanel(page);
+    const phoneClosed = await modalState();
+    report.ui.hub.breakpoints = { wideFromHub, wideFromMap, phoneAgain, phoneClosed };
+    check(
+      'hub: going wide with the hub open closes it (no scrim, nothing inert, header and docks back); with the map open it becomes the side panel (not modal, nothing inert); back on the phone the map is full screen again and, closed, the room and its button are usable',
+      wideFromHub.layout === 'standard' && wideFromHub.inert === 0 && !wideFromHub.scrim && wideFromHub.hubOpen === 'false' && !wideFromHub.hubShown && wideFromHub.docks === 3 && wideFromHub.header &&
+        wideFromMap.panel === 'open' && wideFromMap.modal === null && wideFromMap.inert === 0 &&
+        phoneAgain.layout === 'immersive' && phoneAgain.panel === 'expanded' && phoneAgain.modal === 'true' &&
+        phoneClosed.panel === 'closed' && phoneClosed.inert === 0 && phoneClosed.hubShown && phoneClosed.overflow <= 0,
+      report.ui.hub.breakpoints,
+    );
+
+    // Full screen: offered as the API allows; on, then off; refused, it says so and the page carries on.
+    await openHub(page);
+    const fullscreen = {
+      api: await page.evaluate(() => document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function'),
+      shown: await page.isVisible('.cinema-hub [data-action="fullscreen"]'),
+    };
+    await page.tap('.cinema-hub [data-action="fullscreen"]');
+    await page.waitForTimeout(500);
+    fullscreen.on = await page.evaluate(() => ({ element: document.fullscreenElement !== null, pressed: document.querySelector('[data-action="fullscreen"]').getAttribute('aria-pressed') }));
+    if (fullscreen.on.element) {
+      await page.tap('.cinema-hub [data-action="fullscreen"]');
+      await page.waitForTimeout(500);
+    }
+    fullscreen.off = await page.evaluate(() => document.fullscreenElement === null);
+    await page.evaluate(() => (Element.prototype.requestFullscreen = () => Promise.reject(new Error('refused'))));
+    await page.tap('.cinema-hub [data-action="fullscreen"]');
+    await page.waitForTimeout(300);
+    fullscreen.refused = await page.evaluate(() => ({ note: document.querySelector('.cinema-hub__fullscreen + .cinema-hub__note').textContent, element: document.fullscreenElement !== null }));
+    await page.tap('[data-action="hub-close"]');
+    fullscreen.usable = (await page.isVisible('.cinema-hub__toggle')) && (await page.evaluate(() => document.querySelectorAll('canvas').length)) === 1;
+    report.ui.hub.fullscreen = fullscreen;
+    check('hub: "Toàn màn hình" is offered because the Fullscreen API is there; it turns full screen on and off; when the browser refuses, it says so and the page stays usable', fullscreen.api && fullscreen.shown && fullscreen.on.element && fullscreen.on.pressed === 'true' && fullscreen.off && /không cho/.test(fullscreen.refused.note) && !fullscreen.refused.element && fullscreen.usable, fullscreen);
+
+    // Home from the hub: the landing page's listeners are back to what they were before the room.
+    await openHub(page);
+    await page.tap('.cinema-hub [data-action="hub-home"]');
+    await page.waitForSelector('[data-landing] .hero');
+    const after = await liveCounts(cdp, []);
+    report.ui.hub.landingListeners = { before: landingListeners, after: after.listeners };
+    check('hub: back on the landing page, window and document listeners are what they were before entering the room', JSON.stringify(after.listeners) === JSON.stringify(landingListeners), report.ui.hub.landingListeners);
+    await context.close();
+  }
+  // Without the Fullscreen API (iPhone Safari, a frame that does not allow it), the button is not offered.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+    await context.addInitScript(() => Object.defineProperty(Document.prototype, 'fullscreenEnabled', { get: () => false }));
+    const page = await context.newPage();
+    attachConsole(page, 'hub-no-fullscreen');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await dismissHint(page);
+    await openHub(page);
+    const offered = await page.isVisible('.cinema-hub [data-action="fullscreen"]');
+    check('hub: without the Fullscreen API the "Toàn màn hình" button is not offered (the rest of Hiển thị is)', !offered && (await page.isVisible('.cinema-hub button[data-quality="economy"]')), { offered });
     await context.close();
   }
 }
@@ -3954,15 +4535,10 @@ async function uiFlows(browser, base) {
     const steps = {};
     await recordVideo(browser, page, 'video-p08-flow-mobile', async () => {
       await page.waitForTimeout(500);
-      await page.tap('button[data-action="more-views"]');
-      await page.waitForTimeout(300);
-      await page.tap('button[data-preset="seats"]');
-      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'preset', null, { timeout: 10_000 });
+      // Every control is in the control hub on a phone (Prompt 13): the view, the map, the film.
+      await selectPreset(page, 'seats');
       await page.waitForTimeout(600);
-      await page.tap('button[data-task="seats"]');
-      await page.tap('button[data-action="seat-panel"]');
-      await page.waitForTimeout(300);
-      await page.tap('button[data-action="seat-panel-expand"]');
+      await openSeatPanel(page);
       await page.waitForTimeout(300);
       for (const id of ['E03', 'E04']) {
         await page.tap(`button[data-seat="${id}"]`);
@@ -3973,27 +4549,29 @@ async function uiFlows(browser, base) {
       steps.sheetAfterView = await page.evaluate(() => document.querySelector('#cinema-seat-panel').dataset.state);
       steps.share = (await canvasShare(page)).heightShare;
       await page.waitForTimeout(600);
-      await page.tap('button[data-task="watch"]');
-      await page.tap(PRIMARY);
+      await tapUi(page, PRIMARY);
       await waitForFilm(page, ['playing']);
       await page.waitForTimeout(2000);
       await page.setViewportSize({ width: 844, height: 390 });
       await page.waitForTimeout(800);
-      steps.landscape = await playerLayout(page);
+      steps.landscape = await canvasShare(page);
+      steps.hubInside = await page.evaluate(() => {
+        const r = document.querySelector('.cinema-hub__toggle').getBoundingClientRect();
+        return r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.width > 0;
+      });
       steps.playingAfterRotate = (await film(page)).snapshot.state;
-      await page.tap(PRIMARY);
+      await tapUi(page, PRIMARY);
       steps.paused = (await waitForFilm(page, ['paused'])).snapshot.state;
       await page.waitForTimeout(400);
       await page.setViewportSize({ width: 390, height: 844 });
       await page.waitForTimeout(500);
-      await page.tap('button[data-task="seats"]');
-      await page.tap('button[data-action="seat-panel"]');
+      await openSeatPanel(page);
       await page.waitForTimeout(800);
     });
     const end = await state(page);
     const pressed = await page.evaluate(() => [...document.querySelectorAll('button[data-seat][aria-pressed="true"]')].map((b) => b.dataset.seat));
     report.ui.flows.mobile = { ...steps, end: { selected: end.seats.selected, pressed } };
-    check('flow B (phone): full-screen map → select → "Xem từ ghế này" clears the sheet away → play → rotate (still playing, player fits) → pause → back to the map with the seats kept', steps.sheetAfterView === 'closed' && steps.share > 0.55 && steps.playingAfterRotate === 'playing' && steps.landscape.insideWindow && !steps.landscape.overlaps.stage && steps.paused === 'paused' && JSON.stringify(end.seats.selected) === '["E03","E04"]' && JSON.stringify(pressed) === '["E03","E04"]', report.ui.flows.mobile);
+    check('flow B (phone): from the control hub — full-screen map → select → "Xem từ ghế này" clears it away → play → rotate (still playing, the room fills the screen, the hub stays in it) → pause → back to the map with the seats kept', steps.sheetAfterView === 'closed' && steps.share > 0.55 && steps.playingAfterRotate === 'playing' && steps.landscape.areaShare > 0.98 && steps.landscape.overflowX <= 0 && steps.hubInside && steps.paused === 'paused' && JSON.stringify(end.seats.selected) === '["E03","E04"]' && JSON.stringify(pressed) === '["E03","E04"]', report.ui.flows.mobile);
     await screenshot(page, 'flow-b-mobile-end');
     await context.close();
   }
@@ -4010,12 +4588,18 @@ async function uiFlows(browser, base) {
     attachConsole(page, 'webgl-disabled');
     await page.goto(`${base}cinema`);
     await waitForStatus(page, 10_000);
-    const start = await page.evaluate(() => ({ task: document.querySelector('.cinema-app').dataset.task, panel: document.querySelector('.cinema-app').dataset.panel, canvases: document.querySelectorAll('canvas').length }));
+    const start = await page.evaluate(() => ({
+      task: document.querySelector('.cinema-app').dataset.task,
+      panel: document.querySelector('.cinema-app').dataset.panel,
+      canvases: document.querySelectorAll('canvas').length,
+      statusShown: document.querySelector('.cinema-status').getClientRects().length > 0,
+    }));
+    // On a phone the map stays one press away in the hub, so the reason and the 2D film stay in sight.
+    await openSeatPanel(page);
     await screenshot(page, 'flow-e-no-webgl-seats');
     await page.tap('button[data-seat="D04"]');
     await closeSeatPanel(page);
-    await page.tap('button[data-task="watch"]');
-    await page.tap(PRIMARY);
+    await tapUi(page, PRIMARY);
     await waitForFilm(page, ['playing']);
     await page.waitForTimeout(1200);
     const flat = await page.evaluate(() => {
@@ -4025,13 +4609,15 @@ async function uiFlows(browser, base) {
       return { videos: document.querySelectorAll('video').length, videoShare: Number(((video.width * video.height) / (stage.width * stage.height)).toFixed(2)), statusShare: Number(((status.width * status.height) / (stage.width * stage.height)).toFixed(2)) };
     });
     await screenshot(page, 'flow-e-no-webgl-2d-player');
-    await page.tap(PRIMARY);
+    await tapUi(page, PRIMARY);
     const paused = (await waitForFilm(page, ['paused'])).snapshot.state;
-    await page.tap('button[data-task="explore"]');
+    // Khám phá's note is in the hub, with its disabled view controls.
+    await openHubPanel(page);
     const reason = await page.textContent('[data-dock="explore"] .cinema-dock__note');
     await screenshot(page, 'flow-e-no-webgl-explore');
+    await closeMenus(page);
     report.ui.flows.noWebgl = { start, flat, paused, reason };
-    check('flow E (no WebGL, phone): starts in Chọn ghế with the map, seat picked, the one film element plays flat and pauses; the error is a line, not a big box; Khám phá says why', start.task === 'seats' && start.panel === 'open' && start.canvases === 0 && (await seatsState(page)).selected.includes('D04') && flat.videos === 1 && flat.videoShare > 0.5 && flat.statusShare < 0.3 && paused === 'paused' && /Không có cảnh 3D/.test(reason), report.ui.flows.noWebgl);
+    check('flow E (no WebGL, phone): starts in Chọn ghế with the reason on screen and the map one press away in the hub, seat picked, the one film element plays flat and pauses; the error is a line, not a big box; Khám phá says why', start.task === 'seats' && start.panel === 'closed' && start.statusShown && start.canvases === 0 && (await seatsState(page)).selected.includes('D04') && flat.videos === 1 && flat.videoShare > 0.5 && flat.statusShare < 0.3 && paused === 'paused' && /Không có cảnh 3D/.test(reason), report.ui.flows.noWebgl);
     await context.close();
   }
   // F. Reduced motion: the tour steps; preset changes and panels never animate.
@@ -4132,21 +4718,25 @@ async function uiZoom(browser, base) {
       return r.bottom <= innerHeight && r.right <= innerWidth && r.height > 0;
     });
     await screenshot(page, `zoom200-${name}-2-seats`);
+    // At this size the page uses the phone layout (Prompt 13): the map is full screen; back to the room.
+    const immersive = await isImmersive(page);
+    if (immersive) await closeSeatPanel(page);
     await clickUi(page, PRIMARY);
     await waitForFilm(page, ['playing']);
     shares.watch = await canvasShare(page);
     await screenshot(page, `zoom200-${name}-3-watch`);
     await clickUi(page, PRIMARY);
-    await page.click('button[data-action="settings"]');
+    if (immersive) await openHubPanel(page);
+    else await page.click('button[data-action="settings"]');
     await page.click('button[data-action="inspect-tools"]');
-    const menu = await page.evaluate(() => {
-      const panel = document.querySelector('#cinema-settings');
+    const menu = await page.evaluate((hub) => {
+      const panel = document.querySelector(hub ? '.cinema-hub__panel' : '#cinema-settings');
       const r = panel.getBoundingClientRect();
       return { inside: r.bottom <= innerHeight + 0.5 && r.right <= innerWidth + 0.5 && r.x >= -0.5, scrolls: panel.scrollHeight > panel.clientHeight };
-    });
+    }, immersive);
     await screenshot(page, `zoom200-${name}-4-settings`);
-    report.ui.zoom[name] = { shares, menu };
-    check(`zoom 200 % (${name}): every task usable — no overflow, the view keeps ≥ 45 % of the height, seat actions and the settings menu stay on screen`, Object.values(shares).every((s) => s.overflowX <= 0 && s.overflowY <= 0) && shares.explore.heightShare >= 0.45 && shares.watch.heightShare >= 0.45 && reach && menu.inside, report.ui.zoom[name]);
+    report.ui.zoom[name] = { immersive, shares, menu };
+    check(`zoom 200 % (${name}): every task usable — no overflow, the view keeps ≥ 45 % of the height, seat actions and the settings (the control hub at this size) stay on screen`, Object.values(shares).every((s) => s.overflowX <= 0 && s.overflowY <= 0) && shares.explore.heightShare >= 0.45 && shares.watch.heightShare >= 0.45 && reach && menu.inside, report.ui.zoom[name]);
     await context.close();
   }
 }

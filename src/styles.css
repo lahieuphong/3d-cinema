@@ -1746,6 +1746,541 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
+/* ================================================================ Phones: the room fills the screen
+
+   `data-layout="immersive"` (IMMERSIVE_LAYOUT_QUERY in taskLayout.ts): no header, dock or frame
+   around the view; one floating control (the hub) holds the controls, moved there as they are. The
+   overlays that remain stay clear of the safe areas: the film's credit (CC BY: it stays on screen
+   wherever the film shows), the way back from a seat, the tour bar, the walking stick, the film's
+   problems, and for a moment the caption or the card of a seat just tapped. */
+
+.cinema-hub,
+.cinema-seatcard {
+  display: none;
+}
+
+.cinema-app[data-layout='immersive'] {
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-header,
+.cinema-app[data-layout='immersive'] .cinema-dock {
+  display: none;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-main {
+  grid-row: 1;
+  gap: 0;
+  padding: 0;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-screen {
+  gap: 0;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-stage {
+  border: 0;
+  border-radius: 0;
+}
+
+/* The seat map: closed, or the whole screen (a dialog, as the full-screen sheet was). */
+.cinema-app[data-layout='immersive'][data-panel='expanded'] .cinema-screen {
+  display: none;
+}
+
+.cinema-app[data-layout='immersive'][data-panel='expanded'] .cinema-main {
+  padding: calc(8px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px))
+    calc(8px + env(safe-area-inset-left, 0px));
+}
+
+.cinema-app[data-layout='immersive'] .cinema-seats {
+  flex: 1 1 auto;
+  width: auto;
+  max-height: none;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-seats__expand {
+  display: none;
+}
+
+/* Overlays: lower corner for the credit (and the caption or seat card for a moment), clear of the hub. */
+.cinema-app[data-layout='immersive'] .cinema-overlay {
+  display: flex;
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  right: calc(76px + env(safe-area-inset-right, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+.cinema-app[data-layout='immersive']:has(.cinema-hub[data-side='left']) .cinema-overlay {
+  left: calc(76px + env(safe-area-inset-left, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  align-items: flex-end;
+}
+
+.cinema-app[data-layout='immersive'][data-explore='true'] .cinema-overlay {
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-caption[data-fresh='false'],
+.cinema-app[data-layout='immersive']:has(.cinema-hub__hint:not([hidden])) .cinema-caption {
+  display: none;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-filmcredit {
+  padding: 2px 7px;
+  background: rgb(10 11 14 / 0.6);
+  font-size: 0.62rem;
+}
+
+/* A seat tapped in the room: the card says it (the corner notice is not needed). */
+.cinema-app[data-layout='immersive'] .cinema-notice {
+  display: none;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-seatcard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  max-width: min(420px, 100%);
+  padding: 6px 6px 6px 12px;
+  border: 1px solid #8a6a2e;
+  border-radius: 10px;
+  background: rgb(14 15 18 / 0.92);
+  pointer-events: auto;
+}
+
+.cinema-seatcard__text {
+  flex: 1 1 12ch;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.cinema-seatcard__close {
+  width: var(--tap);
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.cinema-app[data-layout='immersive'] .cinema-return,
+.cinema-app[data-layout='immersive'] .cinema-tourbar {
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+}
+
+.cinema-app[data-layout='immersive'] .cinema-tourbar {
+  max-width: calc(100% - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+}
+
+/* Walking from the hub works in any task: the stick shows whenever walking is on. */
+.cinema-app[data-layout='immersive'][data-explore='true'] .cinema-stick {
+  display: block;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+/* The film's problems stay in sight (the player is in the hub): failures, notices that need a
+   press (with that press on the chip), waiting once it plays. Not the quiet "preparing" states.
+   The chip heads the overlay stack (ui.attachFilmStatus), clear of the way back and the tour bar. */
+.cinema-app[data-layout='immersive'] .cinema-filmstatus {
+  position: static;
+  display: flex;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.cinema-app[data-layout='immersive'][data-status='loading'] .cinema-filmstatus,
+.cinema-app[data-layout='immersive'][data-status='context-lost'] .cinema-filmstatus,
+.cinema-app[data-layout='immersive'] .cinema-filmstatus[data-level='info'] {
+  display: none;
+}
+
+.cinema-app:not([data-layout='immersive']) .cinema-player__resume {
+  display: none;
+}
+
+/* ---------- The control hub: the floating button and its panel ---------- */
+
+.cinema-app[data-layout='immersive'] .cinema-hub {
+  display: block;
+}
+
+/* The full-screen seat map is the page: the hub waits behind it. */
+.cinema-app[data-panel='expanded'] .cinema-hub {
+  display: none;
+}
+
+.cinema-hub__safe {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  right: env(safe-area-inset-right, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: env(safe-area-inset-left, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cinema-hub__toggle {
+  position: fixed;
+  z-index: 62;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 50%;
+  background: rgb(14 15 18 / 0.74);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition:
+    opacity 0.4s,
+    left 0.2s,
+    top 0.2s;
+}
+
+.cinema-hub__toggle svg {
+  width: 30px;
+  height: 30px;
+}
+
+.cinema-hub__ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  opacity: 0.75;
+}
+
+.cinema-hub__dot {
+  fill: var(--accent);
+}
+
+/* At rest it steps back, never out of sight. */
+.cinema-hub[data-rest='true'] .cinema-hub__toggle {
+  opacity: 0.6;
+}
+
+.cinema-hub[data-dragging='true'] .cinema-hub__toggle {
+  opacity: 1;
+  transition: none;
+}
+
+.cinema-hub[data-open='true'] .cinema-hub__toggle {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.cinema-hub[data-open='true'] .cinema-hub__dot {
+  fill: var(--accent-text);
+}
+
+.cinema-hub__toggle:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.cinema-hub__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.cinema-hub__panel {
+  position: fixed;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: rgb(23 25 30 / 0.97);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.55);
+}
+
+.cinema-hub__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 0 14px;
+}
+
+.cinema-hub__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.cinema-hub__title:focus {
+  outline: none;
+}
+
+.cinema-hub__close {
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap);
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.cinema-hub__close svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.cinema-hub__now {
+  flex: none;
+  margin: 0;
+  padding: 0 14px 8px;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.cinema-hub__now:empty {
+  display: none;
+}
+
+.cinema-hub__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px 12px;
+}
+
+.cinema-hub__section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.cinema-hub__section:last-child {
+  border-bottom: 0;
+}
+
+.cinema-hub__heading {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cinema-hub__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cinema-hub__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.cinema-hub__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.cinema-hub__note:empty {
+  display: none;
+}
+
+.cinema-hub__help {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.cinema-hub__home {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+/* The first-visit hint next to the button. */
+.cinema-hub__hint {
+  position: fixed;
+  z-index: 59;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #8a6a2e;
+  border-radius: 12px;
+  background: rgb(14 15 18 / 0.94);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.5);
+  font-size: 0.82rem;
+}
+
+.cinema-hub__hint p {
+  margin: 0;
+}
+
+.cinema-hub__hint-close {
+  align-self: flex-end;
+}
+
+/* The moved controls, stacked for a narrow panel. */
+.cinema-hub .cinema-dock__panel,
+.cinema-hub .cinema-dock__panel[hidden] {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.cinema-hub .cinema-button,
+.cinema-hub .cinema-switch {
+  min-height: 44px;
+}
+
+.cinema-hub .cinema-explore {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.cinema-hub .cinema-explore__views,
+.cinema-hub .cinema-explore__modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cinema-hub .cinema-explore .cinema-button {
+  padding-inline: 8px;
+  white-space: normal;
+}
+
+.cinema-hub .cinema-more__toggle {
+  display: none;
+}
+
+.cinema-hub .cinema-more {
+  display: contents;
+}
+
+.cinema-hub .cinema-summary {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.cinema-hub .cinema-summary__text {
+  display: block;
+  flex: none;
+  min-height: 0;
+  white-space: normal;
+}
+
+.cinema-hub .cinema-summary__active:not(:empty) {
+  display: block;
+  white-space: normal;
+}
+
+.cinema-hub .cinema-summary__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5em, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.cinema-hub .cinema-summary__actions .cinema-button {
+  justify-content: center;
+  min-width: 0;
+}
+
+.cinema-hub .cinema-summary__map-side {
+  display: none;
+}
+
+.cinema-hub .cinema-summary__map-sheet {
+  display: inline;
+}
+
+.cinema-hub .cinema-player {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'controls'
+    'view'
+    'info';
+  gap: 8px;
+}
+
+.cinema-hub .cinema-player__controls {
+  flex-wrap: wrap;
+}
+
+/* Play, time, sound and volume on one row; the seek bar gets the full width under them. */
+.cinema-hub .cinema-player__seek {
+  order: 1;
+  flex: 1 1 100%;
+}
+
+.cinema-hub .cinema-player__volume {
+  display: block;
+  flex: 1 1 80px;
+}
+
+.cinema-hub .cinema-player__hint {
+  display: block;
+  max-width: none;
+}
+
+.cinema-hub .cinema-player__title {
+  display: inline;
+}
+
+.cinema-hub .cinema-watchview {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.cinema-hub .cinema-watchview__text {
+  white-space: normal;
+}
+
+.cinema-hub .cinema-settings {
+  position: static;
+  display: flex;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
 /* ---------- Reduced motion: no spinning, no sliding switches ---------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1755,7 +2290,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 
   .cinema-switch__track,
-  .cinema-switch__track::after {
+  .cinema-switch__track::after,
+  .cinema-hub__toggle {
     transition: none;
   }
 }

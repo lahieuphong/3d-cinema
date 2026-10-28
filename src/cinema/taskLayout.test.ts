@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { initialTaskLayout, reduceTaskLayout, type TaskLayout, type TaskLayoutEvent } from './taskLayout.ts';
+import { initialTaskLayout, reduceTaskLayout, type PanelLayout, type TaskLayout, type TaskLayoutEvent } from './taskLayout.ts';
 
-const run = (state: TaskLayout, events: TaskLayoutEvent[], sheet: boolean) => {
-  for (const event of events) state = reduceTaskLayout(state, event, sheet).state;
+const run = (state: TaskLayout, events: TaskLayoutEvent[], layout: PanelLayout | boolean) => {
+  for (const event of events) state = reduceTaskLayout(state, event, layout).state;
   return state;
 };
 
@@ -66,6 +66,28 @@ describe('task layout', () => {
     const state = run(initialTaskLayout(), [{ type: 'task', task: 'seats' }, { type: 'panel', open: true }, { type: 'expand', expanded: true }], true);
     expect(reduceTaskLayout(state, { type: 'layout' }, false).state.panel).toBe('open');
     expect(reduceTaskLayout(state, { type: 'layout' }, true).state.panel).toBe('expanded');
+  });
+
+  it('on phones (immersive) the map is closed or full screen, never half a sheet', () => {
+    expect(initialTaskLayout('seats', true, 'immersive').panel).toBe('closed');
+    expect(reduceTaskLayout(initialTaskLayout(), { type: 'task', task: 'seats' }, 'immersive').state.panel).toBe('closed');
+    let state = reduceTaskLayout(initialTaskLayout(), { type: 'panel', open: true }, 'immersive').state;
+    expect(state).toEqual({ task: 'seats', panel: 'expanded', panelChoice: true });
+    // "Mở rộng" does not apply; Escape and "Xem từ ghế này" close it outright.
+    expect(reduceTaskLayout(state, { type: 'expand', expanded: false }, 'immersive').state.panel).toBe('expanded');
+    expect(reduceTaskLayout(state, { type: 'escape' }, 'immersive').state).toEqual({ task: 'seats', panel: 'closed', panelChoice: false });
+    expect(reduceTaskLayout(state, { type: 'view-from-seat' }, 'immersive').state.panel).toBe('closed');
+    // Other tasks never bring it back by themselves.
+    state = run(state, [{ type: 'task', task: 'watch' }], 'immersive');
+    expect(reduceTaskLayout(state, { type: 'task', task: 'seats' }, 'immersive').state.panel).toBe('closed');
+  });
+
+  it('turns an open panel into the full-screen map on a phone, and back on a wider screen', () => {
+    const open = run(initialTaskLayout(), [{ type: 'task', task: 'seats' }, { type: 'panel', open: true }], false);
+    const phone = reduceTaskLayout(open, { type: 'layout' }, 'immersive').state;
+    expect(phone.panel).toBe('expanded');
+    expect(reduceTaskLayout(phone, { type: 'layout' }, 'side').state.panel).toBe('open');
+    expect(reduceTaskLayout(phone, { type: 'layout' }, 'sheet').state.panel).toBe('expanded');
   });
 
   it('stops the tour and walking only when Khám phá is left', () => {

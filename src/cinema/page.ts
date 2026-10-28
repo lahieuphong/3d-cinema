@@ -10,7 +10,16 @@ import { loadQuality, prefersReducedMotion, saveQuality } from './quality.ts';
 import { createSeatPanel } from './seatPanel.ts';
 import { createSeatSummary } from './seatSummary.ts';
 import { DEMO_RESERVED_SEAT_IDS, SeatSelection } from './selection.ts';
-import { initialTaskLayout, reduceTaskLayout, SHEET_LAYOUT_QUERY, type CinemaTask, type TaskLayout, type TaskLayoutEvent } from './taskLayout.ts';
+import {
+  IMMERSIVE_LAYOUT_QUERY,
+  initialTaskLayout,
+  reduceTaskLayout,
+  SHEET_LAYOUT_QUERY,
+  type CinemaTask,
+  type PanelLayout,
+  type TaskLayout,
+  type TaskLayoutEvent,
+} from './taskLayout.ts';
 import { createCinemaUi, TOGGLEABLE_PARTS } from './ui.ts';
 import { validateLayout } from './validation.ts';
 import type { CinemaView, CinemaViewCallbacks, TourEndReason } from './view.ts';
@@ -124,7 +133,11 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   const touch = window.matchMedia?.('(any-pointer: coarse)').matches ?? false;
   const sheetQuery = window.matchMedia?.(SHEET_LAYOUT_QUERY);
   const isSheet = () => sheetQuery?.matches ?? false;
-  let tasks: TaskLayout = initialTaskLayout(options.session.task ?? 'explore', options.session.seatPanelOpen, isSheet());
+  // Phones: the room fills the screen and the controls live in the floating control hub.
+  const immersiveQuery = window.matchMedia?.(IMMERSIVE_LAYOUT_QUERY);
+  const isImmersive = () => immersiveQuery?.matches ?? false;
+  const panelLayout = (): PanelLayout => (isImmersive() ? 'immersive' : isSheet() ? 'sheet' : 'side');
+  let tasks: TaskLayout = initialTaskLayout(options.session.task ?? 'explore', options.session.seatPanelOpen, panelLayout());
 
   // The film: one controller (one element, one audio stream) for the life of this mount. Leaving
   // the page records where it was; the next mount starts paused there, with the same sound.
@@ -263,7 +276,12 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     },
     onRetryScene: () => retryScene(),
     onHome: options.goHome,
-  });
+    onSeatCardView: (id) => {
+      dispatch({ type: 'view-from-seat' });
+      viewFromSeat(id);
+    },
+  }, { touch });
+  ui.setLayout(isImmersive());
 
   const viewFromSeat = (id: string) => {
     const seat = selection.seat(id);
@@ -315,7 +333,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   ui.dock.watch.append(player.root);
   player.root.append(ui.watchView);
   ui.miniSlot.append(player.mini);
-  ui.stage.append(player.status);
+  ui.attachFilmStatus(player.status);
   ui.root.append(player.live);
   ui.creditSlot.append(player.credit);
 
@@ -325,7 +343,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   /** Applies a task or panel change; focus that was in something now hidden goes to the control that leads back to it. */
   function dispatch(event: TaskLayoutEvent): void {
     const previous = tasks;
-    const result = reduceTaskLayout(tasks, event, isSheet());
+    const result = reduceTaskLayout(tasks, event, panelLayout());
     tasks = result.state;
     options.session.task = tasks.task;
     options.session.seatPanelOpen = tasks.panelChoice;
@@ -334,7 +352,9 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     renderLayout();
     if (focused && focused !== document.body && !focusable(focused)) {
       const target = previous.panel === 'expanded' && tasks.panel === 'open' ? panel.expandButton : tasks.task === 'seats' ? summary.toggle : ui.taskButton(tasks.task);
-      (focusable(target) ? target : ui.taskButton(tasks.task)).focus();
+      // On a phone the task buttons are not shown: the control hub's button leads back to everything.
+      const fallback = isImmersive() ? ui.hubToggle : ui.taskButton(tasks.task);
+      (focusable(target) ? target : fallback).focus();
     }
   }
 
@@ -347,6 +367,11 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   }
   const onSheetChange = () => dispatch({ type: 'layout' });
   sheetQuery?.addEventListener('change', onSheetChange);
+  const onImmersiveChange = () => {
+    ui.setLayout(isImmersive());
+    dispatch({ type: 'layout' });
+  };
+  immersiveQuery?.addEventListener('change', onImmersiveChange);
   renderLayout();
 
   const unsubscribeSelection = selection.subscribe((change) => {
@@ -377,6 +402,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         player.setUnavailable(null);
         ui.setSceneControls(true);
         media.load();
+        // Phones, first visit: once the room is there, how to look around and where the controls are.
+        if (status.kind === 'ready') ui.offerHubHint();
       }
     },
     onCameraState: (state) => {
@@ -409,20 +436,22 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       const how = touch
         ? 'kéo cần điều khiển ở góc dưới để đi, kéo phần còn lại để nhìn quanh.'
         : 'W A S D hoặc phím mũi tên để đi, kéo để nhìn quanh.';
-      ui.setCaption(`${relocatedTo ? `Đã đưa bạn tới ${relocatedTo.label}. ` : ''}Đi bộ: ${how} Bấm Đi bộ lần nữa để dừng.`);
+      const stop = isImmersive() ? 'Để dừng: Đi bộ trong nút điều khiển.' : 'Bấm Đi bộ lần nữa để dừng.';
+      ui.setCaption(`${relocatedTo ? `Đã đưa bạn tới ${relocatedTo.label}. ` : ''}Đi bộ: ${how} ${stop}`);
     },
     onSeatTap: (id) => {
       // Same rules as the map: the seat becomes the active one, and its selection toggles.
       selection.setActive(id);
       const result = selection.toggle(id);
       const max = selection.maxSelected;
-      ui.setNotice(
-        result.ok
-          ? `${result.selected ? 'Đã chọn' : 'Đã bỏ chọn'} ${id} · ${selection.selectedCount}/${max} ghế`
-          : result.reason === 'reserved'
-            ? `${id} đã được đặt — không chọn được`
-            : `Đã đủ ${max} ghế — bỏ bớt để chọn ${id}`,
-      );
+      const text = result.ok
+        ? `${result.selected ? 'Đã chọn' : 'Đã bỏ chọn'} ${id} · ${selection.selectedCount}/${max} ghế`
+        : result.reason === 'reserved'
+          ? `${id} đã được đặt — không chọn được`
+          : `Đã đủ ${max} ghế — bỏ bớt để chọn ${id}`;
+      ui.setNotice(text);
+      // Phones: the same words on a card that also offers the view from that seat.
+      ui.showSeatCard(id, text, view !== null && id !== viewingSeat);
     },
   };
 
@@ -440,7 +469,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     ui.showVideo2d(media.video, `Đang xem video ở chế độ 2D (không có cảnh 3D): ${film.title}`);
     updateWatchView();
     // Seat selection does not need the renderer: with nothing to explore, it is where the page starts.
-    if (first && tasks.task === 'explore') dispatch({ type: 'panel', open: true });
+    // On a phone the map would cover the message and the film; it stays one press away in the hub.
+    if (first && tasks.task === 'explore') dispatch(isImmersive() ? { type: 'task', task: 'seats' } : { type: 'panel', open: true });
   };
 
   const createView = (module: SceneModule) => {
@@ -589,6 +619,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     clearTimeout(contextTimer);
     motionQuery?.removeEventListener('change', onMotionChange);
     sheetQuery?.removeEventListener('change', onSheetChange);
+    immersiveQuery?.removeEventListener('change', onImmersiveChange);
     document.removeEventListener('visibilitychange', onVisibility);
     // Remember the film's place and sound, then stop it before anything else goes.
     const { currentTime, muted, volume, started } = media.snapshot;

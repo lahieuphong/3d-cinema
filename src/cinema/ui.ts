@@ -2,6 +2,7 @@ import { BRAND, markSvg } from '../brand.ts';
 import { isPlainClick } from '../router.ts';
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
+import { createControlHub } from './controlHub.ts';
 import { QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
 import { CINEMA_TASKS, type CinemaTask, type PanelState } from './taskLayout.ts';
 
@@ -32,6 +33,13 @@ export interface CinemaUiHandlers {
   onRetryScene(): void;
   /** The brand link back to the landing page, in-app (a plain link without it). */
   onHome?(): void;
+  /** "Xem từ ghế này" on the card that follows a seat tapped in the room (phone layout). */
+  onSeatCardView(seatId: string): void;
+}
+
+export interface CinemaUiOptions {
+  /** A touch screen: the help speaks of fingers rather than a mouse. */
+  touch: boolean;
 }
 
 /**
@@ -92,8 +100,24 @@ export interface CinemaUi {
   /** Camera, display and inspection controls need the scene: off (with the reason) while there is none. */
   setSceneControls(available: boolean, reason?: string): void;
   setWatchView(text: string, action: string | null): void;
-  /** Closes the settings and "Góc khác" menus. */
+  /** Closes the settings and "Góc khác" menus (and the control hub). */
   closeMenus(): void;
+  /**
+   * Phones (`immersive`): the room fills the screen and the task controls, the player and the
+   * settings move into the floating control hub; back in place otherwise. Same elements either way.
+   */
+  setLayout(immersive: boolean): void;
+  /** The control hub's button: where focus goes on a phone when what held it is gone. */
+  readonly hubToggle: HTMLButtonElement;
+  /** Phone layout: a small card for the seat just tapped in the room, with "Xem từ ghế này". */
+  showSeatCard(seatId: string, text: string, canView: boolean): void;
+  /** Phone layout, first visit: how the room and the control button work (once; again from Trợ giúp). */
+  offerHubHint(): void;
+  /**
+   * The film's status chip (problems, "Thử lại"): in a corner of the view; on a phone at the head of
+   * the overlay stack with the caption and credit, so it never meets the way back or the tour bar.
+   */
+  attachFilmStatus(element: HTMLElement): void;
   /** Without 3D: shows the film's own element in the viewport area, labelled as the 2D mode. */
   showVideo2d(video: HTMLVideoElement, label: string): void;
   hideVideo2d(): void;
@@ -133,8 +157,11 @@ export function icon(d: string): SVGSVGElement {
  * focus returns to their button; a press on the 3D view that closes one goes no further (it never
  * selects a seat or turns the camera). State is mirrored onto `data-*` attributes of the root so
  * automated checks can wait on it.
+ *
+ * On phones the room fills the screen instead: header and dock leave the layout and their controls
+ * (the same elements) move into the control hub's sections (see `setLayout`).
  */
-export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): CinemaUi {
+export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, options: CinemaUiOptions): CinemaUi {
   const listeners = new AbortController();
   const { signal } = listeners;
 
@@ -183,7 +210,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
     panel.addEventListener(
       'keydown',
       (event) => {
-        if (event.key !== 'Escape') return;
+        // Only while it is a popover that is open (in the phone's hub it is a section: Escape is the hub's).
+        if (event.key !== 'Escape' || !menuOpen(entry)) return;
         event.preventDefault();
         event.stopPropagation();
         setMenu(entry, false, true);
@@ -310,10 +338,52 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
   const viewport = el('div', 'cinema-viewport');
   const caption = el('p', 'cinema-caption');
   caption.setAttribute('aria-live', 'polite');
-  // Caption and film credit stack in one corner, so they never overlap each other.
+  // Caption and film credit stack in one corner, so they never overlap each other. On phones the
+  // caption only shows for a moment after it changes (the hub keeps it), and the card for a seat
+  // tapped in the room joins the stack.
   const overlay = el('div', 'cinema-overlay');
   const creditSlot = el('div', 'cinema-overlay__credit');
-  overlay.append(caption, creditSlot);
+  let captionTimer: ReturnType<typeof setTimeout> | undefined;
+  const seatCard = el('section', 'cinema-seatcard');
+  seatCard.hidden = true;
+  seatCard.setAttribute('aria-label', 'Ghế vừa chạm');
+  seatCard.dataset.keys = 'own';
+  const seatCardText = el('p', 'cinema-seatcard__text');
+  const seatCardView = button('Xem từ ghế này', 'cinema-button cinema-button--compact cinema-seatcard__view');
+  seatCardView.dataset.action = 'card-view-seat';
+  const seatCardClose = button('', 'cinema-button cinema-button--compact cinema-seatcard__close');
+  seatCardClose.dataset.action = 'card-close';
+  seatCardClose.setAttribute('aria-label', 'Đóng thẻ ghế');
+  seatCardClose.textContent = '×';
+  seatCard.append(seatCardText, seatCardView, seatCardClose);
+  let seatCardId: string | null = null;
+  let seatCardTimer: ReturnType<typeof setTimeout> | undefined;
+  const hideSeatCard = () => {
+    clearTimeout(seatCardTimer);
+    const hadFocus = seatCard.contains(document.activeElement);
+    seatCard.hidden = true;
+    seatCardId = null;
+    if (hadFocus) hub.toggle.focus({ preventScroll: true });
+  };
+  // A moment to read and reach it; kept while a finger, the mouse or focus is on it.
+  const armSeatCard = () => {
+    clearTimeout(seatCardTimer);
+    seatCardTimer = setTimeout(() => {
+      if (!seatCard.matches(':hover, :focus-within')) hideSeatCard();
+      else armSeatCard();
+    }, 8000);
+  };
+  seatCardView.addEventListener(
+    'click',
+    () => {
+      const id = seatCardId;
+      hideSeatCard();
+      if (id) handlers.onSeatCardView(id);
+    },
+    { signal },
+  );
+  seatCardClose.addEventListener('click', hideSeatCard, { signal });
+  overlay.append(seatCard, caption, creditSlot);
 
   const tourBar = el('div', 'cinema-tourbar');
   tourBar.hidden = true;
@@ -406,6 +476,108 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
   root.append(header, main);
   host.replaceChildren(root);
 
+  // ------------------------------------------------------------------ the control hub (phones)
+  let immersive = false;
+  let filmStatus: HTMLElement | null = null;
+  const placeFilmStatus = () => {
+    if (!filmStatus) return;
+    if (immersive) overlay.prepend(filmStatus);
+    else stage.append(filmStatus);
+  };
+  const hub = createControlHub(root, {
+    // Actions that need the room in sight close the panel; settings, sound and seeking keep it open.
+    closeOn: [
+      '[data-preset]',
+      '[data-action="reset"]',
+      '[data-action="tour"]',
+      '[data-action="explore"]',
+      '[data-action="seat-panel"]',
+      '[data-action="summary-view-seat"]',
+      '[data-action="watch-seat"]',
+      '[data-action="open-inspector"]',
+      '[data-action="hub-home"]',
+      '[data-action="hub-guide"]',
+    ].join(', '),
+    // A modal panel: the room and its overlays are out of reach (and of screen readers) meanwhile.
+    onOpenChange: (open) => {
+      main.inert = open;
+    },
+    // The first-visit hint stays above the overlay stack (the film's problems, the credit).
+    keepClear: () => (overlay.getClientRects().length > 0 ? overlay.getBoundingClientRect() : null),
+  });
+  // The stack grows (a film problem, the seat card): the hint moves up with it.
+  const overlayResize = new ResizeObserver(() => immersive && hub.refresh());
+  overlayResize.observe(overlay);
+
+  // Hiển thị: the browser's full screen, where it can (never on iPhone Safari); the page works without it.
+  const fullscreenRow = el('div', 'cinema-hub__row');
+  const fullscreenButton = button('Toàn màn hình', 'cinema-button cinema-hub__fullscreen');
+  fullscreenButton.dataset.action = 'fullscreen';
+  fullscreenButton.setAttribute('aria-pressed', 'false');
+  const fullscreenNote = el('p', 'cinema-hub__note');
+  fullscreenRow.append(fullscreenButton, fullscreenNote);
+  const fullscreenSupported = typeof document.documentElement.requestFullscreen === 'function' && document.fullscreenEnabled;
+  fullscreenRow.hidden = !fullscreenSupported;
+  const paintFullscreen = () => {
+    const on = document.fullscreenElement !== null;
+    fullscreenButton.setAttribute('aria-pressed', String(on));
+    fullscreenButton.textContent = on ? 'Thoát toàn màn hình' : 'Toàn màn hình';
+  };
+  fullscreenButton.addEventListener(
+    'click',
+    () => {
+      fullscreenNote.textContent = '';
+      const request = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      request.catch(() => (fullscreenNote.textContent = 'Trình duyệt không cho bật toàn màn hình lúc này.'));
+    },
+    { signal },
+  );
+  document.addEventListener('fullscreenchange', paintFullscreen, { signal });
+
+  // Trợ giúp và thông tin: how the room works (also the first-visit hint, again on request).
+  const hintLines = options.touch
+    ? ['Kéo một ngón để nhìn quanh, chụm hai ngón để phóng to hay thu nhỏ.', 'Chạm một ghế trong phòng để chọn, rồi “Xem từ ghế này”.', 'Sơ đồ ghế, phim, âm thanh và chất lượng: ở nút tròn này.']
+    : ['Kéo chuột để nhìn quanh, cuộn để phóng to hay thu nhỏ.', 'Bấm một ghế trong phòng để chọn, rồi “Xem từ ghế này”.', 'Sơ đồ ghế, phim, âm thanh và chất lượng: ở nút tròn này.'];
+  const help = el('ul', 'cinema-hub__help');
+  for (const line of [
+    ...hintLines.slice(0, 2),
+    'Đi bộ: kéo cần điều khiển ở góc dưới bên trái để đi, kéo phần còn lại để nhìn quanh.',
+    'Phim không tự phát: bấm Phát trong mục Phim và âm thanh.',
+    'Nút tròn kéo được sang chỗ khác; thả ra, nó nằm sát cạnh gần nhất.',
+  ]) {
+    help.append(el('li', '', line));
+  }
+  const guideButton = button('Xem lại hướng dẫn nhanh', 'cinema-button cinema-button--compact');
+  guideButton.dataset.action = 'hub-guide';
+  const demoNote = el('p', 'cinema-hub__note', `${BRAND.name} · ${BRAND.demoNote}. Ghế là dữ liệu minh họa.`);
+  hub.section('help').append(help, guideButton, demoNote);
+
+  // Điều hướng.
+  const homeLink = el('a', 'cinema-button cinema-hub__home', 'Về trang chủ');
+  homeLink.href = '/';
+  homeLink.dataset.action = 'hub-home';
+  homeLink.addEventListener(
+    'click',
+    (event) => {
+      if (!handlers.onHome || !isPlainClick(event, homeLink.target)) return;
+      event.preventDefault();
+      handlers.onHome();
+    },
+    { signal },
+  );
+  hub.section('nav').append(homeLink);
+
+  const HINT_KEY = 'tp-cinema-hub-hint';
+  const showHint = () => hub.showHint(hintLines, () => {
+    try {
+      localStorage.setItem(HINT_KEY, 'seen');
+    } catch {
+      // Not remembered: it may show once more on the next visit.
+    }
+  });
+  // After the panel has closed (the button is the hint's anchor).
+  guideButton.addEventListener('click', () => setTimeout(showHint, 0), { signal });
+
   // Menus close on a press anywhere else. On the 3D view that press is used up, so dismissing a
   // menu never selects a seat or turns the camera.
   window.addEventListener(
@@ -463,6 +635,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
       // The full-screen sheet is modal: everything else is out of reach until it closes.
       header.inert = state === 'expanded';
       screen.inert = state === 'expanded';
+      hub.root.inert = state === 'expanded';
+      if (state === 'expanded') hub.close(false);
     },
     setSeatCount(count) {
       seatCount.textContent = count > 0 ? String(count) : '';
@@ -518,7 +692,13 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
     },
     setCaption(text) {
       // The caption is a live region: rewriting the same sentence would read it again.
-      if (caption.textContent !== text) caption.textContent = text;
+      if (caption.textContent === text) return;
+      caption.textContent = text;
+      hub.setNow(text);
+      // Phones show it for a moment only (the CSS hides it once it is no longer fresh).
+      caption.dataset.fresh = 'true';
+      clearTimeout(captionTimer);
+      captionTimer = setTimeout(() => (caption.dataset.fresh = 'false'), 5000);
     },
     setStatus(next) {
       renderStatus(root, status, next, handlers.onRetryScene);
@@ -539,6 +719,49 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
     },
     closeMenus() {
       for (const entry of menus) if (menuOpen(entry)) setMenu(entry, false);
+      hub.close(false);
+    },
+    setLayout(next) {
+      if (next === immersive) return;
+      immersive = next;
+      root.dataset.layout = next ? 'immersive' : 'standard';
+      ui.closeMenus();
+      if (next) {
+        // Ghế và góc nhìn; Phim và âm thanh; Hiển thị (quality, full screen, then the inspection tools).
+        hub.section('seats').append(dock.seats, dock.explore);
+        hub.section('film').append(dock.watch);
+        hub.section('display').append(settingsPanel);
+        settingsPanel.insertBefore(fullscreenRow, inspectToggle);
+      } else {
+        hideSeatCard();
+        dockElement.append(dock.explore, dock.seats, dock.watch);
+        fullscreenRow.remove();
+        settings.append(settingsPanel);
+      }
+      placeFilmStatus();
+      hub.setActive(next);
+    },
+    attachFilmStatus(element) {
+      filmStatus = element;
+      placeFilmStatus();
+    },
+    hubToggle: hub.toggle,
+    showSeatCard(seatId, text, canView) {
+      if (!immersive) return;
+      seatCardId = seatId;
+      seatCardText.textContent = text;
+      seatCardView.hidden = !canView;
+      seatCard.hidden = false;
+      armSeatCard();
+    },
+    offerHubHint() {
+      if (!immersive) return;
+      try {
+        if (localStorage.getItem(HINT_KEY) === 'seen') return;
+      } catch {
+        // No storage: show it.
+      }
+      showHint();
     },
     showVideo2d(video, label) {
       if (video2d) return;
@@ -559,11 +782,18 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers): C
     },
     dispose() {
       clearTimeout(noticeTimer);
+      clearTimeout(captionTimer);
+      clearTimeout(seatCardTimer);
       listeners.abort();
+      overlayResize.disconnect();
+      hub.dispose();
+      // Full screen was for the room: the landing page comes back in a normal window.
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
       root.remove();
     },
   };
 
+  root.dataset.layout = 'standard';
   ui.setTask('explore');
   ui.setPanel('closed');
   ui.setStatus({ kind: 'loading' });

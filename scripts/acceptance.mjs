@@ -60,6 +60,11 @@ const pressed = (page, id) => page.getAttribute(`button[data-seat="${id}"]`, 'ar
 const overflows = (page) => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 const route = (page) => page.evaluate(() => document.documentElement.dataset.route);
 const shot = (page, name) => page.screenshot({ path: path.join(outDir, `${name}.png`) });
+/** Phones (Prompt 13): the controls are in the control hub; this opens it. */
+const openHub = async (page) => {
+  if ((await page.getAttribute('.cinema-hub__toggle', 'aria-expanded')) !== 'true') await page.tap('.cinema-hub__toggle');
+  await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+};
 
 async function newPage(browser, flow, options = {}, expected = []) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: headers, ...options });
@@ -221,10 +226,9 @@ async function flows(browser, base) {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(500);
-    await page.tap('button[data-task="seats"]');
-    if ((await appState(page)).panel === 'closed') await page.tap('button[data-action="seat-panel"]');
-    await waitApp(page, 'panel', ['open', 'expanded']);
-    if ((await appState(page)).panel !== 'expanded') await page.tap('button[data-action="seat-panel-expand"]');
+    // "Mở sơ đồ" is in the control hub; on a phone it opens the full-screen map.
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="seat-panel"]');
     await waitApp(page, 'panel', ['expanded']);
     const modal = await page.evaluate(() => ({ inert: document.querySelectorAll('[inert]').length, focusInside: Boolean(document.activeElement?.closest('#cinema-seat-panel')) }));
     await shot(page, 'd-phone-map-full-screen');
@@ -236,7 +240,7 @@ async function flows(browser, base) {
     }
     const after = await page.evaluate(() => ({ focus: document.activeElement?.dataset.action ?? document.activeElement?.tagName, inert: document.querySelectorAll('[inert]').length }));
     report.flows.phoneMap = { modal, steps, after };
-    check('D. phone map full screen is modal (rest inert, focus inside); Escape steps back to closed, focus returns to "Mở sơ đồ", nothing left inert', modal.inert > 0 && modal.focusInside && steps.at(-1) === 'closed' && after.focus === 'seat-panel' && after.inert === 0, report.flows.phoneMap);
+    check('D. phone: "Mở sơ đồ" in the control hub opens the full-screen map, modal (rest inert, focus inside); Escape closes it, focus returns to the hub\'s button, nothing left inert', modal.inert > 0 && modal.focusInside && steps.at(-1) === 'closed' && after.focus === 'hub' && after.inert === 0, report.flows.phoneMap);
     await context.close();
   }
 
@@ -356,20 +360,24 @@ async function flows(browser, base) {
     await page.goto(`${base}/cinema`);
     await waitApp(page, 'status', ['error'], 30_000);
     const task = (await appState(page)).task;
-    if ((await appState(page)).panel === 'closed') await page.tap('button[data-action="seat-panel"]');
+    // The reason stays on screen; the map and the player are in the control hub.
+    const reason = await page.isVisible('.cinema-status');
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="seat-panel"]');
+    await waitApp(page, 'panel', ['expanded']);
     await page.tap('button[data-seat="F04"]');
     const seat = await pressed(page, 'F04');
-    const close = page.locator('button[data-action="seat-panel-close"]');
-    if (await close.isVisible()) await close.tap();
-    await page.tap('button[data-task="watch"]');
-    await page.tap('button[data-action="media-primary"]');
+    await page.tap('button[data-action="seat-panel-close"]');
+    await waitApp(page, 'panel', ['closed']);
+    await openHub(page);
+    await page.tap('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['playing']);
     await page.waitForTimeout(1500);
-    await page.tap('button[data-action="media-primary"]');
+    await page.tap('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['paused']);
     await shot(page, 'l-no-webgl-film-2d');
-    report.flows.noWebgl = { task, seat, canvases: await canvases(page) };
-    check('L. no WebGL: starts in Chọn ghế, F04 picked on the map, the film plays flat and pauses', task === 'seats' && seat === 'true', report.flows.noWebgl);
+    report.flows.noWebgl = { task, reason, seat, canvases: await canvases(page) };
+    check('L. no WebGL (phone): the reason stays on screen; from the control hub F04 is picked on the map and the film plays flat and pauses', task === 'seats' && reason && seat === 'true', report.flows.noWebgl);
     await context.close();
   }
 

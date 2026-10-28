@@ -157,7 +157,13 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   retry.type = 'button';
   retry.dataset.action = 'media-retry';
   retry.hidden = true;
-  chip.append(status, retry);
+  // Phones keep the player in the control hub: a notice that asks for a press carries the button
+  // (the CSS shows it there only; elsewhere the player is next to the notice).
+  const resumeButton = el('button', 'cinema-button cinema-button--compact cinema-player__resume');
+  resumeButton.type = 'button';
+  resumeButton.dataset.action = 'media-resume';
+  resumeButton.hidden = true;
+  chip.append(status, resumeButton, retry);
 
   const mini = el('button', 'cinema-mini');
   mini.type = 'button';
@@ -186,6 +192,7 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   };
   primary.addEventListener('click', runPrimary, { signal });
   mini.addEventListener('click', runPrimary, { signal });
+  resumeButton.addEventListener('click', runPrimary, { signal });
   mute.addEventListener('click', () => handlers.onToggleMute(), { signal });
   retry.addEventListener('click', () => handlers.onRetry(), { signal });
   volume.addEventListener('input', () => handlers.onVolume(Number(volume.value)), { signal });
@@ -282,6 +289,19 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     retry.textContent = snapshot.state === 'error' ? 'Thử lại' : 'Tải lại';
     chip.hidden = message === '';
     chip.dataset.kind = snapshot.state === 'error' ? 'error' : 'info';
+    // How much it matters (phones show only what needs attention over the room): a failure, a
+    // notice (paused for a reason, blocked, slow), or waiting for data once the film has started.
+    chip.dataset.level =
+      snapshot.state === 'error'
+        ? 'error'
+        : unavailable !== null || snapshot.notice
+          ? 'notice'
+          : snapshot.started && (snapshot.state === 'loading' || snapshot.state === 'buffering')
+            ? 'busy'
+            : 'info';
+    const needsPress = !primary.disabled && (snapshot.notice === 'blocked' || snapshot.notice === 'hidden' || snapshot.notice === 'context-lost');
+    resumeButton.hidden = !needsPress;
+    text(resumeButton, needsPress ? label : '');
 
     // The mini control: only once the film has been started (nothing to pause before that).
     mini.hidden = !snapshot.started || snapshot.state === 'error' || unavailable !== null;
