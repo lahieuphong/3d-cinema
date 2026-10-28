@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# QA screenshots, videos and reports stay on the machine (summaries go to docs/). Prompts 01–09
+# were committed before this rule; ignoring does not untrack them (docs/release-audit-prompt-10.md).
+/artifacts/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

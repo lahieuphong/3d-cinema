@@ -38,7 +38,7 @@ import { chromium } from 'playwright-core';
 import { createServer, normalizePath } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-09');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-10');
 
 const BROWSER_CANDIDATES = [
   process.env.BROWSER_PATH,

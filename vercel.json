@@ -7,7 +7,7 @@
   "rewrites": [
     { "source": "/cinema", "destination": "/cinema.html" },
     { "source": "/cinema/", "destination": "/cinema.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|media/|brand/)(?!.*\\.[^/]+$).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

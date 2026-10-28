@@ -1,0 +1,7 @@
+# Not needed to build or serve the site: Vercel installs, builds from source and serves dist/ only.
+# QA screenshots, videos and logs (large; logs are local only).
+/artifacts
+# Development-only test clips and the brand slate (never part of dist/).
+/fixtures
+# A local build; Vercel makes its own.
+/dist

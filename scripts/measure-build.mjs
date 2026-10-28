@@ -6,16 +6,19 @@
 //   without JavaScript, and the metadata of both HTML documents;
 // - bundle: every file in dist/assets with raw, gzip and brotli sizes, and which ones the first
 //   screen needs (the entry) versus the 3D part (loaded right after);
+// - hosting: vercel.json read the way Vercel applies it, against dist/ (pages, missing files, cache
+//   headers); a configuration check only, the deployment itself is checked by hand;
 // - routes: /cinema opened directly and refreshed, /, the seat inspector, an unknown path, asset
 //   and media MIME types, range requests on the film, dev-only fixtures absent and ignored;
 // - time to a usable page (tasks and seat map on screen) and to a ready 3D scene, with the bytes
 //   transferred by then, on the local machine and with a throttled connection;
-// - the film's requests and bytes before Play, 4 s after Play and after the end.
-// Writes artifacts/<CAPTURE_DIR or prompt-08>/build-metrics.json and prints a summary.
+// - the film's requests and bytes before Play (and that reading stops while idle), 4 s after Play
+//   and after the end.
+// Writes artifacts/<CAPTURE_DIR or prompt-10>/build-metrics.json and prints a summary.
 //
 //   npm run build && node scripts/measure-build.mjs
 
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +28,7 @@ import { preview } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
-const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-09');
+const outDir = path.join(root, 'artifacts', process.env.CAPTURE_DIR ?? 'prompt-10');
 const FILM = '/media/big-buck-bunny-trailer-720p.mp4';
 const THROTTLED = { name: '1,6 Mbit/s xuống, 0,75 Mbit/s lên, RTT 150 ms (giả lập CDP)', down: 1.6e6 / 8, up: 0.75e6 / 8, latency: 150 };
 const BROWSERS = [
@@ -72,6 +75,38 @@ async function bundle() {
   };
 }
 
+/**
+ * vercel.json against dist/, in Vercel's order: a file that exists is served as it is, else the
+ * first matching rewrite, else 404; every matching header rule applies. The sources here are literal
+ * paths or `/(regex)`, so `^source$` is their pattern. Says nothing about the deployment itself.
+ */
+async function hostingRules() {
+  const config = JSON.parse(await readFile(path.join(root, 'vercel.json'), 'utf8'));
+  const pattern = (source) => new RegExp(`^${source}$`);
+  const isFile = (pathname) => statSync(path.join(dist, pathname), { throwIfNoEntry: false })?.isFile() ?? false;
+  const serve = (pathname) => {
+    if (isFile(pathname === '/' ? '/index.html' : pathname)) return pathname === '/' ? '/index.html' : pathname;
+    return (config.rewrites ?? []).find((rule) => pattern(rule.source).test(pathname))?.destination ?? 404;
+  };
+  const cache = (pathname) =>
+    (config.headers ?? []).filter((rule) => pattern(rule.source).test(pathname)).flatMap((rule) => rule.headers).findLast((h) => h.key.toLowerCase() === 'cache-control')?.value ?? 'default';
+  const entry = /<script type="module"[^>]*src="(\/assets\/[^"]+)"/.exec(await readFile(path.join(dist, 'index.html'), 'utf8'))?.[1];
+  const table = (paths) => Object.fromEntries(paths.map((p) => [p, serve(p)]));
+  const caches = (paths) => Object.fromEntries(paths.map((p) => [p, cache(p)]));
+  return {
+    pages: table(['/', '/cinema', '/cinema/', '/khong-co-trang-nay', '/cinema/khong-co']),
+    missing: table(['/assets/khong-co.js', '/brand/khong-co.webp', '/media/khong-co.mp4', '/favicon.ico', '/robots.txt']),
+    files: table([entry, FILM, '/brand/hero-960.webp', '/favicon.svg', '/cinema.html', '/index.html']),
+    destinationsExist: (config.rewrites ?? []).every((rule) => isFile(rule.destination)),
+    redirects: (config.redirects ?? []).length,
+    cache: {
+      immutable: caches([entry]),
+      noCache: caches(['/', '/cinema', '/cinema/', '/index.html', '/cinema.html', '/favicon.svg']),
+      revalidated: caches([FILM, '/media/big-buck-bunny-trailer-poster.jpg', '/brand/hero-960.webp']),
+    },
+  };
+}
+
 // Marks when the page's own controls exist (usable) and when the scene is ready.
 /** Landing page: paints, layout shift, and when the first "Bước vào rạp" click happened. */
 const LANDING_MARKS = () => {
@@ -107,6 +142,12 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   result.bundle = await bundle();
   check('bundle: dev fixtures are not in dist/', !result.bundle.fixturesInDist);
+  const hosting = (result.hosting = await hostingRules());
+  const all = (table, test) => Object.entries(table).every(([p, value]) => test(value, p));
+  check('hosting (vercel.json, config only): /, /cinema, /cinema/ and unknown pages get their HTML document', hosting.pages['/'] === '/index.html' && hosting.pages['/cinema'] === '/cinema.html' && hosting.pages['/cinema/'] === '/cinema.html' && hosting.pages['/khong-co-trang-nay'] === '/index.html' && hosting.pages['/cinema/khong-co'] === '/index.html', hosting.pages);
+  check('hosting (vercel.json, config only): a missing asset, image, video or file is a 404, not the landing page', all(hosting.missing, (v) => v === 404), hosting.missing);
+  check('hosting (vercel.json, config only): existing files are served as they are; rewrites point at files; no redirects', all(hosting.files, (v, p) => v === p) && hosting.destinationsExist && hosting.redirects === 0, { files: hosting.files, destinationsExist: hosting.destinationsExist, redirects: hosting.redirects });
+  check('hosting (vercel.json, config only): hashed assets immutable, HTML no-cache, media and brand images revalidated (Vercel default)', all(hosting.cache.immutable, (v) => /immutable/.test(v)) && all(hosting.cache.noCache, (v) => v === 'no-cache') && all(hosting.cache.revalidated, (v) => v === 'default'), hosting.cache);
 
   const server = await preview({ root, logLevel: 'warn', preview: { port: 4317, strictPort: false } });
   const base = server.resolvedUrls.local[0].replace(/\/$/, '');
@@ -350,6 +391,9 @@ async function main() {
       await page.waitForFunction(() => document.querySelector('.cinema-app')?.dataset.status === 'ready', null, { timeout: 60_000 });
       await page.waitForTimeout(3000);
       const before = snapshot();
+      // Left alone for 5 s more: the read-ahead has stopped (preload="metadata", not "auto").
+      await page.waitForTimeout(5000);
+      const idle = snapshot();
       const metadata = await page.evaluate(() => document.querySelector('.cinema-player__time')?.textContent);
       await page.click('button[data-task="watch"]');
       await page.click('button[data-action="media-primary"]');
@@ -359,10 +403,14 @@ async function main() {
       await page.waitForFunction(() => document.querySelector('.cinema-player')?.dataset.state === 'ended', null, { timeout: 60_000 });
       const ended = snapshot();
       const fileBytes = (await stat(path.join(dist, FILM))).size;
-      result.network = { fileBytes, durationShownBeforePlay: metadata, beforePlay: sum(before), afterPlay4s: sum(playing), afterEnd: sum(ended), requests: { before, playing, ended } };
-      // preload="metadata": Chrome still reads ahead from the start of the file, 1.0–1.8 MB across runs
-      // (more when the room, and so the film's metadata request, is ready sooner); never the whole file.
+      result.network = { fileBytes, durationShownBeforePlay: metadata, beforePlay: sum(before), idleBeforePlay: sum(idle), afterPlay4s: sum(playing), afterEnd: sum(ended), requests: { before, playing, ended } };
+      // preload="metadata": Chrome still reads a fixed stretch from the start of the file, then stops.
+      // Measured 0.96–1.84 MB (11–22 %) over 9 cold runs in Prompts 08–10 (Chrome 156, local preview,
+      // cache off), 1–2 requests; see docs/release-audit-prompt-10.md. 25 % keeps the
+      // regressions this guards against in view: the fragmented MP4 of Prompt 07 (7–10 requests,
+      // 40–50 %) and preload="auto" (reading on); the second check catches reading that does not stop.
       check('film: before Play only the poster and the start of the film are fetched (≤ 2 requests, ≤ 25 % of the file)', result.network.beforePlay.requests <= 2 && result.network.beforePlay.bytes <= fileBytes * 0.25 && result.network.beforePlay.poster === 1, result.network.beforePlay);
+      check('film: before Play, reading stops (no more bytes over 5 s left alone)', result.network.idleBeforePlay.bytes === result.network.beforePlay.bytes && result.network.idleBeforePlay.requests === result.network.beforePlay.requests, { at3s: result.network.beforePlay, at8s: result.network.idleBeforePlay });
       check('film: its duration is known before Play', /\/ 0:3\d/.test(metadata ?? ''), metadata);
       check('film: watching to the end downloads the file about once (≤ 1,2 × its size)', result.network.afterEnd.bytes <= fileBytes * 1.2, { ...result.network.afterEnd, fileBytes });
       await context.close();

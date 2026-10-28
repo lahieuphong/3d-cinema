@@ -1,6 +1,14 @@
-# Checklist phát hành — Tân Phong Cinema (sau Prompt 09)
+# Checklist phát hành — Tân Phong Cinema (sau Prompt 10)
 
-Cập nhật 28/10/2026. Phạm vi:
+Cập nhật 28/10/2026 (Prompt 10: rà soát phát hành). Chi tiết và bằng chứng:
+[release-audit-prompt-10.md](release-audit-prompt-10.md). Kế hoạch preview:
+[preview-deployment-plan.md](preview-deployment-plan.md).
+
+**Trạng thái:**
+- `main` = `f55ef30` (Prompt 09), đã push và **đang chạy trên production** (`tp3d-cinema.vercel.app`).
+- Bản sửa hosting của Prompt 10 chưa commit, chưa deploy.
+
+Phạm vi:
 - trang mở đầu `/`;
 - phòng chiếu `/cinema` (ba tác vụ Khám phá, Chọn ghế, Xem phim);
 - trang kiểm tra ghế `/cinema?inspect=seat`;
@@ -14,8 +22,21 @@ Cập nhật 28/10/2026. Phạm vi:
 
 ## 1. Đã kiểm chứng
 
-Bằng chứng: `npm test`, `npm run typecheck`, `npm run build`, `npm run capture`
-(`artifacts/prompt-09/report.json`), `npm run measure:build` (`artifacts/prompt-09/build-metrics.json`).
+Bằng chứng (ứng viên Prompt 10; kết quả ở mục 9 của bản rà soát):
+- `npm test`, `npm run typecheck`, `npm run build`;
+- `npm run capture`: harness trên dev server, `artifacts/prompt-10/report.json`;
+- `npm run measure:build`: bản production trên `vite preview`, `artifacts/prompt-10/build-metrics.json`;
+- `npm run acceptance`: 14 luồng nghiệm thu trên bản production, Chrome và Edge.
+
+Ảnh và báo cáo trong `artifacts/` chỉ ở máy; từ Prompt 10 chúng không vào Git.
+
+**Nghiệm thu trên bản production (Prompt 10, `scripts/acceptance.mjs`)**
+- [x] Landing → rạp → chọn ghế → nhìn từ ghế → Phát/Tạm dừng → Trở về; tour → dừng → đi bộ → sơ đồ.
+- [x] Điện thoại dọc → ngang; sơ đồ toàn màn hình với Escape và focus trả về.
+- [x] Đổi chất lượng; mất/khôi phục WebGL; inspector và Back.
+- [x] Rời rạp khi đang phát (0 video/canvas/WebGL sau GC); 4 vòng Back/Forward.
+- [x] Giảm chuyển động; landing không JavaScript; không WebGL (sơ đồ + video 2D).
+- [x] Lỗi tải video; lỗi tải mã rạp rồi Thử lại.
 
 **Trang mở đầu (Prompt 09)**
 - [x] `/` là trang mở đầu, không chuyển hướng. Nội dung, ảnh và liên kết có ngay trong HTML, nên đọc
@@ -57,11 +78,22 @@ Bằng chứng: `npm test`, `npm run typecheck`, `npm run build`, `npm run captu
 - [x] Tour, đi bộ, chọn ghế và sơ đồ, xem từ ghế, video, chất lượng, mất/khôi phục context, inspector.
 - [x] Credits CC BY luôn trên màn ở mọi tác vụ; footer trang mở đầu cũng ghi công video.
 
-**Hosting (đã deploy Prompt 08 lên Vercel, kiểm tra bằng vài request đơn lẻ ngày 28/10/2026)**
-- [x] `https://tp3d-cinema.vercel.app/cinema` trả 200, `Cache-Control: no-cache`.
-- [x] `/assets/*` trả `public, max-age=31536000, immutable`.
-- [x] Video trả 206 cho request range, `must-revalidate`.
-- Các rewrite mới của Prompt 09 (`/cinema` → `cinema.html`) chưa deploy, xem phần 2.
+**Hosting: production đang chạy `f55ef30` (Prompt 09)**
+
+Kiểm tra bằng vài request đơn lẻ ngày 28/10/2026, và
+`BASE_URL=https://tp3d-cinema.vercel.app ACCEPTANCE_ONLY=hosting npm run acceptance`.
+- [x] Đúng bản build: commit status `Vercel — success` của `f55ef30`; tên các chunk có hash trùng bản build
+  cục bộ.
+- [x] `/` → landing; `/cinema`, `/cinema/`, `/cinema?inspect=seat` → `cinema.html`; HTML `no-cache`;
+  canonical và `og:url` riêng cho `/` và `/cinema`.
+- [x] `/assets/*`: `public, max-age=31536000, immutable`, kiểu JS đúng.
+- [x] `/brand/*`, `/media/*`: mặc định `max-age=0, must-revalidate`, không `immutable`.
+- [x] Video: 206 khi Range ở đầu tệp và khi tua, `video/mp4`.
+- [ ] **Lỗi:** tệp thiếu (`/assets/…`, `/brand/…`, `/media/…`, `/favicon.ico`) trả landing HTML với mã 200,
+  dưới `/assets/` còn kèm `immutable`.
+  - Đã sửa trong `vercel.json` (Prompt 10, chưa commit).
+  - Cấu hình đã kiểm tra bằng `measure:build`.
+  - Trên Vercel: **chờ preview**.
 
 ## 2. Chưa kiểm chứng
 
@@ -76,9 +108,13 @@ Bằng chứng: `npm test`, `npm run typecheck`, `npm run build`, `npm run captu
   - Firefox: rVFC từ bản 132.
 - [ ] **Trình đọc màn hình thật** (NVDA, VoiceOver, TalkBack): mới kiểm tra thuộc tính ARIA, focus và
   phím bằng script.
-- [ ] **Cấu hình Vercel của Prompt 09** (chưa deploy):
-  - rewrite `/cinema` và `/cinema/` sang `cinema.html`;
-  - header `no-cache` trừ `/assets/`, `/media/`, `/brand/`.
+- [ ] **Bản sửa hosting của Prompt 10 trên Vercel** (chờ preview):
+  - tệp thiếu trả 404, trang lạ vẫn về app;
+  - header `Cache-Control` của 404 dưới `/assets/`;
+  - `.vercelignore` có áp cho deploy qua Git không (log build hoặc `/_src`);
+  - Deployment Protection của preview.
+- [ ] **Tab mở từ trước một lần deploy mới:** chunk cũ không còn, "Thử lại" không giúp, phải tải lại trang.
+  Chưa xử lý.
 - [ ] **Ảnh chia sẻ trên mạng xã hội thật** (Facebook, Zalo, X…): thẻ Open Graph có trong HTML, nhưng
   chưa thử với trình thu thập của từng nơi.
 - [ ] **Mạng chậm thật:** mới giả lập 1,6 Mbit/s, RTT 150 ms (CDP) và giữ request ở route Playwright.
@@ -89,9 +125,11 @@ Bằng chứng: `npm test`, `npm run typecheck`, `npm run build`, `npm run captu
 
 ## 3. Lỗi chặn
 
-Không có lỗi chặn cho việc deploy bản demo lên Chrome desktop. Các mục ở phần 2 là rủi ro cho mobile,
-Safari/Firefox và người dùng trình đọc màn hình. Cần thử tay trước khi gọi là "sẵn sàng cho mọi nền
-tảng".
+- **Bản preview:** không có lỗi chặn.
+- **Production:** đang có lỗi tệp thiếu → 200 HTML (phần 1, Hosting). Bản sửa cần qua preview rồi người dùng
+  mới đưa lên `main`.
+- **Mobile, Safari/Firefox, người dùng trình đọc màn hình:** các mục ở phần 2 là rủi ro. Cần thử tay trước
+  khi gọi là "sẵn sàng cho mọi nền tảng".
 
 ## 4. Việc cần người dùng thử thủ công
 
@@ -118,20 +156,23 @@ tảng".
 
 ## 5. Điều kiện trước khi commit / push / deploy
 
-- [ ] Duyệt Prompt 09 (bản bàn giao này) và ảnh/video trong `artifacts/prompt-09/`.
+- [ ] Người dùng duyệt Prompt 10: bản rà soát, kế hoạch preview, commit đề xuất (mục 12 của bản rà soát).
+- [ ] Người dùng quyết có ngừng theo dõi `artifacts/prompt-09/` không (commit 1, tuỳ chọn). Tệp vẫn ở máy.
 - [ ] `npm test`, `npm run typecheck`, `npm run build` sạch.
-  - Trên Windows chạy từ thư mục có ổ đĩa viết hoa (`E:\…`); xem lỗi Vitest "no tests" ở
-    `artifacts/prompt-08/logs/vitest-no-tests-NOTE.md`.
-  - `npm run capture` và `npm run measure:build` cần Chrome hoặc Edge cài sẵn.
-- [ ] Kiểm tra `git status`: chỉ có thay đổi dự kiến; không đưa thư mục `*-dev` (nếu còn) hay tệp tạm
-  vào commit.
-  - `fixtures/brand/screen-slate.png` là tệp dev, cùng loại với `fixtures/media`.
-- [ ] Sau khi deploy lên Vercel (preview hoặc main):
-  - mở `/`, `/cinema`, `/cinema/`, `/khong-co` trực tiếp và refresh;
-  - xem nguồn trang `/cinema` có title "Phòng chiếu 3D · Tân Phong Cinema" (tức `cinema.html` được
-    phục vụ);
-  - header `Cache-Control` như phần 1;
-  - chỉ gửi vài request đơn lẻ, đừng chạy vòng lặp: Vercel có checkpoint chống bot.
+  - Trên Windows chạy từ thư mục có ổ đĩa viết hoa: `cmd /c "cd /d E:\Phong_Nho_IT\3d-cinema && npm test"`.
+    Nếu process chạy từ `e:\…` (chữ thường), npm nạp hai bản Vitest và mọi suite báo "no tests"
+    (Prompt 08 đã tái hiện chắc chắn, 4/4 lần; `process.chdir` trong config không giúp).
+  - `npm run capture`, `npm run measure:build`, `npm run acceptance` cần Chrome hoặc Edge cài sẵn.
+- [ ] `git status --short`: chỉ có các đường dẫn ở mục 12 của bản rà soát.
+  - Stage từng đường dẫn, không dùng `git add .`.
+  - `artifacts/` bị `.gitignore` loại.
+  - `fixtures/` là tệp dev, không vào `dist/`.
+- [ ] Deploy preview theo [preview-deployment-plan.md](preview-deployment-plan.md):
+  - đẩy nhánh `preview/p10-release-audit`; **không push `main`** (`main` tự deploy production);
+  - xác nhận commit status `Vercel` của đúng SHA;
+  - chạy `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting npm run acceptance`, rồi một lượt đầy đủ, rồi thử tay;
+  - chỉ gửi request đơn lẻ, không chạy vòng lặp: Vercel có checkpoint chống bot.
+- [ ] Đưa lên production (merge hoặc push `main`) chỉ khi người dùng quyết, sau khi preview đạt.
 - [ ] Làm các mục ở phần 4 trên ít nhất một iPhone và một Android trước khi quảng bá cho người dùng
   mobile.
 - [ ] Giữ dòng ghi công CC BY của Big Buck Bunny ở mọi nơi phát video và trong footer trang mở đầu
