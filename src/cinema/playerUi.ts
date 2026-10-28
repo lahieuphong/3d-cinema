@@ -23,11 +23,6 @@ export interface PlayerUi {
   readonly status: HTMLElement;
   /** Polite live region (state changes and problems only); placed where it is never hidden. */
   readonly live: HTMLElement;
-  /**
-   * The attribution line on its own, for wherever the film is on screen without the player (the
-   * licence asks for it wherever the work is shown).
-   */
-  readonly credit: HTMLElement;
   /** Mirrors the media; only the parts that `change` touches are written. */
   update(snapshot: MediaSnapshot, change: MediaChange | 'all'): void;
   /** Playback is impossible for now (no 3D context): play is disabled and `reason` is shown. */
@@ -146,9 +141,6 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   credit.title = `${film.credit} · ${film.license}`;
   info.append(title, credit);
   root.append(controls, info);
-
-  const shortCredit = el('p', 'cinema-filmcredit');
-  shortCredit.append(`${film.title}: `, link(film.credit, film.creditUrl), ' · ', link(film.license, film.licenseUrl));
 
   const chip = el('div', 'cinema-filmstatus');
   chip.dataset.keys = 'own';
@@ -323,7 +315,6 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     mini,
     status: chip,
     live,
-    credit: shortCredit,
     update(snapshot, change) {
       last = snapshot;
       if (change === 'all' || change === 'state' || change === 'notice') renderState(snapshot);
@@ -340,7 +331,6 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
       chip.remove();
       mini.remove();
       live.remove();
-      shortCredit.remove();
     },
   };
   return ui;

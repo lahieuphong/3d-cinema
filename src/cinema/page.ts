@@ -335,7 +335,6 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   ui.miniSlot.append(player.mini);
   ui.attachFilmStatus(player.status);
   ui.root.append(player.live);
-  ui.creditSlot.append(player.credit);
 
   const focusable = (element: Element) =>
     element instanceof HTMLElement && element.isConnected && element.getClientRects().length > 0 && !element.closest('[inert]');

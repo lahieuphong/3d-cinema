@@ -488,7 +488,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-/* The page's caption with the film's credit under it, in the lower left corner. */
+/* The lower left corner: the card of a seat just tapped (phones). */
 .cinema-overlay {
   position: absolute;
   left: 10px;
@@ -502,28 +502,22 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   pointer-events: none;
 }
 
+/* The room's caption is not drawn over the view (it covered the room); it stays a live region for
+   screen readers, and on phones the hub shows it. The film's credit is in the player and on the
+   landing page. */
 .cinema-overlay .cinema-caption {
-  position: static;
-  max-width: 100%;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-/* The film is on the screen in every task: its attribution stays visible (CC BY); in Xem phim the
-   player shows it. */
-.cinema-filmcredit {
-  margin: 0;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgb(10 11 14 / 0.72);
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  pointer-events: auto;
-}
-
-.cinema-filmcredit a {
-  color: inherit;
-}
-
-/* While walking, they move to the top so the stick has the lower corner. */
+/* While walking, it moves to the top so the stick has the lower corner. */
 .cinema-app[data-explore='true'] .cinema-overlay {
   top: 10px;
   bottom: auto;
@@ -1520,10 +1514,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     font-size: 0.74rem;
   }
 
-  .cinema-filmcredit {
-    font-size: 0.66rem;
-  }
-
   /* Two lines, always: the list can grow to 8 seats without the view above resizing. */
   .cinema-summary__text {
     display: -webkit-box;
@@ -1750,9 +1740,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
    `data-layout="immersive"` (IMMERSIVE_LAYOUT_QUERY in taskLayout.ts): no header, dock or frame
    around the view; one floating control (the hub) holds the controls, moved there as they are. The
-   overlays that remain stay clear of the safe areas: the film's credit (CC BY: it stays on screen
-   wherever the film shows), the way back from a seat, the tour bar, the walking stick, the film's
-   problems, and for a moment the caption or the card of a seat just tapped. */
+   overlays that remain stay clear of the safe areas: the way back from a seat, the tour bar, the
+   walking stick, the film's problems, and for a moment the card of a seat just tapped. */
 
 .cinema-hub,
 .cinema-seatcard {
@@ -1804,7 +1793,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-/* Overlays: lower corner for the credit (and the caption or seat card for a moment), clear of the hub. */
+/* Overlays: lower corner for the card of a seat just tapped, clear of the hub. */
 .cinema-app[data-layout='immersive'] .cinema-overlay {
   display: flex;
   left: calc(10px + env(safe-area-inset-left, 0px));
@@ -1828,11 +1817,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-.cinema-app[data-layout='immersive'] .cinema-filmcredit {
-  padding: 2px 7px;
-  background: rgb(10 11 14 / 0.6);
-  font-size: 0.62rem;
-}
 
 /* A seat tapped in the room: the card says it (the corner notice is not needed). */
 .cinema-app[data-layout='immersive'] .cinema-notice {

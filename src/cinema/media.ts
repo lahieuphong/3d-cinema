@@ -1,7 +1,7 @@
 /**
  * The demo film shown on the screen. Same-origin file under public/media/, so WebGL can read its
  * frames without CORS and nothing depends on another site staying up. Credits and licence:
- * docs/media-credits.md (the attribution below must stay visible wherever the film plays).
+ * docs/media-credits.md (the attribution below is shown in the player and on the landing page).
  */
 export interface FilmSource {
   id: string;

@@ -77,8 +77,6 @@ export interface CinemaUi {
   miniSlot: HTMLElement;
   /** "Góc nhìn: …" line of Xem phim, placed by the page next to the player. */
   watchView: HTMLElement;
-  /** Under the caption, over the view: for the film's credit while the player is not shown. */
-  creditSlot: HTMLElement;
   taskButton(task: CinemaTask): HTMLButtonElement;
   setTask(task: CinemaTask): void;
   /** Mirrors the seat panel; a full-screen sheet makes the rest of the page inert (modal). */
@@ -338,11 +336,9 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const viewport = el('div', 'cinema-viewport');
   const caption = el('p', 'cinema-caption');
   caption.setAttribute('aria-live', 'polite');
-  // Caption and film credit stack in one corner, so they never overlap each other. On phones the
-  // caption only shows for a moment after it changes (the hub keeps it), and the card for a seat
-  // tapped in the room joins the stack.
+  // The caption is read out but not drawn over the room (the CSS hides it; the hub shows it on
+  // phones). The corner holds the card for a seat tapped in the room.
   const overlay = el('div', 'cinema-overlay');
-  const creditSlot = el('div', 'cinema-overlay__credit');
   let captionTimer: ReturnType<typeof setTimeout> | undefined;
   const seatCard = el('section', 'cinema-seatcard');
   seatCard.hidden = true;
@@ -383,7 +379,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     { signal },
   );
   seatCardClose.addEventListener('click', hideSeatCard, { signal });
-  overlay.append(seatCard, caption, creditSlot);
+  overlay.append(seatCard, caption);
 
   const tourBar = el('div', 'cinema-tourbar');
   tourBar.hidden = true;
@@ -621,7 +617,6 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     dock,
     miniSlot,
     watchView,
-    creditSlot,
     taskButton: (task) => taskButtons.get(task)!,
     setTask(task) {
       root.dataset.task = task;
