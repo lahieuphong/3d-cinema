@@ -65,6 +65,27 @@ const openHub = async (page) => {
   if ((await page.getAttribute('.cinema-hub__toggle', 'aria-expanded')) !== 'true') await page.tap('.cinema-hub__toggle');
   await page.waitForSelector('#cinema-hub-panel:not([hidden])');
 };
+/** Desktop: every control is in the panel under "Cài đặt". */
+const openPanel = async (page) => {
+  if ((await page.getAttribute('button[data-action="settings"]', 'aria-expanded')) !== 'true') await page.click('button[data-action="settings"]');
+  await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+};
+const closePanel = async (page) => {
+  if (await page.isHidden('#cinema-hub-panel')) return;
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#cinema-hub-panel', { state: 'hidden' });
+};
+/** Desktop: "Mở sơ đồ" in the panel; the map opens beside the room and the panel closes. */
+const openSeatMap = async (page) => {
+  await openPanel(page);
+  await page.click('.cinema-hub button[data-action="seat-panel"]');
+  await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+};
+/** Desktop: a control of the panel that closes it (a camera move, the tour, walking…). */
+const panelAction = async (page, selector) => {
+  await openPanel(page);
+  await page.click(`.cinema-hub ${selector}`);
+};
 
 async function newPage(browser, flow, options = {}, expected = []) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: headers, ...options });
@@ -97,7 +118,6 @@ async function live(page, names) {
 
 /** The first "Bước vào rạp" of the hero. */
 const HERO_CTA = '.hero a[data-cta="cinema"]';
-const SETTINGS = 'button[data-action="settings"]';
 
 async function flows(browser, base) {
   // A. Landing → cinema → pick a seat → seat view → play / pause → back.
@@ -113,19 +133,19 @@ async function flows(browser, base) {
     await page.click(HERO_CTA);
     await ready(page);
     const entered = { path: new URL(page.url()).pathname, historyAdded: (await page.evaluate(() => history.length)) - historyBefore, canvases: await canvases(page) };
-    await page.click('button[data-task="seats"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await openSeatMap(page);
     await page.click('button[data-seat="F06"]');
     const picked = await pressed(page, 'F06');
     await page.click('button[data-action="view-from-seat"]');
     await waitApp(page, 'camera', ['seat']);
-    await page.click('button[data-task="watch"]');
-    await page.click('button[data-action="media-primary"]');
+    await openPanel(page);
+    await page.click('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['playing']);
     await page.waitForTimeout(2500);
     const time = await page.textContent('.cinema-player__time');
-    await page.click('button[data-action="media-primary"]');
+    await page.click('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['paused']);
+    await closePanel(page);
     await shot(page, 'a-seat-view-paused');
     await page.click('button[data-action="return"]');
     await waitApp(page, 'camera', ['preset']);
@@ -142,8 +162,7 @@ async function flows(browser, base) {
     const { context, page } = await newPage(browser, 'pick-3d-and-mute');
     await page.goto(`${base}/cinema`);
     await ready(page);
-    await page.click('button[data-task="seats"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await openSeatMap(page);
     await page.waitForTimeout(800);
     const chosen = () => page.$$eval('button[data-seat][aria-pressed="true"]', (seats) => seats.map((s) => s.dataset.seat));
     const box = await page.locator('canvas').boundingBox();
@@ -161,17 +180,17 @@ async function flows(browser, base) {
         picked = (await chosen()).find((id) => !before.includes(id)) ?? null;
       }
     }
-    await page.click('button[data-task="watch"]');
-    await page.click('button[data-action="media-primary"]');
+    await openPanel(page);
+    await page.click('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['playing']);
     const muted = [];
     for (let i = 0; i < 2; i++) {
-      await page.click('button[data-action="media-mute"]');
+      await page.click('.cinema-hub button[data-action="media-mute"]');
       await page.waitForTimeout(200);
       muted.push(await page.getAttribute('.cinema-player', 'data-muted'));
     }
     const still = await playerState(page);
-    await page.click('button[data-action="media-primary"]');
+    await page.click('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['paused']);
     report.flows.pick3dAndMute = { picked, tries, muted, playingWhileMuting: still };
     check('O. a seat picked by clicking it in the 3D view is selected on the map too; the film\'s sound goes off and on while it plays', Boolean(picked) && muted[0] === 'true' && muted[1] === 'false' && still === 'playing', report.flows.pick3dAndMute);
@@ -183,24 +202,23 @@ async function flows(browser, base) {
     const { context, page } = await newPage(browser, 'tour-explore-map');
     await page.goto(`${base}/cinema`);
     await ready(page);
-    await page.click('button[data-action="tour"]');
+    await panelAction(page, 'button[data-action="tour"]');
     await waitApp(page, 'tour', ['playing']);
     await page.waitForTimeout(1500);
     if (await page.isVisible('button[data-action="tour-stop"]')) await page.click('button[data-action="tour-stop"]');
     else await page.keyboard.press('KeyW');
     await waitApp(page, 'tour', ['off']);
-    await page.click('button[data-action="explore"]');
+    await panelAction(page, 'button[data-action="explore"]');
     await waitApp(page, 'camera', ['explore']);
     await page.keyboard.down('KeyW');
     await page.waitForTimeout(600);
     await page.keyboard.up('KeyW');
     const walking = await appState(page);
-    await page.click('button[data-task="seats"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await openSeatMap(page);
     const map = await appState(page);
     await shot(page, 'b-explore-then-map');
     report.flows.tourExploreMap = { walking: { camera: walking.camera, tour: walking.tour }, map: { task: map.task, panel: map.panel, canvases: await canvases(page) } };
-    check('B. the tour stops on request, "Đi bộ" walks, then "Chọn ghế" opens the map; one canvas', walking.tour === 'off' && walking.camera === 'explore' && map.task === 'seats' && map.panel !== 'closed' && (await canvases(page)) === 1, report.flows.tourExploreMap);
+    check('B. the tour stops on request, "Đi bộ" walks, then "Mở sơ đồ" opens the map; one canvas', walking.tour === 'off' && walking.camera === 'explore' && map.task === 'seats' && map.panel !== 'closed' && (await canvases(page)) === 1, report.flows.tourExploreMap);
     await context.close();
   }
 
@@ -249,14 +267,13 @@ async function flows(browser, base) {
     const { context, page } = await newPage(browser, 'quality-context-inspector', {}, [/WebGL: CONTEXT_LOST_WEBGL/i]);
     await page.goto(`${base}/cinema`);
     await ready(page);
-    await page.click('button[data-task="seats"]');
-    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await openSeatMap(page);
     await page.click('button[data-seat="F05"]');
-    await page.click(SETTINGS);
+    await openPanel(page);
     await page.click('button[data-quality="economy"]');
     await ready(page);
     const economy = await page.getAttribute('button[data-quality="economy"]', 'aria-pressed');
-    await page.click(SETTINGS);
+    await closePanel(page);
     check('E. switching to Tiết kiệm applies at once, scene ready, one canvas', economy === 'true' && (await canvases(page)) === 1, { economy });
 
     await page.evaluate(() => {
@@ -271,7 +288,7 @@ async function flows(browser, base) {
     report.flows.contextRestore = restored;
     check('F. context lost is reported, then restored: ready, one canvas, F05 and Tiết kiệm kept', restored.canvases === 1 && restored.seat === 'true' && restored.economy === 'true', restored);
 
-    await page.click(SETTINGS);
+    await openPanel(page);
     if (!(await page.isVisible('button[data-action="open-inspector"]'))) await page.click('button[data-action="inspect-tools"]');
     await page.click('button[data-action="open-inspector"]');
     await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready', null, { timeout: 60_000 });
@@ -291,10 +308,11 @@ async function flows(browser, base) {
     await page.goto(`${base}/`);
     await page.click(HERO_CTA);
     await ready(page);
-    await page.click('button[data-task="watch"]');
-    await page.click('button[data-action="media-primary"]');
+    await openPanel(page);
+    await page.click('.cinema-hub button[data-action="media-primary"]');
     await waitPlayer(page, ['playing']);
     await page.waitForTimeout(1500);
+    await closePanel(page);
     await page.click('a.cinema-brand');
     await page.waitForSelector('[data-landing] .hero');
     const left = { route: await route(page), canvases: await canvases(page), ...(await live(page, ['HTMLVideoElement', 'HTMLCanvasElement', 'WebGL2RenderingContext'])) };
@@ -324,7 +342,7 @@ async function flows(browser, base) {
     const motion = await page.getAttribute('.hero', 'data-motion');
     await page.click(HERO_CTA);
     await ready(page);
-    await page.click('button[data-action="tour"]');
+    await panelAction(page, 'button[data-action="tour"]');
     await waitApp(page, 'tour', ['steps', 'playing']);
     const tour = (await appState(page)).tour;
     report.flows.reducedMotion = { landingMotion: motion, tour };
@@ -387,10 +405,10 @@ async function flows(browser, base) {
     await page.route(`**${FILM}`, (r) => r.fulfill({ status: 404, body: '' }));
     await page.goto(`${base}/cinema`);
     await ready(page);
-    await page.click('button[data-task="watch"]');
     await waitPlayer(page, ['error'], 30_000);
     const retry = await page.isVisible('button[data-action="media-retry"]');
-    const primaryDisabled = await page.isDisabled('button[data-action="media-primary"]');
+    await openPanel(page);
+    const primaryDisabled = await page.isDisabled('.cinema-hub button[data-action="media-primary"]');
     await shot(page, 'm-film-error');
     report.flows.filmError = { retry, primaryDisabled };
     check('M. a film that cannot load: error state with "Thử lại", Play disabled, the room still ready', retry && primaryDisabled && (await appState(page)).status === 'ready', report.flows.filmError);

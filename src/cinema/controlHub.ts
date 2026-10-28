@@ -11,6 +11,8 @@ const SECTIONS: ReadonlyArray<{ id: HubSection; title: string }> = [
 ];
 
 export interface ControlHubOptions {
+  /** The header's "Cài đặt": opens the panel under it when the hub is not floating (desktop, tablet). */
+  anchor: HTMLButtonElement;
   /** Controls inside the panel that close it once used (camera moves, opening the seat map…). */
   closeOn: string;
   /** Opened or closed: the page makes the rest inert while it is open (modal). */
@@ -31,8 +33,13 @@ export interface ControlHub {
   open(): void;
   /** `focusToggle`: focus returns to the button (unless it moved somewhere else on purpose). */
   close(focusToggle?: boolean): void;
-  /** On or off with the phone layout; off closes it and stops listening to the viewport. */
+  /** On or off; off closes it. */
   setActive(active: boolean): void;
+  /**
+   * Phones: the floating round button. Otherwise the panel drops down from the header's "Cài đặt"
+   * (no floating button, no drag, no first-visit hint). Switching closes the panel.
+   */
+  setFloating(floating: boolean): void;
   /** Places the button, panel and hint again (something they keep clear of changed size). */
   refresh(): void;
   /** A short hint next to the button, until dismissed (`onDismiss`) or the panel is opened. */
@@ -73,12 +80,19 @@ interface Position {
  * The panel is a modal dialog over the room: a press outside it (on the scrim) closes it and goes
  * no further, so it never turns the camera or picks a seat; Escape closes it and focus returns to the
  * button; Tab stays inside. The button keeps its place and closes the panel when pressed again.
+ *
+ * On larger screens the same panel (same sections, same controls) drops down from the header's
+ * "Cài đặt" button instead (`setFloating(false)`), so the room is left with nothing over it.
  */
 export function createControlHub(host: HTMLElement, options: ControlHubOptions): ControlHub {
   const listeners = new AbortController();
   const { signal } = listeners;
+  const { anchor } = options;
   let active = false;
   let open = false;
+  let floating = true;
+  /** The button that opens the panel now: the round one on phones, "Cài đặt" otherwise. */
+  const opener = () => (floating ? toggle : anchor);
 
   const root = el('div', 'cinema-hub');
   // The safe area as a box (env() is only readable from CSS): the button and panel stay inside it.
@@ -94,6 +108,9 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   toggle.setAttribute('aria-haspopup', 'dialog');
   toggle.setAttribute('aria-expanded', 'false');
   toggle.setAttribute('aria-controls', 'cinema-hub-panel');
+  anchor.setAttribute('aria-haspopup', 'dialog');
+  anchor.setAttribute('aria-expanded', 'false');
+  anchor.setAttribute('aria-controls', 'cinema-hub-panel');
   toggle.innerHTML =
     '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="cinema-hub__ring" cx="12" cy="12" r="9"/><circle class="cinema-hub__dot" cx="12" cy="12" r="4.5"/></svg>';
 
@@ -172,6 +189,10 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   /** The button at its stored place, inside the safe area as it is now (after a rotation or resize too). */
   const place = () => {
     if (!active) return;
+    if (!floating) {
+      if (open) placePanel();
+      return;
+    }
     const b = bounds(position.side);
     moveTo(position.side === 'left' ? b.left : Math.max(b.left, b.right), b.top + Math.max(0, b.bottom - b.top) * position.y);
     root.dataset.side = position.side;
@@ -179,12 +200,25 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
     if (!hint.hidden) placeHint();
   };
 
-  /** The panel beside the button (landscape) or above/below it (portrait), never over it. */
+  /**
+   * Floating: beside the button (landscape) or above/below it (portrait), never over it. From the
+   * header: under "Cài đặt", its right edge in line with the button's.
+   */
   const placePanel = () => {
     const box = safeBox();
-    const button = buttonBox();
     const style = panel.style;
     style.top = style.bottom = style.left = style.width = style.maxHeight = '';
+    if (!floating) {
+      const button = anchor.getBoundingClientRect();
+      const width = Math.min(400, box.width - 2 * GAP);
+      const top = button.bottom + 8;
+      style.left = `${Math.min(Math.max(box.left + GAP, button.right - width), box.right - GAP - width)}px`;
+      style.width = `${width}px`;
+      style.top = `${top}px`;
+      style.maxHeight = `${box.bottom - GAP - top}px`;
+      return;
+    }
+    const button = buttonBox();
     if (box.width > box.height) {
       const width = Math.min(400, box.width - button.width - 3 * GAP);
       const left = position.side === 'right' ? button.left - GAP - width : button.right + GAP;
@@ -245,7 +279,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   toggle.addEventListener(
     'pointerdown',
     (event) => {
-      if (!active || event.button !== 0) return;
+      if (!active || !floating || event.button !== 0) return;
       const rect = toggle.getBoundingClientRect();
       press = { id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
       dragging = false;
@@ -324,6 +358,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
     },
     { signal },
   );
+  anchor.addEventListener('click', () => active && !floating && togglePanel(), { signal });
 
   // ------------------------------------------------------------------ closing
   // The scrim covers the room, so a press there never reaches the camera or a seat. It closes the
@@ -398,7 +433,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
       clearTimeout(restTimer);
       root.dataset.rest = 'false';
       root.dataset.open = 'true';
-      toggle.setAttribute('aria-expanded', 'true');
+      opener().setAttribute('aria-expanded', 'true');
       scrim.hidden = false;
       panel.hidden = false;
       placePanel();
@@ -410,12 +445,12 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
       if (!open) return;
       open = false;
       root.dataset.open = 'false';
-      toggle.setAttribute('aria-expanded', 'false');
+      opener().setAttribute('aria-expanded', 'false');
       const hadFocus = panel.contains(document.activeElement);
       scrim.hidden = true;
       panel.hidden = true;
       options.onOpenChange(false);
-      if (focusToggle || hadFocus) toggle.focus({ preventScroll: true });
+      if (focusToggle || hadFocus) opener().focus({ preventScroll: true });
       wake();
     },
     refresh() {
@@ -436,8 +471,19 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
         clearTimeout(restTimer);
       }
     },
+    setFloating(next) {
+      if (next === floating) return;
+      api.close(false);
+      hideHintSilently();
+      floating = next;
+      root.dataset.floating = String(next);
+      title.textContent = next ? 'Điều khiển rạp' : 'Cài đặt';
+      close.setAttribute('aria-label', next ? 'Đóng điều khiển rạp' : 'Đóng cài đặt');
+      place();
+      wake();
+    },
     showHint(lines, onDismiss) {
-      if (!active || open) return;
+      if (!active || open || !floating) return;
       hintText.replaceChildren(...lines.map((line) => el('p', '', line)));
       onHintDismiss = onDismiss;
       hint.hidden = false;
@@ -445,7 +491,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
     },
     hideHint() {
       hideHintSilently();
-      if (active) toggle.focus({ preventScroll: true });
+      if (active) opener().focus({ preventScroll: true });
     },
     dispose() {
       clearTimeout(restTimer);
@@ -456,5 +502,6 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   root.dataset.open = 'false';
   root.dataset.rest = 'false';
   root.dataset.active = 'false';
+  root.dataset.floating = 'true';
   return api;
 }

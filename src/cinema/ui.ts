@@ -13,7 +13,6 @@ export const TOGGLEABLE_PARTS: ReadonlyArray<{ part: ToggleablePart; label: stri
 ];
 
 export interface CinemaUiHandlers {
-  onTask(task: CinemaTask): void;
   onPreset(id: CameraPresetId): void;
   onReset(): void;
   /** Starts the tour, or stops it while it runs. */
@@ -71,17 +70,15 @@ export interface CinemaUi {
   screen: HTMLElement;
   /** The row of that column and the seat panel. */
   main: HTMLElement;
-  /** Each task's controls, under the view; only the current task's are shown. */
+  /** Each task's controls, as sections of the control panel ("Cài đặt", or the round button on phones). */
   dock: Record<CinemaTask, HTMLElement>;
   /** In the header, for the film's small play/pause control while another task is shown. */
   miniSlot: HTMLElement;
   /** "Góc nhìn: …" line of Xem phim, placed by the page next to the player. */
   watchView: HTMLElement;
-  taskButton(task: CinemaTask): HTMLButtonElement;
   setTask(task: CinemaTask): void;
   /** Mirrors the seat panel; a full-screen sheet makes the rest of the page inert (modal). */
   setPanel(state: PanelState): void;
-  setSeatCount(count: number): void;
   /** A short visual notice over the viewport (screen readers get the panel's live region). */
   setNotice(text: string): void;
   /** Shows the "back" button over the viewport with this label, or hides it (null). */
@@ -98,14 +95,14 @@ export interface CinemaUi {
   /** Camera, display and inspection controls need the scene: off (with the reason) while there is none. */
   setSceneControls(available: boolean, reason?: string): void;
   setWatchView(text: string, action: string | null): void;
-  /** Closes the settings and "Góc khác" menus (and the control hub). */
+  /** Closes the control panel (and the "Góc khác" menu). */
   closeMenus(): void;
   /**
-   * Phones (`immersive`): the room fills the screen and the task controls, the player and the
-   * settings move into the floating control hub; back in place otherwise. Same elements either way.
+   * Phones (`immersive`): the room fills the screen and the control panel opens from a floating
+   * round button. Otherwise it drops down from "Cài đặt" in the header. Same panel either way.
    */
   setLayout(immersive: boolean): void;
-  /** The control hub's button: where focus goes on a phone when what held it is gone. */
+  /** The button that opens the control panel now: where focus goes when what held it is gone. */
   readonly hubToggle: HTMLButtonElement;
   /** Phone layout: a small card for the seat just tapped in the room, with "Xem từ ghế này". */
   showSeatCard(seatId: string, text: string, canView: boolean): void;
@@ -123,9 +120,6 @@ export interface CinemaUi {
 }
 
 const ICONS = {
-  explore: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm3.6-11.6-2.1 5.1-5.1 2.1 2.1-5.1z',
-  seats: 'M7 4h10a2 2 0 0 1 2 2v5h1a1 1 0 0 1 1 1v6h-2v2h-2v-2H7v2H5v-2H3v-6a1 1 0 0 1 1-1h1V6a2 2 0 0 1 2-2zm0 2v6h10V6zm-2 8v2h14v-2z',
-  watch: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 2v10h14V7zm5 2 5 3-5 3z',
   settings: 'M4 6h9v2H4zm13 0h3v2h-3zm-3-2h2v6h-2zM4 16h3v2H4zm7 0h9v2h-9zm-3-2h2v6H8z',
   more: 'M7 10l5 5 5-5z',
 };
@@ -144,20 +138,19 @@ export function icon(d: string): SVGSVGElement {
 }
 
 /**
- * Builds the /cinema page chrome around three tasks: Khám phá (camera views, tour, walking),
- * Chọn ghế (selection summary and the seat panel) and Xem phim (the player).
+ * Builds the /cinema page chrome: the room takes the whole page under a slim header, and every
+ * control lives in one panel, grouped (the control hub): seats and camera views (Khám phá, Chọn
+ * ghế), the film (Xem phim), display settings, help.
  *
- * - Header: title, the task switch, the film's mini control (while another task is shown) and
- *   "Cài đặt" (quality, plus the inspection tools folded inside).
- * - The view: canvas with caption, tour bar, way back, notices and status over it.
- * - The dock under the view: the current task's controls only, so panels never stack up.
- * Menus are non-modal popovers: Escape, a press elsewhere or picking an action closes them and
- * focus returns to their button; a press on the 3D view that closes one goes no further (it never
- * selects a seat or turns the camera). State is mirrored onto `data-*` attributes of the root so
- * automated checks can wait on it.
+ * - Header: title, the film's mini control and "Cài đặt", which opens that panel.
+ * - The view: canvas with tour bar, way back, notices and status over it.
+ * - The seat map: beside the view, or a sheet under it on portrait screens.
+ * The "Góc khác" menu is a non-modal popover; a press on the 3D view that closes it goes no further
+ * (it never selects a seat or turns the camera). State is mirrored onto `data-*` attributes of the
+ * root so automated checks can wait on it.
  *
- * On phones the room fills the screen instead: header and dock leave the layout and their controls
- * (the same elements) move into the control hub's sections (see `setLayout`).
+ * On phones the header leaves the layout too and the panel opens from a floating round button
+ * (see `setLayout`).
  */
 export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, options: CinemaUiOptions): CinemaUi {
   const listeners = new AbortController();
@@ -240,36 +233,18 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const title = el('h1', 'cinema-title visually-hidden', 'Phòng chiếu 3D');
   title.tabIndex = -1;
 
-  const tasks = el('div', 'cinema-tasks');
-  tasks.setAttribute('role', 'group');
-  tasks.setAttribute('aria-label', 'Tác vụ');
-  const taskButtons = new Map<CinemaTask, HTMLButtonElement>();
-  const seatCount = el('span', 'cinema-tasks__count');
-  seatCount.setAttribute('aria-hidden', 'true');
-  for (const { id, label } of CINEMA_TASKS) {
-    const element = el('button', 'cinema-tasks__button');
-    element.type = 'button';
-    element.dataset.task = id;
-    element.setAttribute('aria-pressed', 'false');
-    element.append(icon(ICONS[id]), el('span', 'cinema-tasks__label', label));
-    if (id === 'seats') element.append(seatCount);
-    element.addEventListener('click', () => handlers.onTask(id), { signal });
-    taskButtons.set(id, element);
-    tasks.append(element);
-  }
-
   const headerEnd = el('div', 'cinema-header__end');
   const miniSlot = el('div', 'cinema-header__mini');
 
-  const settings = el('div', 'cinema-menu');
+  // Opens the control panel (the hub's panel, dropped down under it).
   const settingsButton = button('', 'cinema-button cinema-menu__toggle');
   settingsButton.dataset.action = 'settings';
   settingsButton.setAttribute('aria-label', 'Cài đặt');
   settingsButton.append(icon(ICONS.settings), el('span', 'cinema-menu__label', 'Cài đặt'));
-  const settingsPanel = el('div', 'cinema-popover cinema-settings');
+  const settingsPanel = el('div', 'cinema-settings');
   settingsPanel.id = 'cinema-settings';
   settingsPanel.setAttribute('role', 'group');
-  settingsPanel.setAttribute('aria-label', 'Cài đặt');
+  settingsPanel.setAttribute('aria-label', 'Hiển thị');
 
   const qualityGroup = group('Chất lượng hiển thị');
   qualityGroup.classList.add('cinema-settings__row');
@@ -321,15 +296,9 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   inspectViews.append(inspectorButton);
   inspectPanel.append(inspectViews, visibilityGroup);
   settingsPanel.append(qualityGroup, qualityHint, inspectToggle, inspectPanel);
-  settings.append(settingsButton, settingsPanel);
-  const settingsMenu = menu(settingsButton, settingsPanel);
-  // A technical view needs the room in sight: picking one closes the menu.
-  for (const preset of CAMERA_PRESETS.filter((p) => p.space === 'inspection')) {
-    presetButtons.get(preset.id)!.addEventListener('click', () => setMenu(settingsMenu, false, true), { signal });
-  }
 
-  headerEnd.append(miniSlot, settings);
-  header.append(title, home, tasks, headerEnd);
+  headerEnd.append(miniSlot, settingsButton);
+  header.append(title, home, headerEnd);
 
   // ------------------------------------------------------------------ the view
   const stage = el('div', 'cinema-stage');
@@ -408,13 +377,11 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   status.setAttribute('role', 'status');
   stage.append(viewport, overlay, tourBar, returnButton, notice, status);
 
-  // ------------------------------------------------------------------ the dock
-  const dockElement = el('div', 'cinema-dock');
+  // ------------------------------------------------------------------ each task's controls
   const dockPanel = (task: CinemaTask) => {
     const section = el('section', 'cinema-dock__panel');
     section.dataset.dock = task;
     section.setAttribute('aria-label', CINEMA_TASKS.find((t) => t.id === task)!.label);
-    dockElement.append(section);
     return section;
   };
   const dock: Record<CinemaTask, HTMLElement> = { explore: dockPanel('explore'), seats: dockPanel('seats'), watch: dockPanel('watch') };
@@ -465,14 +432,14 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   watchView.append(watchText, watchAction);
 
   const screen = el('div', 'cinema-screen');
-  screen.append(stage, dockElement);
+  screen.append(stage);
   const main = el('main', 'cinema-main');
   main.append(screen);
 
   root.append(header, main);
   host.replaceChildren(root);
 
-  // ------------------------------------------------------------------ the control hub (phones)
+  // ------------------------------------------------------------------ the control hub
   let immersive = false;
   let filmStatus: HTMLElement | null = null;
   const placeFilmStatus = () => {
@@ -481,6 +448,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     else stage.append(filmStatus);
   };
   const hub = createControlHub(root, {
+    anchor: settingsButton,
     // Actions that need the room in sight close the panel; settings, sound and seeking keep it open.
     closeOn: [
       '[data-preset]',
@@ -504,6 +472,11 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   // The stack grows (a film problem, the seat card): the hint moves up with it.
   const overlayResize = new ResizeObserver(() => immersive && hub.refresh());
   overlayResize.observe(overlay);
+  // The panel's sections, on every screen: Ghế và góc nhìn; Phim và âm thanh; Hiển thị (quality,
+  // full screen, then the inspection tools).
+  hub.section('seats').append(dock.seats, dock.explore);
+  hub.section('film').append(dock.watch);
+  hub.section('display').append(settingsPanel);
 
   // Hiển thị: the browser's full screen, where it can (never on iPhone Safari); the page works without it.
   const fullscreenRow = el('div', 'cinema-hub__row');
@@ -514,6 +487,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   fullscreenRow.append(fullscreenButton, fullscreenNote);
   const fullscreenSupported = typeof document.documentElement.requestFullscreen === 'function' && document.fullscreenEnabled;
   fullscreenRow.hidden = !fullscreenSupported;
+  settingsPanel.insertBefore(fullscreenRow, inspectToggle);
   const paintFullscreen = () => {
     const on = document.fullscreenElement !== null;
     fullscreenButton.setAttribute('aria-pressed', String(on));
@@ -537,13 +511,16 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const help = el('ul', 'cinema-hub__help');
   for (const line of [
     ...hintLines.slice(0, 2),
-    'Đi bộ: kéo cần điều khiển ở góc dưới bên trái để đi, kéo phần còn lại để nhìn quanh.',
+    options.touch
+      ? 'Đi bộ: kéo cần điều khiển ở góc dưới bên trái để đi, kéo phần còn lại để nhìn quanh.'
+      : 'Đi bộ: W A S D hoặc các phím mũi tên để đi, kéo chuột để nhìn quanh.',
     'Phim không tự phát: bấm Phát trong mục Phim và âm thanh.',
-    'Nút tròn kéo được sang chỗ khác; thả ra, nó nằm sát cạnh gần nhất.',
   ]) {
     help.append(el('li', '', line));
   }
-  const guideButton = button('Xem lại hướng dẫn nhanh', 'cinema-button cinema-button--compact');
+  // The round button only exists on phones.
+  help.append(el('li', 'cinema-hub__floating-only', 'Nút tròn kéo được sang chỗ khác; thả ra, nó nằm sát cạnh gần nhất.'));
+  const guideButton = button('Xem lại hướng dẫn nhanh', 'cinema-button cinema-button--compact cinema-hub__floating-only');
   guideButton.dataset.action = 'hub-guide';
   const demoNote = el('p', 'cinema-hub__note', `${BRAND.name} · ${BRAND.demoNote}. Ghế là dữ liệu minh họa.`);
   hub.section('help').append(help, guideButton, demoNote);
@@ -617,11 +594,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     dock,
     miniSlot,
     watchView,
-    taskButton: (task) => taskButtons.get(task)!,
     setTask(task) {
       root.dataset.task = task;
-      for (const [id, element] of taskButtons) element.setAttribute('aria-pressed', String(id === task));
-      for (const [id, section] of Object.entries(dock)) section.hidden = id !== task;
       if (menuOpen(moreMenu)) setMenu(moreMenu, false);
     },
     setPanel(state) {
@@ -632,9 +606,6 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       screen.inert = state === 'expanded';
       hub.root.inert = state === 'expanded';
       if (state === 'expanded') hub.close(false);
-    },
-    setSeatCount(count) {
-      seatCount.textContent = count > 0 ? String(count) : '';
     },
     setNotice(text) {
       clearTimeout(noticeTimer);
@@ -721,26 +692,17 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       immersive = next;
       root.dataset.layout = next ? 'immersive' : 'standard';
       ui.closeMenus();
-      if (next) {
-        // Ghế và góc nhìn; Phim và âm thanh; Hiển thị (quality, full screen, then the inspection tools).
-        hub.section('seats').append(dock.seats, dock.explore);
-        hub.section('film').append(dock.watch);
-        hub.section('display').append(settingsPanel);
-        settingsPanel.insertBefore(fullscreenRow, inspectToggle);
-      } else {
-        hideSeatCard();
-        dockElement.append(dock.explore, dock.seats, dock.watch);
-        fullscreenRow.remove();
-        settings.append(settingsPanel);
-      }
+      if (!next) hideSeatCard();
       placeFilmStatus();
-      hub.setActive(next);
+      hub.setFloating(next);
     },
     attachFilmStatus(element) {
       filmStatus = element;
       placeFilmStatus();
     },
-    hubToggle: hub.toggle,
+    get hubToggle() {
+      return immersive ? hub.toggle : settingsButton;
+    },
     showSeatCard(seatId, text, canView) {
       if (!immersive) return;
       seatCardId = seatId;
@@ -789,6 +751,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   };
 
   root.dataset.layout = 'standard';
+  hub.setFloating(false);
+  hub.setActive(true);
   ui.setTask('explore');
   ui.setPanel('closed');
   ui.setStatus({ kind: 'loading' });

@@ -146,67 +146,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   vertical-align: middle;
 }
 
-/* The task switch: three equal choices, the current one filled. */
-.cinema-tasks {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  background: var(--panel);
-}
-
-.cinema-tasks__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: var(--tap);
-  padding: 4px 14px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.cinema-tasks__button:hover:not([aria-pressed='true']) {
-  background: rgb(255 255 255 / 0.06);
-  color: var(--text);
-}
-
-.cinema-tasks__button[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-text);
-  font-weight: 650;
-}
-
-.cinema-tasks__count {
-  min-width: 2.4ch;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: rgb(216 182 90 / 0.22);
-  color: var(--text);
-  font-size: 0.75rem;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.cinema-tasks__button[aria-pressed='true'] .cinema-tasks__count {
-  background: rgb(23 19 10 / 0.18);
-  color: var(--accent-text);
-}
-
-.cinema-tasks__count:empty {
-  display: none;
-}
-
 .cinema-header__end {
   display: flex;
   flex: none;
@@ -238,10 +177,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   width: 20px;
   height: 20px;
   fill: currentColor;
-}
-
-.cinema-app[data-task='watch'] .cinema-mini {
-  display: none;
 }
 
 /* ---------- Buttons and switches ---------- */
@@ -281,7 +216,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-button:focus-visible,
-.cinema-tasks__button:focus-visible,
 .cinema-mini:focus-visible,
 .cinema-switch__input:focus-visible + .cinema-switch__track,
 .cinema-app a:focus-visible {
@@ -360,35 +294,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   min-width: 0;
 }
 
-/* ---------- Menus (non-modal popovers) ---------- */
-
-.cinema-menu {
-  position: relative;
-}
-
-.cinema-popover {
-  display: none;
-}
+/* ---------- Hiển thị (a section of the control panel) ---------- */
 
 .cinema-settings {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 30;
+  display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(380px, calc(100vw - 2 * var(--gutter)));
-  max-height: calc(100dvh - 90px);
-  overflow-y: auto;
-  padding: 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  background: var(--panel-raised);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
-}
-
-.cinema-settings[data-open='true'] {
-  display: flex;
 }
 
 .cinema-settings__heading {
@@ -597,8 +508,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   pointer-events: none;
 }
 
-/* The stick belongs to Khám phá. */
-.cinema-app:not([data-task='explore']) .cinema-stick {
+/* The stick shows while walking. */
+.cinema-app:not([data-explore='true']) .cinema-stick {
   display: none;
 }
 
@@ -665,7 +576,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border-color: #a8483f;
 }
 
-.cinema-app:not([data-task='watch']) .cinema-filmstatus,
+.cinema-filmstatus[data-level='info'],
 .cinema-app[data-status='loading'] .cinema-filmstatus,
 .cinema-app[data-status='context-lost'] .cinema-filmstatus {
   display: none;
@@ -688,11 +599,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   color: var(--danger);
 }
 
-/* ---------- The dock: the current task's controls, under the view ---------- */
-
-.cinema-dock {
-  flex: none;
-}
+/* ---------- Each task's controls (sections of the control panel) ---------- */
 
 .cinema-dock__panel {
   display: flex;
@@ -1453,14 +1360,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
-/* Phones in portrait: two header rows (title and menus; then the three tasks, full width). */
+/* Phones in portrait: one header row (title and menus). */
 @media (max-width: 599px) {
   .cinema-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'title end'
-      'tasks tasks';
+    grid-template-areas: 'title end';
     gap: 6px 8px;
     padding: 6px 12px 8px;
   }
@@ -1476,17 +1381,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   .cinema-header__end {
     grid-area: end;
     gap: 6px;
-  }
-
-  .cinema-tasks {
-    grid-area: tasks;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .cinema-tasks__button {
-    padding-inline: 6px;
-    font-size: 0.85rem;
   }
 
   .cinema-menu__toggle {
@@ -1576,7 +1470,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 /* Very narrow phones: the names carry the meaning; decorative icons go, icon buttons keep their names for screen readers. */
 @media (max-width: 399px) {
-  .cinema-tasks .cinema-icon,
   .cinema-more__toggle svg {
     display: none;
   }
@@ -1618,12 +1511,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
   .cinema-seats__expand {
     display: inline-flex;
-  }
-
-  /* The sheet replaces the summary line while it is open. */
-  .cinema-app[data-panel='open'] .cinema-dock,
-  .cinema-app[data-panel='expanded'] .cinema-dock {
-    display: none;
   }
 
   /* Full screen: the map is the page. Header and view leave the layout (the canvas keeps its last
@@ -1669,15 +1556,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   /* Only the mark leads home here (its link keeps the name for screen readers). */
   .cinema-brand__name {
     display: none;
-  }
-
-  .cinema-tasks {
-    padding: 2px;
-  }
-
-  .cinema-tasks__button {
-    padding-inline: 10px;
-    font-size: 0.82rem;
   }
 
   .cinema-main {
@@ -1743,8 +1621,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
    overlays that remain stay clear of the safe areas: the way back from a seat, the tour bar, the
    walking stick, the film's problems, and for a moment the card of a seat just tapped. */
 
-.cinema-hub,
 .cinema-seatcard {
+  display: none;
+}
+
+.cinema-app:not([data-layout='immersive']) .cinema-hub__toggle,
+.cinema-app:not([data-layout='immersive']) .cinema-hub__floating-only {
   display: none;
 }
 
@@ -1753,8 +1635,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   padding: 0;
 }
 
-.cinema-app[data-layout='immersive'] .cinema-header,
-.cinema-app[data-layout='immersive'] .cinema-dock {
+.cinema-app[data-layout='immersive'] .cinema-header {
   display: none;
 }
 
@@ -1882,15 +1763,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-.cinema-app:not([data-layout='immersive']) .cinema-player__resume {
-  display: none;
-}
-
 /* ---------- The control hub: the floating button and its panel ---------- */
-
-.cinema-app[data-layout='immersive'] .cinema-hub {
-  display: block;
-}
 
 /* The full-screen seat map is the page: the hub waits behind it. */
 .cinema-app[data-panel='expanded'] .cinema-hub {
@@ -2251,18 +2124,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-hub .cinema-watchview__text {
   white-space: normal;
-}
-
-.cinema-hub .cinema-settings {
-  position: static;
-  display: flex;
-  width: auto;
-  max-height: none;
-  overflow: visible;
-  padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
 }
 
 /* ---------- Reduced motion: no spinning, no sliding switches ---------- */

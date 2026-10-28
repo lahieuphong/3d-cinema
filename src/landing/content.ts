@@ -35,7 +35,7 @@ const STEPS = [
   },
   {
     title: 'Phát video trên màn chiếu',
-    text: 'Mở “Xem phim” và bấm Phát. Video không tự chạy; bạn tạm dừng, tua và tắt tiếng lúc nào cũng được.',
+    text: 'Mở “Cài đặt” (trên điện thoại là nút tròn) và bấm Phát ở mục Phim và âm thanh. Video không tự chạy; bạn tạm dừng, tua và tắt tiếng lúc nào cũng được.',
     alt: 'Màn chiếu nhìn từ một ghế giữa phòng, trình phát ở phía dưới.',
   },
 ];
