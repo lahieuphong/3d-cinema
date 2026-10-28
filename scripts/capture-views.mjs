@@ -2801,23 +2801,25 @@ async function filmDesktop(browser, base) {
   });
   report.film.metrics.pausedStill = { renders: pausedRates.rendersPerSecond };
 
-  // Seek while paused: the new frame appears, then rendering stops again.
-  const beforeSeek = await page.evaluate(() => ({ pixels: window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]), version: window.__cinema.film().view.screen.textureVersion, rendered: window.__cinema.getState().view.framesRendered }));
+  // Seek while paused: the new frame appears, then rendering stops again. The target is well away
+  // from where it paused (that depends on timing above), so the two pictures always differ.
+  const beforeSeek = await page.evaluate(() => ({ time: window.__cinema.film().snapshot.currentTime, pixels: window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]), version: window.__cinema.film().view.screen.textureVersion, rendered: window.__cinema.getState().view.framesRendered }));
+  const seekTarget = beforeSeek.time > 10 ? 5 : 15;
   await focusUi(page, 'input[data-action="media-seek"]');
   await page.keyboard.press('Home');
   await page.waitForFunction(() => window.__cinema.film().snapshot.currentTime < 0.5);
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => Math.abs(window.__cinema.film().snapshot.currentTime - 15) < 0.6);
+  for (let i = 0; i < seekTarget / 5; i++) await page.keyboard.press('ArrowRight');
+  await page.waitForFunction((t) => Math.abs(window.__cinema.film().snapshot.currentTime - t) < 0.6, seekTarget);
   await page.waitForTimeout(400);
   const afterSeek = await page.evaluate(() => ({ pixels: window.__cinema.screenPixels([[0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.5, 0.25], [0.5, 0.75]]), version: window.__cinema.film().view.screen.textureVersion, rendered: window.__cinema.getState().view.framesRendered }));
   const seekIdle = await filmRates(page, 1000);
   f = await film(page);
   const seekChanged = beforeSeek.pixels.some((p, i) => p.screen.some((c, k) => Math.abs(c - afterSeek.pixels[i].screen[k]) > 24));
   check('film: seek while paused shows the new frame (texture re-uploaded, picture changed), then rendering stops', f.snapshot.state === 'paused' && afterSeek.version > beforeSeek.version && afterSeek.rendered > beforeSeek.rendered && seekChanged && seekIdle.rendersPerSecond === 0, {
-    time: f.snapshot.currentTime,
+    time: [beforeSeek.time, f.snapshot.currentTime],
     versions: [beforeSeek.version, afterSeek.version],
+    rendered: [beforeSeek.rendered, afterSeek.rendered],
+    seekChanged,
     seekIdle,
   });
   await screenshot(page, 'film-3-paused-after-seek');

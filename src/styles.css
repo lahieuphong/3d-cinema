@@ -334,33 +334,29 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border-top: 1px solid var(--panel-border);
 }
 
-/* ---------- Main area: the view column and the seat panel ---------- */
+/* ---------- Main area: the room and the seat panel, edge to edge under the header ---------- */
 
 .cinema-main {
   /* Always the flexible row, also while the header is out of the layout (full-screen sheet). */
   grid-row: 2;
   display: flex;
-  gap: var(--gutter);
   min-width: 0;
   min-height: 0;
-  padding: 0 var(--gutter) var(--gutter);
 }
 
 .cinema-screen {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
   min-height: 0;
 }
 
+/* The room fills the window: no gutter, border or rounded corners around it. */
 .cinema-stage {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
   overflow: hidden;
   background: #16181c;
 }
@@ -860,6 +856,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-size: 0.86rem;
 }
 
+/* Beside the room, flush with it: one dividing line instead of a frame. */
+.cinema-seats[data-state='open'] {
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+}
+
 .cinema-seats__header {
   flex: none;
   display: flex;
@@ -1272,6 +1274,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-app--inspector .cinema-stage {
   margin: 0 var(--gutter) var(--gutter);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
 }
 
 /* Measured seat dimensions in the seat inspector. */
@@ -1393,11 +1397,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     display: none;
   }
 
-  .cinema-main {
-    padding-inline: 10px;
-    padding-bottom: 10px;
-  }
-
   .cinema-overlay {
     left: 8px;
     right: 8px;
@@ -1500,13 +1499,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 @media (orientation: portrait) and (max-width: 1024px) {
   .cinema-main {
     flex-direction: column;
-    gap: 8px;
   }
 
   .cinema-seats {
     width: auto;
     max-height: 52vh;
     max-height: 52dvh;
+  }
+
+  .cinema-seats[data-state='open'] {
+    border-width: 1px 0 0;
   }
 
   .cinema-seats__expand {
@@ -1521,7 +1523,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 
   .cinema-app[data-panel='expanded'] .cinema-main {
-    padding-top: var(--gutter);
+    padding: var(--gutter);
   }
 
   .cinema-seats[data-state='expanded'] {
@@ -1556,18 +1558,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   /* Only the mark leads home here (its link keeps the name for screen readers). */
   .cinema-brand__name {
     display: none;
-  }
-
-  .cinema-main {
-    padding-bottom: 6px;
-  }
-
-  .cinema-screen {
-    gap: 6px;
-  }
-
-  .cinema-dock__panel {
-    padding-block: 4px;
   }
 
   .cinema-seats {
@@ -1641,17 +1631,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-app[data-layout='immersive'] .cinema-main {
   grid-row: 1;
-  gap: 0;
-  padding: 0;
-}
-
-.cinema-app[data-layout='immersive'] .cinema-screen {
-  gap: 0;
-}
-
-.cinema-app[data-layout='immersive'] .cinema-stage {
-  border: 0;
-  border-radius: 0;
 }
 
 /* The seat map: closed, or the whole screen (a dialog, as the full-screen sheet was). */
