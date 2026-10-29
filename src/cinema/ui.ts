@@ -145,6 +145,7 @@ export const ICONS = {
   map: 'M4 5h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 11h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 17h4v2H4zm6 0h4v2h-4zm6 0h4v2h-4z',
   chevron: 'M9.2 5.6 7.8 7l5 5-5 5 1.4 1.4 6.4-6.4z',
   back: 'M14.8 5.6 16.2 7l-5 5 5 5-1.4 1.4L8.4 12z',
+  stop: 'M8.5 7h7A1.5 1.5 0 0 1 17 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 15.5v-7A1.5 1.5 0 0 1 8.5 7z',
   fullscreen: 'M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z',
   // Khám phá's views: the room from the back (screen and curved rows), the seats from the front (an
   // armchair), the view from one seat (an eye; also "Xem từ ghế …"), and the rarer views (stacked frames).
@@ -380,20 +381,39 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   seatCardClose.addEventListener('click', hideSeatCard, { signal });
   overlay.append(seatCard, caption);
 
+  // The tour as a live card at the top: the pin, "Đang tham quan · 2/6" over the stop's name and a
+  // segment per stop, then the way out; stepping (reduced motion) adds "Trước" / "Tiếp" under it.
+  // The card is for the eyes; a hidden live line says the same to screen readers, once per stop.
   const tourBar = el('div', 'cinema-tourbar');
   tourBar.hidden = true;
-  const tourText = el('span', 'cinema-tourbar__text');
+  const tourText = el('span', 'visually-hidden');
   tourText.setAttribute('aria-live', 'polite');
-  const previousStop = button('Trước', 'cinema-button cinema-button--compact');
-  previousStop.dataset.action = 'tour-previous';
-  previousStop.addEventListener('click', () => handlers.onTourStep(-1), { signal });
-  const nextStop = button('Tiếp', 'cinema-button cinema-button--compact');
-  nextStop.dataset.action = 'tour-next';
-  nextStop.addEventListener('click', () => handlers.onTourStep(1), { signal });
-  const stopTour = button('Dừng', 'cinema-button cinema-button--compact');
-  stopTour.dataset.action = 'tour-stop';
-  stopTour.addEventListener('click', () => handlers.onTour(), { signal });
-  tourBar.append(tourText, previousStop, nextStop, stopTour);
+  const tourIcon = el('span', 'cinema-tourbar__icon');
+  tourIcon.append(icon(ICONS.tour));
+  const tourInfo = el('span', 'cinema-tourbar__info');
+  tourInfo.setAttribute('aria-hidden', 'true');
+  const tourMeta = el('span', 'cinema-tourbar__meta');
+  const tourTitle = el('span', 'cinema-tourbar__title');
+  const tourProgress = el('span', 'cinema-tourbar__progress');
+  tourInfo.append(tourMeta, tourTitle, tourProgress);
+  const tourBarButton = (action: string, glyph: string, text: string, iconAfter = false) => {
+    const element = button('', 'cinema-button cinema-button--compact');
+    element.dataset.action = action;
+    const label = el('span', '', text);
+    if (iconAfter) element.append(label, icon(glyph));
+    else element.append(icon(glyph), label);
+    return { element, label };
+  };
+  const previousStop = tourBarButton('tour-previous', ICONS.back, 'Trước');
+  previousStop.element.addEventListener('click', () => handlers.onTourStep(-1), { signal });
+  const nextStop = tourBarButton('tour-next', ICONS.chevron, 'Tiếp', true);
+  nextStop.element.addEventListener('click', () => handlers.onTourStep(1), { signal });
+  const stopTour = tourBarButton('tour-stop', ICONS.stop, 'Dừng');
+  stopTour.element.classList.add('cinema-tourbar__stop');
+  stopTour.element.addEventListener('click', () => handlers.onTour(), { signal });
+  const tourSteps = el('span', 'cinema-tourbar__steps');
+  tourSteps.append(previousStop.element, nextStop.element);
+  tourBar.append(tourText, tourIcon, tourInfo, stopTour.element, tourSteps);
 
   const notice = el('p', 'cinema-notice');
   notice.setAttribute('aria-hidden', 'true');
@@ -744,9 +764,9 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     ...toggles.values(),
     ...qualityButtons.values(),
     inspectorButton,
-    previousStop,
-    nextStop,
-    stopTour,
+    previousStop.element,
+    nextStop.element,
+    stopTour.element,
     returnButton,
   ];
   let announced = '';
@@ -807,16 +827,26 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
         announced = '';
         return;
       }
-      previousStop.hidden = !next.steps;
-      nextStop.hidden = !next.steps;
-      previousStop.disabled = next.stopIndex === 0;
-      nextStop.textContent = next.stopIndex === next.stopCount - 1 ? 'Kết thúc' : 'Tiếp';
-      stopTour.textContent = next.steps ? 'Thoát' : 'Dừng';
-      // Announced once per stop, not every frame.
+      tourBar.dataset.steps = String(next.steps);
+      tourSteps.hidden = !next.steps;
+      previousStop.element.disabled = next.stopIndex === 0;
+      nextStop.label.textContent = next.stopIndex === next.stopCount - 1 ? 'Kết thúc' : 'Tiếp';
+      stopTour.label.textContent = next.steps ? 'Thoát' : 'Dừng';
+      stopTour.element.querySelector('path')!.setAttribute('d', next.steps ? CLOSE_ICON : ICONS.stop);
+      // Announced once per stop, not every frame; the card follows the same moments.
       const text = `${next.steps ? 'Điểm' : 'Đang tham quan · điểm'} ${next.stopIndex + 1}/${next.stopCount}: ${next.label}`;
       if (text !== announced) {
         announced = text;
         tourText.textContent = text;
+        tourMeta.textContent = `${next.steps ? 'Tham quan từng điểm' : 'Đang tham quan'} · ${next.stopIndex + 1}/${next.stopCount}`;
+        tourTitle.textContent = next.label;
+        // One segment per stop: the ones seen, this one, the ones to come.
+        if (tourProgress.childElementCount !== next.stopCount) {
+          tourProgress.replaceChildren(...Array.from({ length: next.stopCount }, () => el('i', '')));
+        }
+        [...tourProgress.children].forEach((segment, k) => {
+          (segment as HTMLElement).dataset.state = k < next.stopIndex ? 'done' : k === next.stopIndex ? 'current' : 'next';
+        });
       }
     },
     setExploring(active) {

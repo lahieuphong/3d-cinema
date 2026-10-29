@@ -68,10 +68,11 @@ const MARGIN = 12;
 const GAP = 10;
 /**
  * Bands the button never covers (CSS px inside the safe area): the top, where the way back from a
- * seat and the tour bar sit (the bar wraps to two lines on a narrow phone), and on the left side the
- * lower corner, where the walking stick appears.
+ * seat and the tour card sit (the card, 12 px from the top, is 71 px tall while the tour plays and
+ * 123 px while it steps, with "Trước" / "Tiếp" under it), and on the left side the lower corner,
+ * where the walking stick appears.
  */
-const TOP_CLEAR = 104;
+const TOP_CLEAR = 144;
 const STICK_CLEAR = 152;
 /** Movement before a press on the button becomes a drag (CSS px). */
 const DRAG_SLOP = 8;

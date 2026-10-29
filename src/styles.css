@@ -731,30 +731,122 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   background-color: var(--glass-clear-tint);
 }
 
+/* The tour, as a live card: the pin in a champagne drop, "Đang tham quan · 2/6" over the stop's
+   name (two lines at most) and a segment per stop, the way out on the right; when stepping, "Trước"
+   and "Tiếp" share a row under it. */
 .cinema-tourbar {
   position: absolute;
   top: var(--chrome-top);
   left: calc(var(--edge) + env(safe-area-inset-left, 0px));
   z-index: var(--z-float);
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'icon info stop'
+    'steps steps steps';
   align-items: center;
-  gap: 4px 6px;
-  max-width: calc(100% - 2 * var(--edge));
-  padding: 4px 4px 4px 16px;
-  border-radius: var(--radius-lg);
-  font-size: var(--text-sm);
+  column-gap: 12px;
+  width: min(440px, calc(100% - 2 * var(--edge)));
+  padding: 10px 10px 10px 12px;
+  border-radius: var(--radius-xl);
 }
 
-.cinema-tourbar__text {
-  padding-right: 6px;
+.cinema-tourbar__icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(60% 50% at 50% 34%, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0) 72%), var(--accent-tint);
+  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.4);
+  color: var(--accent-strong);
+}
+
+.cinema-tourbar__icon .cinema-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.cinema-tourbar__info {
+  grid-area: info;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cinema-tourbar__meta {
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
 }
 
+.cinema-tourbar__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-title);
+}
+
+.cinema-tourbar__progress {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.cinema-tourbar__progress i {
+  flex: 1 1 0;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.2);
+  transition: background-color var(--duration-medium) var(--ease-out);
+}
+
+.cinema-tourbar__progress i[data-state='done'] {
+  background: rgb(255 255 255 / 0.55);
+}
+
+.cinema-tourbar__progress i[data-state='current'] {
+  background: var(--accent-strong);
+}
+
 .cinema-tourbar .cinema-button {
+  gap: 6px;
   border-color: transparent;
   border-radius: var(--radius-pill);
   background: var(--fill-hover);
+}
+
+.cinema-tourbar .cinema-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.cinema-tourbar__stop {
+  grid-area: stop;
+}
+
+.cinema-tourbar__steps {
+  grid-area: steps;
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cinema-tourbar__steps .cinema-button {
+  flex: 1 1 0;
+}
+
+/* Stepping: the stop's name on one line, so the card stays inside the hub button's top band. */
+.cinema-tourbar[data-steps='true'] .cinema-tourbar__title {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 /* On-screen stick for walking on touch screens; clear of the safe areas and of the task bar. */
@@ -2252,8 +2344,23 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   left: calc(12px + env(safe-area-inset-left, 0px));
 }
 
+/* On a phone the card spans the top, like a live notice. */
 .cinema-app[data-layout='immersive'] .cinema-tourbar {
-  max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-width: 480px;
+}
+
+/* A phone on its side has width and little height: stepping keeps one row (Trước, Tiếp, Thoát). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .cinema-app[data-layout='immersive'] .cinema-tourbar[data-steps='true'] {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: 'icon info steps stop';
+    max-width: 640px;
+  }
+
+  .cinema-tourbar[data-steps='true'] .cinema-tourbar__steps {
+    margin-top: 0;
+  }
 }
 
 /* Walking works from the hub: the stick shows whenever walking is on. */

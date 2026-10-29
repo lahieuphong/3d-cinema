@@ -101,6 +101,13 @@ Nguyên tắc chung:
     icon khung chồng và mũi tên menu. Dưới 900 px các góc ít dùng gộp vào “Góc khác” để Khám phá
     luôn nằm trên một hàng. Nút đóng sơ đồ ghế: × “Đóng”, hoặc ‹ “Trở lại phòng 3D” khi toàn màn
     hình. Nút chỉ có icon chỉ dùng cho điều khiển quen thuộc (phát, âm thanh, ×).
+  - Tham quan: một thẻ kính “đang diễn ra” ở góc trên (dưới thương hiệu; trên điện thoại trải
+    ngang mép trên, tối đa 480 px): icon ghim trong giọt champagne, dòng nhỏ “Đang tham quan · 2/6”
+    trên tên điểm (đậm, tối đa 2 dòng), mỗi điểm một đoạn tiến độ (đã qua, đang ở — champagne,
+    sắp tới), bên phải ■ “Dừng”. Đi từng điểm (giảm chuyển động): × “Thoát”, hàng ‹ “Trước” /
+    “Tiếp” › bên dưới, tên điểm một dòng; điện thoại ngang gom tất cả trên một hàng. Trình đọc màn
+    hình nghe một câu ẩn (aria-live) mỗi khi tới điểm mới. Thẻ cao 71 px (123 px khi đi từng
+    điểm); nút tròn trên điện thoại không vào dải 144 px trên cùng nên không che thẻ.
   - “Chọn ghế” mở sidebar kính đè lên bên phải khán phòng; canvas không đổi kích thước, thanh tác
     vụ dời sang khoảng còn lại.
   - “Cài đặt” mở thẳng màn Cài đặt chính (xem “Cài đặt” bên dưới).
