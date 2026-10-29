@@ -79,8 +79,15 @@
   /* Smallest pressable size: 40 px with a mouse, 44 px on touch screens (below). */
   --tap: 40px;
 
-  /* ---------- Type ---------- */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* ---------- Type ----------
+     SF Pro wherever it can be: Apple's system font on iPhone, iPad and Mac (-apple-system /
+     BlinkMacSystemFont give SF Pro with its optical sizes, Text and Display, chosen by size), and SF
+     Pro by name where it is installed. Its files are not served (Apple's licence keeps SF Pro to its
+     own platforms), so other systems fall back to their UI font, every one with full Vietnamese.
+     The same list is written out in the two HTML shells and the brand script's canvas. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Headings of 20 px and more: SF Pro Display first where SF Pro is installed by name. */
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --text-2xs: 0.75rem;
   --text-xs: 0.8125rem;
   --text-sm: 0.875rem;

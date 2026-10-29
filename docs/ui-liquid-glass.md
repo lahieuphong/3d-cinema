@@ -75,8 +75,16 @@ Nguyên tắc chung:
   - Khoảng cách 4/8/12/16/24/32.
   - Vùng bấm tối thiểu 40 px (chuột), 44 px (cảm ứng).
 - **Chữ.**
-  - Font hệ thống: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial`.
-    Không tải SF Pro / SF Symbols.
+  - Font: SF Pro ở mọi nơi có thể. `--font-sans`: `-apple-system, BlinkMacSystemFont, "SF Pro
+    Text", "SF Pro", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial`; tiêu đề ≥ 20 px
+    (`h1`, `h2`, tiêu đề bước) dùng `--font-display` với “SF Pro Display”. Trên iPhone, iPad, Mac
+    là SF Pro của hệ thống (tự chọn Text/Display theo cỡ); máy đã cài SF Pro dùng nó theo tên.
+    Không tải file SF Pro / SF Symbols: giấy phép của Apple chỉ cho dùng trên nền tảng của Apple,
+    nên máy khác dùng font giao diện của máy (đều đủ dấu tiếng Việt). Cùng danh sách được viết sẵn
+    trong `index.html`, `cinema.html` (trước khi CSS tới) và chữ trên slate của
+    `scripts/capture-brand-assets.mjs`; nút và ô nhập kế thừa font của trang.
+  - Mã hoá: mọi tệp là UTF-8 không BOM, chữ tiếng Việt ở dạng NFC (dấu dựng sẵn), hai HTML shell
+    khai `<meta charset="UTF-8">` đầu tiên và `lang="vi"`.
   - Cỡ chữ: thân 15–16 px, nhãn phụ 13–14 px, tiêu đề panel 20 px, hero 40–72 px.
   - Dòng ≥ 1.4 cho thân, ≥ 1.1 cho tiêu đề (đủ chỗ cho dấu tiếng Việt).
   - Số và thời gian dùng `tabular-nums`. Không còn tiêu đề in hoa giãn chữ trong hub.

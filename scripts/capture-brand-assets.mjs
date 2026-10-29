@@ -149,10 +149,10 @@ async function drawSlate(page, logoBase64) {
       g.drawImage(logo, 960 - 165, 215, 330, 330);
       g.textAlign = 'center';
       g.fillStyle = '#f3ede5';
-      g.font = '700 132px system-ui, "Segoe UI", sans-serif';
+      g.font = '700 132px -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", system-ui, "Segoe UI", Roboto, sans-serif';
       g.fillText('Tân Phong', 960, 700);
       g.fillStyle = champagne;
-      g.font = '600 52px system-ui, "Segoe UI", sans-serif';
+      g.font = '600 52px -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", system-ui, "Segoe UI", Roboto, sans-serif';
       g.letterSpacing = '22px';
       g.fillText('CINEMA', 960 + 11, 790);
       return canvas.toDataURL('image/png').split(',')[1];

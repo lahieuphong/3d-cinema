@@ -31,6 +31,21 @@ body {
   background: var(--site-bg);
 }
 
+/* One family everywhere (tokens.css): form controls take the page's (browsers give them their own),
+   and the headings of 20 px and more take the Display cut (their small badges keep Text). No
+   specificity: a rule of a page wins. */
+:where(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+:where(.landing h1, .landing h2, .step h3, .not-found h1, .route-status[data-state='error'] h1, .cinema-hub__title, .cinema-seats__title, .cinema-app--inspector .cinema-title, .cinema-status strong) {
+  font-family: var(--font-display);
+}
+
+:where(.landing h1, .landing h2, .step h3, .cinema-seats__title, .cinema-app--inspector .cinema-title) :where(span) {
+  font-family: var(--font-sans);
+}
+
 /* Every page: a link with no shape of its own (words in a sentence) still gets a rounded focus ring
    and highlight. No specificity, so any link styled as a button or pill keeps its own shape. */
 :where(a) {
