@@ -766,11 +766,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   height: 124px;
   border-radius: 50%;
   border-width: 1.5px;
+  /* Clear glass with an even rim (no lit side, no glint along the top edge). */
+  border-color: var(--glass-rim);
+  background-image: none;
+  box-shadow: var(--glass-depth), var(--shadow-round);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* The knob: one rim colour, its glint inside the disc and its glow even all round. */
 .cinema-stick__knob {
   position: absolute;
   top: 50%;
@@ -778,11 +783,10 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   width: 52px;
   height: 52px;
   margin: -26px 0 0 -26px;
-  border: 1px solid;
-  border-color: rgb(255 255 255 / 0.6) rgb(255 255 255 / 0.3) rgb(255 255 255 / 0.2) rgb(255 255 255 / 0.45);
+  border: 1px solid rgb(255 255 255 / 0.45);
   border-radius: 50%;
-  background: radial-gradient(60% 45% at 38% 26%, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 70%), rgb(255 255 255 / 0.3);
-  box-shadow: inset 0 -2px 6px rgb(255 255 255 / 0.18), 0 4px 12px rgb(0 0 0 / 0.35);
+  background: radial-gradient(48% 34% at 50% 36%, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0) 70%), rgb(255 255 255 / 0.3);
+  box-shadow: inset 0 0 6px rgb(255 255 255 / 0.16), 0 4px 12px rgb(0 0 0 / 0.32), 0 0 2px rgb(0 0 0 / 0.22);
   pointer-events: none;
 }
 
@@ -1256,6 +1260,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   min-height: var(--tap);
   padding: 0;
   border-radius: 50%;
+  box-shadow: none;
+}
+
+/* Round, so one rim colour all round and no line inside the top edge (on and off). */
+.cinema-player__button:not(.cinema-player__primary) {
+  border-color: var(--glass-border);
+}
+
+.cinema-button.cinema-player__button[aria-pressed='true'] {
+  box-shadow: none;
 }
 
 .cinema-player__button svg {
@@ -2209,8 +2223,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   pointer-events: none;
 }
 
-/* The round button, a lens of clear glass: the room shows through it, light bends along its rim
-   and catches its top. It holds no words, so it can be clearer than the panes. */
+/* The round button, a lens of clear glass: the room shows through it, its rim is one even line all
+   round and the light it catches sits inside it. It holds no words, so it can be clearer than the
+   panes. */
 .cinema-hub__toggle {
   position: fixed;
   z-index: var(--z-hub);
@@ -2219,17 +2234,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   width: 56px;
   height: 56px;
   padding: 0;
-  border-color: rgb(255 255 255 / 0.42) rgb(255 255 255 / 0.18) rgb(255 255 255 / 0.12) rgb(255 255 255 / 0.3);
+  border-color: rgb(255 255 255 / 0.3);
   border-radius: 50%;
   background-color: rgb(255 255 255 / 0.05);
   background-image:
-    radial-gradient(52% 36% at 34% 18%, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0) 72%),
+    radial-gradient(44% 30% at 50% 34%, rgb(255 255 255 / 0.3), rgb(255 255 255 / 0) 72%),
     radial-gradient(circle, rgb(255 255 255 / 0) 60%, rgb(255 255 255 / 0.1) 82%, rgb(255 255 255 / 0.22) 100%);
   box-shadow:
-    inset 0 1px 1px rgb(255 255 255 / 0.4),
-    inset 0 -3px 8px rgb(255 255 255 / 0.1),
+    inset 0 0 8px rgb(255 255 255 / 0.1),
     0 8px 22px rgb(0 0 0 / 0.32),
-    0 1px 3px rgb(0 0 0 / 0.24);
+    0 0 2px rgb(0 0 0 / 0.24);
   -webkit-backdrop-filter: blur(5px) saturate(200%) brightness(0.92);
   backdrop-filter: blur(5px) saturate(200%) brightness(0.92);
   color: #fff;
@@ -2278,7 +2292,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 /* At rest it steps back, never out of sight: thinner glass, a dimmer core. */
 .cinema-hub[data-rest='true'] .cinema-hub__toggle {
   background-color: rgb(255 255 255 / 0.02);
-  border-color: rgb(255 255 255 / 0.26) rgb(255 255 255 / 0.12) rgb(255 255 255 / 0.08) rgb(255 255 255 / 0.18);
+  border-color: rgb(255 255 255 / 0.18);
 }
 
 .cinema-hub[data-rest='true'] .cinema-hub__toggle svg {
@@ -2292,7 +2306,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 /* Open: brighter glass and a champagne core. */
 .cinema-hub[data-open='true'] .cinema-hub__toggle {
   background-color: rgb(255 255 255 / 0.18);
-  border-color: rgb(255 255 255 / 0.55) rgb(255 255 255 / 0.26) rgb(255 255 255 / 0.18) rgb(255 255 255 / 0.4);
+  border-color: rgb(255 255 255 / 0.42);
 }
 
 .cinema-hub[data-open='true'] .cinema-hub__dot {
@@ -2385,6 +2399,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border-color: transparent;
   border-radius: 50%;
   background: var(--fill-hover);
+  box-shadow: none;
 }
 
 .cinema-hub__back svg,
@@ -2780,6 +2795,17 @@ button.cinema-hub__row:disabled {
 
 .cinema-hub .cinema-player__controls {
   flex-wrap: wrap;
+}
+
+/* Round buttons stay round under the hub's 44 px minimum: as tall as they are wide. */
+.cinema-hub .cinema-player__button {
+  width: max(44px, var(--tap));
+  min-height: max(44px, var(--tap));
+}
+
+.cinema-hub .cinema-player__primary {
+  width: max(48px, calc(var(--tap) + 4px));
+  min-height: max(48px, calc(var(--tap) + 4px));
 }
 
 /* Play, time, sound and volume on one row; the seek bar gets the full width under them. */

@@ -61,6 +61,11 @@ Nguyên tắc chung:
   - Ánh trên mặt kính (`--glass-sheen`): vệt sáng phía trên, phản chiếu nhẹ ở đáy.
   - Chữ trên kính có bóng mềm (`--glass-text-shadow`); chữ trên nền champagne thì không.
   - Bóng `--shadow-sm` / `--shadow-lg`.
+  - Nút tròn (nút nổi trên điện thoại, cần điều khiển Đi bộ và núm, nút Phát/Âm thanh, ×/Quay
+    lại, số bước ở trang chủ) không dùng viền theo cạnh hay vạch sáng lệch về một phía: trên hình
+    tròn, phía sáng hơn trông như viền dày hơn. Chúng có viền một màu quanh vòng (`--glass-rim`),
+    quầng sáng đều, ánh sáng nằm bên trong mặt kính (không chạm mép) và bóng tiếp xúc ở giữa
+    (`--shadow-round`). Nút tròn luôn cao bằng rộng, kể cả trong panel 44 px trên điện thoại.
 - **Hình khối.**
   - Nút 14 px; pill 999 px; panel 26 px.
   - Khoảng cách 4/8/12/16/24/32.

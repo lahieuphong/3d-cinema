@@ -488,8 +488,9 @@ html[data-route='landing'] {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: radial-gradient(60% 50% at 36% 24%, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0)), var(--accent-tint);
-  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.3);
+  /* An even ring; the glint stays inside it (a line inside the top would thicken the ring there). */
+  background: radial-gradient(48% 36% at 50% 34%, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0) 72%), var(--accent-tint);
+  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.5);
   color: var(--accent-strong);
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
