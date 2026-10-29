@@ -151,7 +151,7 @@ async function openHubPanel(page) {
 /** Closes the control panel and "Góc khác" with their own buttons, if open. */
 async function closeMenus(page) {
   await page.evaluate(() => {
-    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"], .cinema-hub__toggle[aria-expanded="true"]')) toggle.click();
+    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"], button[data-action="inspector-options"][aria-expanded="true"], .cinema-hub__toggle[aria-expanded="true"]')) toggle.click();
   });
 }
 
@@ -173,6 +173,7 @@ async function reveal(page, selector) {
     }
     if (element.closest('#cinema-more-views')) return dock && document.querySelector('.cinema-app').dataset.task !== dock ? dock : 'more';
     if (element.closest('#cinema-seat-panel')) return 'panel';
+    if (element.closest('#cinema-inspector-options')) return 'inspector-options';
     return dock ?? 'other';
   }, selector);
   if (where.startsWith('hub')) {
@@ -195,6 +196,8 @@ async function reveal(page, selector) {
     if (!(await page.isVisible(selector))) await page.click('button[data-action="more-views"]');
   } else if (where === 'panel') {
     await openSeatPanel(page);
+  } else if (where === 'inspector-options') {
+    await page.click('button[data-action="inspector-options"]');
   } else if (['explore', 'seats', 'watch'].includes(where)) {
     await ensureTask(page, where);
   }
@@ -223,7 +226,7 @@ async function hubView(page, view) {
 async function clickUi(page, selector, options) {
   const opened = await reveal(page, selector);
   await page.click(selector, options);
-  if (opened === 'hub') await closeMenus(page);
+  if (opened === 'hub' || opened === 'inspector-options') await closeMenus(page);
 }
 
 /**
@@ -295,8 +298,9 @@ async function waitForCameraToSettle(page) {
   }
 }
 
+/** Frames one of the inspector's fixed views (no buttons: visitors turn the seat; dev hook). */
 async function selectInspectorView(page, id) {
-  await page.click(`button[data-view="${id}"]`);
+  await page.evaluate((view) => window.__seatInspector.setView(view), id);
   await waitForInspectorIdle(page, id);
 }
 
@@ -2279,6 +2283,40 @@ async function seatInspector(browser, base) {
     auditoriumMounted,
   });
 
+  // The page keeps to its title, "Tùy chọn" and "Đóng"; the switches and the quality wait in one
+  // panel (Escape closes it first, back on "Tùy chọn"); a hand over the view says it turns, words
+  // only for screen readers, and leaves on the first drag.
+  const page1 = await page.evaluate(() => {
+    const header = document.querySelector('.cinema-app--inspector .cinema-header');
+    const hint = document.querySelector('.cinema-gesture');
+    return {
+      headerButtons: [...header.querySelectorAll(':scope > .cinema-inspector__actions button')].map((b) => b.textContent.trim()),
+      visibleControls: [...document.querySelectorAll('.cinema-app--inspector button, .cinema-app--inspector input')].filter((e) => e.checkVisibility()).length,
+      viewButtons: document.querySelectorAll('button[data-view]').length,
+      panelHidden: document.querySelector('#cinema-inspector-options').hidden,
+      hint: Boolean(hint) && hint.checkVisibility({ opacityProperty: true }),
+      words: document.querySelector('.cinema-app--inspector .visually-hidden')?.textContent.includes('Kéo để xoay') ?? false,
+      caption: Boolean(document.querySelector('.cinema-app--inspector .cinema-caption')),
+    };
+  });
+  check('inspector: header is the title, "Tùy chọn" and "Đóng" only (no view buttons); a turn hint over the view, its words kept for screen readers', JSON.stringify(page1.headerButtons) === JSON.stringify(['Tùy chọn', 'Đóng']) && page1.visibleControls === 2 && page1.viewButtons === 0 && page1.panelHidden && page1.hint && page1.words && !page1.caption, page1);
+  await page.click('button[data-action="inspector-options"]');
+  const panelOpen = await page.evaluate(() => ({
+    expanded: document.querySelector('[data-action="inspector-options"]').getAttribute('aria-expanded'),
+    rows: [...document.querySelectorAll('#cinema-inspector-options .cinema-hub__row')].filter((r) => r.checkVisibility()).map((r) => r.querySelector('.cinema-hub__label, .cinema-switch__label')?.textContent),
+  }));
+  await screenshot(page, 'seat-0-options');
+  await page.keyboard.press('Escape');
+  const afterEscape1 = await page.evaluate(() => ({ panelHidden: document.querySelector('#cinema-inspector-options').hidden, focus: document.activeElement?.dataset.action, stillOpen: Boolean(document.querySelector('.cinema-app--inspector')) }));
+  check('inspector: "Tùy chọn" opens one panel (Chất lượng, 3 ghế, Footprint, Kích thước); Escape closes it first, focus back on "Tùy chọn"', panelOpen.expanded === 'true' && JSON.stringify(panelOpen.rows) === JSON.stringify(['Chất lượng', '3 ghế', 'Footprint', 'Kích thước']) && afterEscape1.panelHidden && afterEscape1.focus === 'inspector-options' && afterEscape1.stillOpen, { panelOpen, afterEscape1 });
+  const viewBox = await page.locator('.cinema-viewport').boundingBox();
+  await page.mouse.move(viewBox.x + viewBox.width / 2, viewBox.y + viewBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(viewBox.x + viewBox.width / 2 + 160, viewBox.y + viewBox.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  check('inspector: the turn hint leaves on the first drag', !(await page.evaluate(() => Boolean(document.querySelector('.cinema-gesture')))));
+
   for (const [id, file] of [
     ['front', 'seat-1-front-34'],
     ['side', 'seat-2-side'],
@@ -2318,13 +2356,13 @@ async function seatInspector(browser, base) {
   );
   check('inspector: gap to the neighbouring seat', m.gapToNeighbour >= 0.02, m.gapToNeighbour);
 
-  await page.click('label:has(input[data-toggle="cluster"])');
+  await clickUi(page, 'label:has(input[data-toggle="cluster"])');
   await selectInspectorView(page, 'front');
   s = await inspectorState(page);
   check('inspector: cluster shows three seats', s.inspector.seats === 3, s.inspector.seats);
   await screenshot(page, 'seat-5-cluster-front');
-  await page.click('label:has(input[data-toggle="footprint"])');
-  await page.click('label:has(input[data-toggle="dimensions"])');
+  await clickUi(page, 'label:has(input[data-toggle="footprint"])');
+  await clickUi(page, 'label:has(input[data-toggle="dimensions"])');
   await selectInspectorView(page, 'top');
   s = await inspectorState(page);
   const dimensionsShown = await page.isVisible('.cinema-dimensions');

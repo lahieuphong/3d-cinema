@@ -25,25 +25,28 @@ import { createSeatMaterials, disposeMaterials, type SeatMaterials } from './mat
 import { loadQuality, QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
 import { prefersReducedMotion, RenderHost, WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
 import { computeSeatModelBounds, createCinemaSeatModel, createSeatInstances, type SeatInstances, type SeatModel } from './seats.ts';
-import { el, group, renderStatus, switchControl } from './ui.ts';
+import { CLOSE_ICON, el, icon, ICONS, renderStatus, switchControl } from './ui.ts';
 
 /**
  * Development seat inspector (/cinema?inspect=seat): the auditorium's seat model on a neutral
- * floor, with fixed views, orbit, an optional three-seat cluster, footprint and measured dimensions,
- * at either quality level. It uses the same SeatModel, materials, instancing, tone mapping and
- * reflection environment as the auditorium, under neutral studio lighting, and replaces the
- * auditorium while open, so only one renderer ever exists.
+ * floor, turned and zoomed by hand (it opens at a front three-quarter view), with an optional
+ * three-seat cluster, footprint and measured dimensions, at either quality level. It uses the same
+ * SeatModel, materials, instancing, tone mapping and reflection environment as the auditorium, under
+ * neutral studio lighting, and replaces the auditorium while open, so only one renderer ever exists.
+ *
+ * The page keeps to its title, "Tùy chọn" (the switches and the quality, in one small panel) and
+ * "Đóng"; over the view a hand shows that the seat turns, until the view is first touched.
  */
 
+/** Framed views: the opening one, and the rest for `npm run capture` (dev hook; no buttons). */
 export type InspectorViewId = 'front' | 'side' | 'back' | 'top' | 'cup';
 
-const VIEWS: ReadonlyArray<{ id: InspectorViewId; label: string }> = [
-  { id: 'front', label: 'Trước 3/4' },
-  { id: 'side', label: 'Bên' },
-  { id: 'back', label: 'Sau 3/4' },
-  { id: 'top', label: 'Từ trên' },
-  { id: 'cup', label: 'Cận hốc cốc' },
-];
+/** A pointing hand under a two-headed arc: "drag to turn". Decorative (the words are kept for screen readers). */
+const TURN_HINT_SVG =
+  '<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">' +
+  '<g class="cinema-gesture__arc"><path d="M13 17C21 9 43 9 51 17"/><path d="M13 17l1.2-6.4M13 17l6.4 1.4"/><path d="M51 17l-1.2-6.4M51 17l-6.4 1.4"/></g>' +
+  '<g transform="translate(8 15)"><path class="cinema-gesture__hand" d="M20 31V9.5a3 3 0 0 1 6 0v11a3 3 0 0 1 6 0v1.5a3 3 0 0 1 6 0v2a3 3 0 0 1 6 0V33c0 7-5 12-12 12h-5.5c-4.4 0-7.3-1.8-9.7-5.2L11 32.5a3 3 0 0 1 4.6-3.8L20 33z"/></g>' +
+  '</svg>';
 
 const config = AUDITORIUM_CONFIG;
 const inspector = config.inspector;
@@ -372,12 +375,13 @@ function boxEdgesGeometry(box: Box3): BufferGeometry {
 }
 
 const millimetreFormat = new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-const metres = (value: number) => `${millimetreFormat.format(value)} m`;
+// A no-break space: the unit never ends up alone on the next line in a narrow panel.
+const metres = (value: number) => `${millimetreFormat.format(value)} m`;
 
 declare global {
   interface Window {
-    /** Development-only inspection hook used by `npm run capture`. */
-    __seatInspector?: { getState(): unknown };
+    /** Development-only inspection hook used by `npm run capture` (it also frames the fixed views). */
+    __seatInspector?: { getState(): unknown; setView(id: InspectorViewId): void };
   }
 }
 
@@ -391,33 +395,37 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   const header = el('header', 'cinema-header');
   const title = el('h1', 'cinema-title', 'Duyệt mẫu ghế');
   title.append(' ', el('span', 'cinema-badge', 'Chế độ phát triển'));
-  const closeButton = el('button', 'cinema-button', 'Đóng');
+  // "Tùy chọn" opens the panel below it (a disclosure: the switches stay in the tab order after it).
+  const optionsButton = el('button', 'cinema-button cinema-inspector__options-toggle');
+  optionsButton.type = 'button';
+  optionsButton.id = 'cinema-inspector-options-toggle';
+  optionsButton.dataset.action = 'inspector-options';
+  optionsButton.setAttribute('aria-expanded', 'false');
+  optionsButton.setAttribute('aria-controls', 'cinema-inspector-options');
+  optionsButton.append(icon(ICONS.settings), el('span', '', 'Tùy chọn'));
+  const closeButton = el('button', 'cinema-button');
   closeButton.type = 'button';
   closeButton.dataset.action = 'close';
+  closeButton.append(icon(CLOSE_ICON), el('span', '', 'Đóng'));
   closeButton.addEventListener('click', () => onClose(), { signal });
-  header.append(title, closeButton);
+  const actions = el('div', 'cinema-inspector__actions');
+  actions.append(optionsButton, closeButton);
 
-  const toolbar = el('div', 'cinema-toolbar');
-  const viewGroup = group('Góc nhìn mẫu ghế');
-  const viewButtons = new Map<InspectorViewId, HTMLButtonElement>();
-  for (const view of VIEWS) {
-    const button = el('button', 'cinema-button', view.label);
-    button.type = 'button';
-    button.dataset.view = view.id;
-    button.setAttribute('aria-pressed', 'false');
-    button.addEventListener('click', () => selectView(view.id, true), { signal });
-    viewButtons.set(view.id, button);
-    viewGroup.append(button);
-  }
-  const displayGroup = group('Hiển thị');
-  const clusterSwitch = switchControl(`${inspector.clusterSize} ghế`, 'cluster', false, (on) => setCluster(on), signal);
-  const footprintSwitch = switchControl('Footprint', 'footprint', false, (on) => setFootprint(on), signal);
-  const dimensionsSwitch = switchControl('Kích thước', 'dimensions', false, (on) => setDimensions(on), signal);
-  displayGroup.append(clusterSwitch.wrapper, footprintSwitch.wrapper, dimensionsSwitch.wrapper);
-  const qualityGroup = group('Chất lượng mẫu ghế');
+  // The panel: the same rows as Cài đặt (label left, control right), no card per row.
+  const options = el('div', 'cinema-inspector__options');
+  options.id = 'cinema-inspector-options';
+  options.setAttribute('role', 'group');
+  options.setAttribute('aria-labelledby', optionsButton.id);
+  options.hidden = true;
+  const qualityRow = el('div', 'cinema-hub__row cinema-hub__row--quality');
+  const qualityHeading = el('span', 'cinema-hub__label', 'Chất lượng');
+  qualityHeading.id = 'cinema-inspector-quality';
+  const qualityGroup = el('div', 'cinema-segmented');
+  qualityGroup.setAttribute('role', 'group');
+  qualityGroup.setAttribute('aria-labelledby', qualityHeading.id);
   const qualityButtons = new Map<QualityLevel, HTMLButtonElement>();
   for (const level of QUALITY_LEVELS) {
-    const button = el('button', 'cinema-button cinema-button--compact', QUALITY_LABELS[level]);
+    const button = el('button', 'cinema-segmented__button', QUALITY_LABELS[level]);
     button.type = 'button';
     button.dataset.quality = level;
     button.setAttribute('aria-pressed', 'false');
@@ -425,23 +433,60 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
     qualityButtons.set(level, button);
     qualityGroup.append(button);
   }
-  toolbar.append(viewGroup, displayGroup, qualityGroup);
+  qualityRow.append(qualityHeading, qualityGroup);
+  const clusterSwitch = switchControl(`${inspector.clusterSize} ghế`, 'cluster', false, (on) => setCluster(on), signal);
+  const footprintSwitch = switchControl('Footprint', 'footprint', false, (on) => setFootprint(on), signal);
+  const dimensionsSwitch = switchControl('Kích thước', 'dimensions', false, (on) => setDimensions(on), signal);
+  const rows = el('div', 'cinema-hub__rows');
+  for (const switchRow of [clusterSwitch, footprintSwitch, dimensionsSwitch]) switchRow.wrapper.classList.add('cinema-hub__row');
+  rows.append(qualityRow, clusterSwitch.wrapper, footprintSwitch.wrapper, dimensionsSwitch.wrapper);
+  options.append(rows);
+  header.append(title, actions, options);
 
   const stage = el('main', 'cinema-stage');
   const viewport = el('div', 'cinema-viewport');
   const dimensions = el('dl', 'cinema-dimensions');
   dimensions.hidden = true;
-  const caption = el(
+  // The words are for screen readers; on screen a hand shows the seat turns, until it is touched.
+  const description = el(
     'p',
-    'cinema-caption',
+    'visually-hidden',
     'Cùng mẫu ghế và vật liệu với 110 ghế trong khán phòng. Kéo để xoay, cuộn hoặc chụm để thu phóng. Esc để đóng.',
   );
+  const gesture = el('div', 'cinema-gesture');
+  gesture.innerHTML = TURN_HINT_SVG;
   const status = el('div', 'cinema-status');
-  stage.append(viewport, dimensions, caption, status);
-  root.append(header, toolbar, stage);
+  stage.append(viewport, dimensions, gesture, description, status);
+  root.append(header, stage);
   host.replaceChildren(root);
 
-  const controls = [...viewButtons.values(), clusterSwitch.input, footprintSwitch.input, dimensionsSwitch.input, ...qualityButtons.values()];
+  // The first touch, drag or wheel on the view: the hand has done its job and leaves for good.
+  const dismissGesture = () => {
+    if (gesture.dataset.gone === 'true') return;
+    gesture.dataset.gone = 'true';
+    gesture.addEventListener('transitionend', () => gesture.remove(), { once: true, signal });
+    window.setTimeout(() => gesture.remove(), 400);
+  };
+  for (const type of ['pointerdown', 'wheel', 'touchstart'] as const) {
+    viewport.addEventListener(type, dismissGesture, { signal, passive: true, capture: true });
+  }
+
+  const setOptions = (open: boolean, focusToggle = false) => {
+    options.hidden = !open;
+    optionsButton.setAttribute('aria-expanded', String(open));
+    if (!open && focusToggle) optionsButton.focus();
+  };
+  optionsButton.addEventListener('click', () => setOptions(optionsButton.getAttribute('aria-expanded') !== 'true'), { signal });
+  // A press anywhere else closes the panel (and still does what it does there).
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (!options.hidden && !options.contains(event.target as Node) && !optionsButton.contains(event.target as Node)) setOptions(false);
+    },
+    { signal, capture: true },
+  );
+
+  const controls = [optionsButton, clusterSwitch.input, footprintSwitch.input, dimensionsSwitch.input, ...qualityButtons.values()];
   const setStatus = (next: Parameters<typeof renderStatus>[2]) => {
     renderStatus(root, status, next);
     if (next.kind === 'error') for (const control of controls) control.disabled = true;
@@ -456,7 +501,6 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   function selectView(id: InspectorViewId, animate: boolean) {
     activeView = id;
     root.dataset.view = id;
-    for (const [viewId, button] of viewButtons) button.setAttribute('aria-pressed', String(viewId === id));
     view?.setView(id, animate);
   }
   function setCluster(on: boolean) {
@@ -481,10 +525,13 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
     view?.setBoundsVisible(on);
   }
 
+  // Escape closes the panel first (focus back on "Tùy chọn"), then the page.
   window.addEventListener(
     'keydown',
     (event) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      if (!options.hidden) setOptions(false, true);
+      else onClose();
     },
     { signal },
   );
@@ -522,6 +569,7 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   if (import.meta.env.DEV) {
     window.__seatInspector = {
       getState: () => ({ view: activeView, canvasCount: document.querySelectorAll('canvas').length, inspector: view?.getDebugState() ?? null }),
+      setView: (id) => selectView(id, true),
     };
   }
 

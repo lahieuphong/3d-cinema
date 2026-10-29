@@ -136,6 +136,14 @@ chỗ, không mở thêm modal và không bung accordion.
   liên kết. Dòng ghi công trong trình phát vẫn giữ nguyên.
 - **Công cụ nâng cao:** Góc kiểm tra (Mặt cắt bên, Mặt bằng), Thành phần phòng (Trần, Vách sau,
   Vách phải), hành động riêng “Kiểm tra ghế”.
+- **Duyệt mẫu ghế (`/cinema?inspect=seat`):** header chỉ có tiêu đề, “Tùy chọn” và “Đóng” (icon +
+  chữ). “Tùy chọn” mở một panel kính cùng kiểu hàng với Cài đặt: Chất lượng (Cao / Tiết kiệm), 3
+  ghế, Footprint, Kích thước; bấm ra ngoài hoặc Escape thì đóng (Escape đóng panel trước, rồi mới
+  đóng trang). Không còn nút góc nhìn: ghế mở ở góc trước 3/4, người xem tự kéo để xoay, cuộn hoặc
+  chụm để thu phóng (các góc cố định chỉ còn cho `npm run capture`, qua hook dev). Thay dòng chữ
+  hướng dẫn là một bàn tay đung đưa dưới mũi tên cong giữa khung; nó mờ đi và biến mất ở lần chạm,
+  kéo hoặc cuộn đầu tiên (đứng yên khi giảm chuyển động); câu hướng dẫn vẫn có cho trình đọc màn
+  hình.
 - **Điều hướng:** màn con có nút Quay lại (tên đọc: “Quay lại Cài đặt”); quay lại trả focus về hàng
   đã mở. Escape lùi một màn, ở màn đầu thì đóng. × luôn đóng cả panel. Mỗi lần đổi màn: tiêu đề và
   tên dialog đổi theo, focus vào tiêu đề; màn ẩn dùng `hidden` nên không focus và không bị đọc.

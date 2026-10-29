@@ -98,7 +98,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-hub__panel,
 .cinema-hub__hint,
 .cinema-status__card,
-.cinema-app--inspector .cinema-caption,
+.cinema-inspector__options,
 .cinema-dimensions {
   border: 1px solid;
   border-color: var(--glass-edge);
@@ -1856,28 +1856,113 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 /* ================================================================ Seat inspector (development page)
 
-   The same parts with a denser layout: header, toolbar, a framed view. */
+   A header (the title, "Tùy chọn", "Đóng") over a framed view; the switches and the quality wait in
+   one small panel under "Tùy chọn". */
 
 .cinema-app--inspector {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .cinema-app--inspector .cinema-header {
+  position: relative;
+  z-index: var(--z-popover);
   justify-content: space-between;
-  padding: 12px var(--edge) 8px;
+  gap: 12px;
+  padding: 12px var(--edge) 10px;
 }
 
+/* The badge goes under the title when the actions need the room. */
 .cinema-app--inspector .cinema-title {
+  min-width: 0;
   font-size: var(--text-lg);
+  white-space: normal;
 }
 
-.cinema-toolbar {
+.cinema-app--inspector .cinema-badge {
+  display: inline-block;
+}
+
+.cinema-inspector__actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  padding: 0 var(--edge) 12px;
+  flex: none;
+  gap: 8px;
+}
+
+.cinema-inspector__actions .cinema-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.cinema-inspector__options-toggle[aria-expanded='true'] {
+  border-color: var(--glass-border-strong);
+  background-color: var(--fill-pressed);
+}
+
+.cinema-inspector__options {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: var(--edge);
+  width: min(320px, calc(100vw - 2 * var(--edge)));
+  padding: 4px 8px;
+  border-radius: var(--radius-lg);
+}
+
+/* "Drag to turn": a hand sweeping under a two-headed arc in the middle of the view. It never covers
+   the loading or error state, and leaves (fading) on the first touch, drag or wheel. */
+.cinema-gesture {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 96px;
+  height: 96px;
+  margin: -48px 0 0 -48px;
+  pointer-events: none;
+  transition: opacity var(--duration-medium) var(--ease-out);
+}
+
+.cinema-app--inspector:not([data-status='ready']) .cinema-gesture {
+  display: none;
+}
+
+.cinema-gesture[data-gone='true'] {
+  opacity: 0;
+}
+
+.cinema-gesture svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.cinema-gesture__arc {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.55));
+}
+
+.cinema-gesture__hand {
+  fill: #fff;
+  stroke: rgb(20 16 14 / 0.7);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.45));
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: cinema-gesture-turn 2.4s ease-in-out infinite;
+}
+
+@keyframes cinema-gesture-turn {
+  0%,
+  100% {
+    transform: translateX(-9px) rotate(-7deg);
+  }
+
+  50% {
+    transform: translateX(9px) rotate(7deg);
+  }
 }
 
 .cinema-app--inspector .cinema-stage {
@@ -2582,7 +2667,8 @@ button.cinema-hub__row:disabled {
   margin-left: auto;
 }
 
-.cinema-hub .cinema-segmented__button {
+.cinema-hub .cinema-segmented__button,
+.cinema-inspector__options .cinema-segmented__button {
   flex: 1 0 auto;
   min-width: 5em;
   min-height: 44px;
@@ -2863,8 +2949,10 @@ button.cinema-hub__row:disabled {
 /* ================================================================ Reduced motion: nothing slides or spins */
 
 @media (prefers-reduced-motion: reduce) {
+  /* The turn hint stands still (its arc still says "turn"). */
   .cinema-status__spinner,
-  .cinema-player__status--busy::before {
+  .cinema-player__status--busy::before,
+  .cinema-gesture__hand {
     animation: none;
   }
 
