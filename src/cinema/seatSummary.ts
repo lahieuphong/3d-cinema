@@ -1,5 +1,5 @@
 import type { SeatSelection } from './selection.ts';
-import { el, icon } from './ui.ts';
+import { el, icon, ICONS } from './ui.ts';
 
 export interface SeatSummaryHandlers {
   /** "Sơ đồ ghế" / "Mở sơ đồ": opens or closes the seat panel. */
@@ -51,6 +51,9 @@ export function createSeatSummary(host: HTMLElement, selection: SeatSelection, h
   const view = el('button', 'cinema-button cinema-summary__view');
   view.type = 'button';
   view.dataset.action = 'summary-view-seat';
+  // An icon and its words, like the map button beside it (the words follow the seat).
+  const viewLabel = el('span', '');
+  view.append(icon(ICONS.eye), viewLabel);
   actions.append(toggle, view);
   element.append(text, active, actions);
   host.append(element);
@@ -71,7 +74,7 @@ export function createSeatSummary(host: HTMLElement, selection: SeatSelection, h
         ? `Ghế đang xem: ${id} · ${status === 'reserved' ? 'đã đặt' : status === 'selected' ? 'đang chọn' : 'còn trống'}`
         : '';
     view.hidden = !id || !viewAvailable || id === viewing;
-    if (id) view.textContent = `Xem từ ghế ${id}`;
+    if (id) viewLabel.textContent = `Xem từ ghế ${id}`;
   };
   const unsubscribe = selection.subscribe((change) => {
     if (change.selection || change.active) paint();

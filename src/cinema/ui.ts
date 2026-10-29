@@ -132,7 +132,7 @@ export interface CinemaUi {
   dispose(): void;
 }
 
-const ICONS = {
+export const ICONS = {
   explore: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 1.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4zm3.4 3.8-4.6 2.2-2.2 4.6 4.6-2.2zm-3.4 2.4a1 1 0 1 1 0 2 1 1 0 0 1 0-2z',
   seats: 'M7.5 4h9A2.5 2.5 0 0 1 19 6.5V11h.5a1.5 1.5 0 0 1 1.5 1.5V18h-2v2h-1.8v-2H6.8v2H5v-2H3v-5.5A1.5 1.5 0 0 1 4.5 11H5V6.5A2.5 2.5 0 0 1 7.5 4zm0 1.8a.7.7 0 0 0-.7.7V11h10.4V6.5a.7.7 0 0 0-.7-.7zm-2.7 7v3.4h14.4v-3.4z',
   watch: 'M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zm.3 1.8v10.4h14.4V6.8zm5.2 2.4 5 2.8-5 2.8z',
@@ -144,8 +144,18 @@ const ICONS = {
   walk: 'M13.5 2.8a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8zM10 8.2l2.6-.9a1.6 1.6 0 0 1 1.9.8l1.2 2.4 2.5 1-.7 1.7-3-1.2-.6-1.2-.9 3.6 2.2 2.4.9 4.5h-1.9l-.8-3.8-2.3-2.2-.9 3.1-2.8 2.9-1.3-1.3 2.5-2.6 1.4-5.9-.9.4-1.2 2.6-1.7-.8 1.5-3.2z',
   map: 'M4 5h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 11h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 17h4v2H4zm6 0h4v2h-4zm6 0h4v2h-4z',
   chevron: 'M9.2 5.6 7.8 7l5 5-5 5 1.4 1.4 6.4-6.4z',
+  back: 'M14.8 5.6 16.2 7l-5 5 5 5-1.4 1.4L8.4 12z',
   fullscreen: 'M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z',
+  // Khám phá's views: the room from the back (screen and curved rows), the seats from the front (an
+  // armchair), the view from one seat (an eye; also "Xem từ ghế …"), and the rarer views (stacked frames).
+  overview: 'M6 4h12a1 1 0 0 1 1 1v1.6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm-1 7.2c4.6 1.6 9.4 1.6 14 0v2.2c-4.6 1.6-9.4 1.6-14 0zM3 16c5.9 2.1 12.1 2.1 18 0v2.2c-5.9 2.1-12.1 2.1-18 0z',
+  seatsView: 'M7.5 4h9A1.5 1.5 0 0 1 18 5.5V12H6V5.5A1.5 1.5 0 0 1 7.5 4zM3 11h2.2v3.3h13.6V11H21v5.5a1 1 0 0 1-1 1h-1V20h-2v-2.5H7V20H5v-2.5H4a1 1 0 0 1-1-1z',
+  eye: 'M3 12c1.4-3.4 4.8-6 9-6s7.6 2.6 9 6c-1.4 3.4-4.8 6-9 6s-7.6-2.6-9-6zm1.9 0c1.2 2.4 3.9 4.2 7.1 4.2s5.9-1.8 7.1-4.2c-1.2-2.4-3.9-4.2-7.1-4.2S6.1 9.6 4.9 12zM12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z',
+  views: 'M3.5 8h12A1.5 1.5 0 0 1 17 9.5v9a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 2 18.5v-9A1.5 1.5 0 0 1 3.5 8zM7 4h13.5A1.5 1.5 0 0 1 22 5.5v10a1.5 1.5 0 0 1-1.5 1.5H19v-1.8h1.2V5.8H8.8v.8H7z',
 };
+
+/** The visitor views' icons (the inspection views are rows in Công cụ nâng cao, words only). */
+const PRESET_ICONS: Partial<Record<CameraPresetId, string>> = { overview: ICONS.overview, seats: ICONS.seatsView, seatEye: ICONS.eye };
 
 /** An inline icon (decorative: the control around it carries the name). */
 export function icon(d: string): SVGSVGElement {
@@ -198,7 +208,9 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const presetButtons = new Map<CameraPresetId, HTMLButtonElement>();
   const presetButton = (id: CameraPresetId, className?: string) => {
     const preset = CAMERA_PRESETS.find((p) => p.id === id)!;
-    const element = button(preset.label, className);
+    const glyph = PRESET_ICONS[id];
+    const element = button(glyph ? '' : preset.label, className);
+    if (glyph) element.append(icon(glyph), el('span', '', preset.label));
     element.dataset.preset = id;
     element.setAttribute('aria-pressed', 'false');
     element.addEventListener('click', () => handlers.onPreset(id), { signal });
@@ -331,7 +343,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   seatCard.setAttribute('aria-label', 'Ghế vừa chạm');
   seatCard.dataset.keys = 'own';
   const seatCardText = el('p', 'cinema-seatcard__text');
-  const seatCardView = button('Xem từ ghế này', 'cinema-button cinema-button--compact cinema-button--accent cinema-seatcard__view');
+  const seatCardView = button('', 'cinema-button cinema-button--compact cinema-button--accent cinema-seatcard__view');
+  seatCardView.append(icon(ICONS.eye), el('span', '', 'Xem từ ghế này'));
   seatCardView.dataset.action = 'card-view-seat';
   const seatCardClose = button('', 'cinema-button cinema-button--compact cinema-button--icon cinema-seatcard__close');
   seatCardClose.dataset.action = 'card-close';
@@ -428,12 +441,20 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const dock: Record<CinemaTask, HTMLElement> = { explore: dockPanel('explore'), seats: dockPanel('seats'), watch: dockPanel('watch') };
 
   // Khám phá: the visitor views (the rarer ones fold into "Góc khác" on narrow screens), the tour
-  // and walking. Labels never change with state (pressed shows it), so the row never re-wraps.
-  const views = group('Góc nhìn');
+  // and walking. Every button is an icon then its words; labels never change with state (pressed
+  // shows it), so the row never re-wraps. In the hub each group has a small title.
+  const exploreGroup = (label: string) => {
+    const element = group(label);
+    const title = el('span', 'cinema-explore__title', label);
+    title.setAttribute('aria-hidden', 'true');
+    element.append(title);
+    return element;
+  };
+  const views = exploreGroup('Góc nhìn');
   views.classList.add('cinema-explore__views');
   const moreToggle = button('', 'cinema-button cinema-more__toggle');
   moreToggle.dataset.action = 'more-views';
-  moreToggle.append(el('span', '', 'Góc khác'), icon(ICONS.more));
+  moreToggle.append(icon(ICONS.views), el('span', '', 'Góc khác'), icon(ICONS.more));
   const morePanel = el('div', 'cinema-more');
   morePanel.id = 'cinema-more-views';
   const resetButton = button('', 'cinema-button cinema-explore__reset');
@@ -448,7 +469,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     element.addEventListener('click', () => menuOpen(moreMenu) && setMenu(moreMenu, false, true), { signal });
   }
 
-  const modes = group('Tham quan và đi bộ');
+  const modes = exploreGroup('Di chuyển');
   modes.classList.add('cinema-explore__modes');
   const tourButton = button('', 'cinema-button cinema-mode');
   tourButton.dataset.action = 'tour';
@@ -943,7 +964,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   return ui;
 }
 
-const CLOSE_ICON = 'M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z';
+export const CLOSE_ICON = 'M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z';
 
 const LOADING_TEXT = {
   code: 'Đang tải phần 3D của trang…',

@@ -50,7 +50,7 @@ Nguyên tắc chung:
   phía trên, ba vòng tròn đồng tâm kiểu nút home nổi. Khi mở: kính sáng hơn, lõi màu champagne.
 - **Sơ đồ ghế:** một “giếng” nông trong kính (`rgb(0 0 0 / .16)`); ghế là giọt kính màu (đỏ rượu
   vang trong 62%, ghế đã đặt gần như trong suốt có dấu ✕, ghế đang chọn champagne đặc).
-- Popover “Góc khác” (cửa sổ hẹp 600–719 px) vẫn gần như đặc: nó nằm ngoài tấm kính chứa nó, blur ở
+- Popover “Góc khác” (cửa sổ 600–899 px) vẫn gần như đặc: nó nằm ngoài tấm kính chứa nó, blur ở
   đó không thấy gì phía sau.
 - Mỗi cụm chỉ có một lớp blur; nút bên trong không blur lần nữa.
 - **Viền, ánh sáng và bóng.**
@@ -95,6 +95,12 @@ Nguyên tắc chung:
     - Khám phá: góc nhìn, tham quan, đi bộ;
     - Chọn ghế: tóm tắt, sơ đồ, “Xem từ ghế”;
     - Xem phim: trình phát kèm dòng ghi công.
+  - Nút có chữ trong cùng một cụm đều theo một khuôn: icon 18 px, cách 8 px, rồi chữ (không có nút
+    chỉ-chữ cạnh nút icon-chữ). Khám phá: Tổng quan (màn chiếu và hàng ghế), Nhìn về ghế (ghế),
+    Ghế F06 (mắt — cùng icon với “Xem từ ghế …”), Về góc ban đầu, Tham quan, Đi bộ; “Góc khác” có
+    icon khung chồng và mũi tên menu. Dưới 900 px các góc ít dùng gộp vào “Góc khác” để Khám phá
+    luôn nằm trên một hàng. Nút đóng sơ đồ ghế: × “Đóng”, hoặc ‹ “Trở lại phòng 3D” khi toàn màn
+    hình. Nút chỉ có icon chỉ dùng cho điều khiển quen thuộc (phát, âm thanh, ×).
   - “Chọn ghế” mở sidebar kính đè lên bên phải khán phòng; canvas không đổi kích thước, thanh tác
     vụ dời sang khoảng còn lại.
   - “Cài đặt” mở thẳng màn Cài đặt chính (xem “Cài đặt” bên dưới).
@@ -105,6 +111,8 @@ Nguyên tắc chung:
   - Khán phòng tràn màn hình, chỉ có nút tròn kính (kéo, bám cạnh, nhớ vị trí như trước).
   - Hub có ba tác vụ ở đầu, bên dưới là nội dung của tác vụ đang chọn, cuối cùng một hàng
     “Cài đặt” chuyển chính panel đó sang màn Cài đặt. Đóng rồi mở lại luôn về màn tác vụ.
+  - Khám phá trong hub: hai nhóm có tiêu đề nhỏ (“Góc nhìn”, “Di chuyển”), mỗi nhóm là lưới 2 cột
+    ô bằng nhau; trong ô, icon 20 px rồi chữ, canh trái, nên icon và chữ thẳng cột dù chữ dài ngắn.
   - Khi phim đã phát, mini player “Đang phát / Tạm dừng” ở góc dưới.
   - Sơ đồ ghế vẫn toàn màn hình, giờ là một tấm kính đè lên khán phòng: phòng vẫn hiện mờ phía
     sau (inert, không đổi kích thước), thay cho nền đen.

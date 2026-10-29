@@ -1080,38 +1080,30 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border-left: 1px solid var(--separator);
 }
 
-.cinema-mode {
+/* Every Khám phá button is the same shape: an 18 px icon, 8 px, its words. */
+.cinema-explore .cinema-button {
   gap: 8px;
 }
 
-.cinema-mode .cinema-icon,
-.cinema-explore__reset .cinema-icon {
+.cinema-explore .cinema-icon {
   width: 18px;
   height: 18px;
 }
 
-/* Over the room the way back to the first view is a small icon (it keeps its name). */
-.cinema-taskbar .cinema-explore__reset {
-  width: var(--tap);
-  padding: 0;
-}
-
-.cinema-taskbar .cinema-explore__reset-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+/* The groups' titles show in the hub only (over the room the divider says enough). */
+.cinema-explore__title {
+  display: none;
 }
 
 .cinema-more__toggle {
   display: none;
 }
 
-.cinema-more__toggle svg {
-  width: 18px;
-  height: 18px;
+/* "Góc khác": its icon and words, then the small arrow of a menu. */
+.cinema-more__toggle .cinema-icon:last-child {
+  width: 16px;
+  height: 16px;
+  margin-left: -2px;
 }
 
 .cinema-more {
@@ -1434,7 +1426,10 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   gap: 6px;
 }
 
-.cinema-seats__expand svg {
+.cinema-seats__expand svg,
+.cinema-seats__close svg,
+.cinema-summary__view svg,
+.cinema-seatcard__view svg {
   width: 18px;
   height: 18px;
 }
@@ -1924,8 +1919,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 /* ================================================================ Narrower windows */
 
-/* The rarer views fold into "Góc khác"; the player keeps the seek bar long. */
-@media (max-width: 719px) {
+/* The rarer views fold into "Góc khác" while Khám phá's whole row (icons and words) would not fit
+   on one line. */
+@media (max-width: 899px) {
   .cinema-more__toggle {
     display: inline-flex;
     justify-content: center;
@@ -1950,24 +1946,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     display: flex;
   }
 
+  /* The menu's items: icons in one column, words in the next. */
   .cinema-taskbar .cinema-more .cinema-button {
     flex: none;
     justify-content: flex-start;
     text-align: left;
   }
+}
 
-  .cinema-taskbar .cinema-more .cinema-explore__reset {
-    width: auto;
-    padding: 0 16px;
-  }
-
-  .cinema-taskbar .cinema-more .cinema-explore__reset-label {
-    position: static;
-    width: auto;
-    height: auto;
-    clip: auto;
-  }
-
+/* The player keeps the seek bar long. */
+@media (max-width: 719px) {
   .cinema-summary__active {
     display: none;
   }
@@ -2734,9 +2722,10 @@ button.cinema-hub__row:disabled {
   flex-direction: column;
   flex-wrap: nowrap;
   align-items: stretch;
-  gap: 8px;
+  gap: 14px;
 }
 
+/* Two groups, each a small title over a two-column grid of equal tiles. */
 .cinema-hub .cinema-explore__views,
 .cinema-hub .cinema-explore__modes {
   display: grid;
@@ -2746,9 +2735,28 @@ button.cinema-hub__row:disabled {
   border: 0;
 }
 
+.cinema-hub .cinema-explore__title {
+  display: block;
+  grid-column: 1 / -1;
+  padding: 0 4px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+/* Each tile: its icon, then its words, from the left edge, so icons and words line up down each
+   column whatever the length of the words. */
 .cinema-hub .cinema-explore .cinema-button {
-  padding-inline: 10px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-inline: 14px;
+  text-align: left;
   white-space: normal;
+}
+
+.cinema-hub .cinema-explore .cinema-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .cinema-hub .cinema-more__toggle {

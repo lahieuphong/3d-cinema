@@ -1,7 +1,7 @@
 import type { AuditoriumLayout, SeatData } from './layout.ts';
 import type { SeatSelection, SeatStatus, SelectionChange } from './selection.ts';
 import type { PanelState } from './taskLayout.ts';
-import { el, icon } from './ui.ts';
+import { CLOSE_ICON, el, icon, ICONS as UI_ICONS } from './ui.ts';
 
 export interface SeatPanelHandlers {
   /** "Xem từ ghế này" for the active seat. */
@@ -85,7 +85,10 @@ export function createSeatPanel(
   expand.dataset.action = 'seat-panel-expand';
   const expandLabel = el('span', '');
   expand.append(icon(ICONS.expand), expandLabel);
-  const close = el('button', 'cinema-button cinema-button--compact cinema-seats__close', 'Đóng');
+  // Icon and words, like "Mở rộng" beside it: × to close, ‹ to go back to the room from full screen.
+  const close = el('button', 'cinema-button cinema-button--compact cinema-seats__close');
+  const closeLabel = el('span', '', 'Đóng');
+  close.append(icon(CLOSE_ICON), closeLabel);
   close.type = 'button';
   close.dataset.action = 'seat-panel-close';
   header.append(title, expand, close);
@@ -444,7 +447,8 @@ export function createSeatPanel(
       else panel.removeAttribute('aria-modal');
       expandLabel.textContent = modal ? 'Thu nhỏ' : 'Mở rộng';
       expand.querySelector('path')!.setAttribute('d', modal ? ICONS.collapse : ICONS.expand);
-      close.textContent = modal ? 'Trở lại phòng 3D' : 'Đóng';
+      closeLabel.textContent = modal ? 'Trở lại phòng 3D' : 'Đóng';
+      close.querySelector('path')!.setAttribute('d', modal ? UI_ICONS.back : CLOSE_ICON);
       if (modal && !panel.contains(document.activeElement)) close.focus();
     },
     setViewAvailable(available, reason) {
