@@ -1,14 +1,16 @@
 # Giao diện kính (Liquid Glass) — hệ thống thiết kế
 
-Trạng thái: bản redesign trên nhánh `feature/liquid-glass-ui`, chờ duyệt (29/10/2026). Đây là
-cách diễn giải Liquid Glass cho web bằng CSS: kính mờ, viền sáng và bóng. CSS không tái tạo được
-hiệu ứng quang học native của Apple (khúc xạ, biến dạng theo nội dung).
+Trạng thái: bản redesign trên nhánh `feature/liquid-glass-ui`, chờ duyệt (29/10/2026); vòng 2 cùng
+ngày làm mọi bề mặt trong suốt hơn. Đây là cách diễn giải Liquid Glass cho web bằng CSS: kính trong,
+viền sáng, ánh trên mặt kính và bóng. CSS không tái tạo được hiệu ứng quang học native của Apple
+(khúc xạ thật, biến dạng theo nội dung).
 
 Nguyên tắc chung:
 
-- Khán phòng 3D luôn là nội dung chính.
+- Khán phòng 3D luôn là nội dung chính, và luôn nhìn thấy qua lớp kính: không còn bề mặt đặc nào
+  trên khán phòng (trừ khi người dùng chọn “Giảm hiệu ứng kính”).
 - Điều khiển nổi trên khán phòng thành từng cụm kính nhỏ, xếp theo tác vụ.
-- Chữ dài và sơ đồ ghế nằm trên bề mặt ổn định hơn.
+- Chữ dài và sơ đồ ghế nằm trên kính dày hơn (blur nhiều hơn), vẫn trong suốt.
 
 ## File
 
@@ -29,21 +31,35 @@ Nguyên tắc chung:
   - Champagne `--accent` `#d9c08c`, chỉ cho lựa chọn và hành động quan trọng: Phát, “Xem từ ghế
     này”, ghế đang chọn, số ghế trên “Chọn ghế”.
   - `--success`, `--warning`, `--danger`.
-- **Vật liệu.** Mỗi loại là một lớp màu (chỉ alpha) cộng một `backdrop-filter`:
+- **Vật liệu.** Mỗi loại là một lớp màu mỏng (chỉ alpha) cộng một `backdrop-filter`:
 
 | Vật liệu | Dùng cho | Lớp màu | Bộ lọc (desktop / điện thoại) |
 | --- | --- | --- | --- |
-| clear | brand, cụm “Cài đặt”, thanh chọn tác vụ, nút tròn, nút trở về, thanh tham quan, thông báo, cần đi bộ, mini player điện thoại | `rgb(22 22 26 / .5)` | `blur(16px)` / `blur(12px)` + `saturate(160%) brightness(.72)` |
-| regular | dock của tác vụ, bảng Cài đặt / hub, sidebar ghế, chip lỗi phim, thẻ ghế, gợi ý lần đầu, thẻ trạng thái | `rgb(20 20 24 / .66)` | `blur(24px)` / `blur(18px)` + `saturate(150%) brightness(.72)` |
-| dense | sơ đồ ghế, popover “Góc khác”, nhãn video 2D | `rgb(16 16 19 / .92)` | không blur riêng (nằm trong một tấm kính khác) |
+| clear | brand, cụm “Cài đặt”, thanh chọn tác vụ, nút trở về, thanh tham quan, thông báo, cần đi bộ, mini player điện thoại, nhãn video 2D | `rgb(14 14 18 / .16)` | `blur(8px)` + `saturate(190%) brightness(2.8) brightness(.34)` |
+| regular | dock của tác vụ, bảng Cài đặt / hub, chip lỗi phim, thẻ ghế, gợi ý lần đầu, thẻ trạng thái | `rgb(14 14 18 / .22)` | `blur(14px)` / `blur(12px)` + `saturate(180%) brightness(2.8) brightness(.34)` |
+| dense | sidebar / sheet / sơ đồ ghế toàn màn hình | `rgb(12 12 16 / .3)` | `blur(20px)` / `blur(16px)` + `saturate(170%) brightness(2.5) brightness(.38)` |
 
-- `brightness(.72)` làm tối phần phía sau, nên chữ ngà vẫn đủ tương phản trên khung phim sáng mà
-  lớp màu không phải đậm.
+- **Bộ giới hạn sáng.** Cặp `brightness(k) brightness(c/k)` giữ nguyên phần tối của khán phòng
+  (×0,95) và chặn mọi điểm sáng hơn ở mức `c`, vì trình duyệt kẹp giá trị giữa hai hàm filter (đã
+  đo trên Chrome: nền trắng 255 → 102 với `brightness(2.5) brightness(.4)`, nền 64 giữ 64). Kính
+  vì thế trong suốt trên phòng tối, và chữ ngà vẫn ≥ 4,5:1 trên khung phim gần trắng (kể cả nút
+  đang chọn). Safari/Firefox chưa đo: nếu trình duyệt không kẹp giữa hai hàm, kính chỉ còn
+  ×0,95 (trong hơn, nhưng chữ trên phim rất sáng sẽ kém tương phản hơn).
+- **Nút tròn (điện thoại)** là thấu kính trong hơn cả lớp clear (không có chữ):
+  `blur(5px) saturate(200%) brightness(.92)`, mép sáng như ánh sáng bẻ cong ở rìa, một vệt sáng
+  phía trên, ba vòng tròn đồng tâm kiểu nút home nổi. Khi mở: kính sáng hơn, lõi màu champagne.
+- **Sơ đồ ghế:** một “giếng” nông trong kính (`rgb(0 0 0 / .16)`); ghế là giọt kính màu (đỏ rượu
+  vang trong 62%, ghế đã đặt gần như trong suốt có dấu ✕, ghế đang chọn champagne đặc).
+- Popover “Góc khác” (cửa sổ hẹp 600–719 px) vẫn gần như đặc: nó nằm ngoài tấm kính chứa nó, blur ở
+  đó không thấy gì phía sau.
 - Mỗi cụm chỉ có một lớp blur; nút bên trong không blur lần nữa.
-- **Viền và bóng.**
-  - Viền trắng 14% (`--glass-border`), 22% khi đậm.
-  - Highlight 1 px ở cạnh trên (`--glass-highlight`).
-  - Ánh sáng nhẹ trên mặt kính (`--glass-sheen`).
+- **Viền, ánh sáng và bóng.**
+  - Viền sáng theo từng cạnh (`--glass-edge`: trên 30%, trái 20%, phải 12%, dưới 8%); nút bên
+    trong có viền nhẹ hơn (`--glass-edge-soft`).
+  - Vạch sáng 1 px bên trong cạnh trên (`--glass-highlight`) và quầng sáng mỏng trong mép kính
+    (`--glass-depth`).
+  - Ánh trên mặt kính (`--glass-sheen`): vệt sáng phía trên, phản chiếu nhẹ ở đáy.
+  - Chữ trên kính có bóng mềm (`--glass-text-shadow`); chữ trên nền champagne thì không.
   - Bóng `--shadow-sm` / `--shadow-lg`.
 - **Hình khối.**
   - Nút 14 px; pill 999 px; panel 26 px.
@@ -75,13 +91,16 @@ Nguyên tắc chung:
     vụ dời sang khoảng còn lại.
   - “Cài đặt” chỉ còn Hiển thị (chất lượng, giảm hiệu ứng kính, toàn màn hình, công cụ kiểm tra gập
     lại), Trợ giúp và Về trang chủ.
-- **Tablet dọc.** Sơ đồ là sheet dưới khán phòng như trước, mở rộng được thành toàn màn hình.
+- **Tablet dọc.** Sơ đồ là sheet kính nổi phía dưới, đè lên khán phòng (cao 52dvh, cách mép 12 px);
+  canvas không đổi kích thước, thanh chọn tác vụ nằm ngay trên sheet. Mở rộng được thành toàn màn
+  hình.
 - **Điện thoại (`data-layout="immersive"`).**
   - Khán phòng tràn màn hình, chỉ có nút tròn kính (kéo, bám cạnh, nhớ vị trí như trước).
   - Hub có ba tác vụ ở đầu, bên dưới chỉ là nội dung của tác vụ đang chọn. “Cài đặt và trợ giúp”
     gập lại và lần mở sau gập lại như cũ.
   - Khi phim đã phát, mini player “Đang phát / Tạm dừng” ở góc dưới.
-  - Sơ đồ ghế vẫn toàn màn hình.
+  - Sơ đồ ghế vẫn toàn màn hình, giờ là một tấm kính đè lên khán phòng: phòng vẫn hiện mờ phía
+    sau (inert, không đổi kích thước), thay cho nền đen.
 
 Tác vụ vẫn chỉ do `taskLayout.ts` quyết định. Các nút tác vụ gọi `onTask`, trang `dispatch`. Đổi
 bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao, không gắn listener mới.
@@ -93,7 +112,7 @@ bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao
 - **Ít chuyển động.** `prefers-reduced-motion` tắt mọi transition/animation.
 - **Giảm độ trong.** `prefers-reduced-transparency` và nút “Giảm hiệu ứng kính” cho nền đặc, không
   blur.
-- **Chế độ Tiết kiệm.** Blur giảm còn 8–10 px, bỏ ánh sáng trên mặt kính.
+- **Chế độ Tiết kiệm.** Blur giảm còn 6–10 px (giữ nguyên bộ giới hạn sáng), bỏ ánh trên mặt kính.
 - **Thanh tác vụ khi đang xem.** Lúc phim phát và người dùng không chạm vào trang (3,5 s), thanh chọn
   tác vụ lùi đi. Dock trình phát và dòng ghi công vẫn ở lại. Rê chuột, phím hoặc focus là hiện lại;
   thanh không lùi khi đang hover, focus hay kéo thanh tua.
@@ -103,4 +122,4 @@ bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao
 ## Kiểm tra
 
 Dùng `npm run capture`, `npm run acceptance`, `node scripts/measure-build.mjs` như cũ. Số đo của bản
-redesign: `artifacts/prompt-15/`.
+redesign: `artifacts/prompt-15/`; vòng kính trong suốt: `artifacts/prompt-16/`.

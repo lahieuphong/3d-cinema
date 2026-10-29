@@ -4,11 +4,15 @@
 
    Materials, a web reading of Liquid Glass (CSS cannot reproduce the native optics):
    - clear: small floating controls over the room (the round button, the task switch, the header).
-   - regular: menus and control panels (Cài đặt, the task's controls, the seat sidebar).
-   - dense: long text and the seat map, and the fallback when glass is off.
-   Each material is a tint (alpha only, never `opacity` on text) over one backdrop filter. The
-   filter darkens what is behind a little, so ivory text keeps ≥ 4.5:1 over a bright film frame
-   without a heavy tint. One blurred layer per cluster: controls inside a material never blur again. */
+   - regular: menus and control panels (Cài đặt, the task's controls, the hub).
+   - dense: the seat panel and the seat map, steadier for long text and small targets.
+   All three stay see-through: a thin tint (alpha only, never `opacity` on text) over one backdrop
+   filter with little blur that keeps the room's colour (saturate) and limits its light: the pair
+   `brightness(k) brightness(c/k)` leaves the dark room as it is (×0.95) and caps anything brighter
+   at c (browsers clamp between filter functions), so ivory text keeps ≥ 4.5:1 even over a
+   near-white film frame, pressed fill included. The glass reads as glass from its light: a lit
+   edge (brighter top and left), a glint along the top and a faint inner glow. One blurred layer per
+   cluster: controls inside a material never blur again. */
 
 :root {
   /* ---------- Colour ---------- */
@@ -25,27 +29,34 @@
   --danger-tint: rgb(255 120 110 / 0.14);
   --canvas: #0d0d10;
 
-  /* Fills inside a material (hover, pressed / selected). */
-  --fill-hover: rgb(255 255 255 / 0.08);
-  --fill-pressed: rgb(255 255 255 / 0.14);
-  --fill-subtle: rgb(255 255 255 / 0.05);
-  --separator: rgb(255 255 255 / 0.1);
+  /* Fills inside a material (hover, pressed / selected): light, like a brighter drop of glass. */
+  --fill-hover: rgb(255 255 255 / 0.1);
+  --fill-pressed: rgb(255 255 255 / 0.16);
+  --fill-subtle: rgb(255 255 255 / 0.06);
+  --separator: rgb(255 255 255 / 0.12);
 
   /* ---------- Materials ---------- */
-  --glass-clear-tint: rgb(22 22 26 / 0.56);
-  --glass-clear-filter: blur(16px) saturate(160%) brightness(0.72);
-  --glass-regular-tint: rgb(20 20 24 / 0.66);
-  --glass-regular-filter: blur(24px) saturate(150%) brightness(0.72);
-  --surface-dense-tint: rgb(16 16 19 / 0.92);
-  --surface-dense-filter: blur(24px) saturate(130%);
-  /* A soft light falling on the top of the pane. */
-  --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 46%);
+  --glass-clear-tint: rgb(14 14 18 / 0.16);
+  --glass-clear-filter: blur(8px) saturate(190%) brightness(2.8) brightness(0.34);
+  --glass-regular-tint: rgb(14 14 18 / 0.22);
+  --glass-regular-filter: blur(14px) saturate(180%) brightness(2.8) brightness(0.34);
+  --surface-dense-tint: rgb(12 12 16 / 0.3);
+  --surface-dense-filter: blur(20px) saturate(170%) brightness(2.5) brightness(0.38);
+  /* A glint along the top of the pane and a faint one where the light leaves it at the bottom. */
+  --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0) 36%, rgb(255 255 255 / 0) 80%, rgb(255 255 255 / 0.035));
+  /* The lit edge, per side (top right bottom left): brightest where the light comes from. */
+  --glass-edge: rgb(255 255 255 / 0.3) rgb(255 255 255 / 0.12) rgb(255 255 255 / 0.08) rgb(255 255 255 / 0.2);
+  --glass-edge-soft: rgb(255 255 255 / 0.18) rgb(255 255 255 / 0.09) rgb(255 255 255 / 0.07) rgb(255 255 255 / 0.13);
   --glass-border: rgb(255 255 255 / 0.14);
-  --glass-border-strong: rgb(255 255 255 / 0.22);
-  /* The bright edge along the top. */
-  --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.13);
-  --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.26), 0 1px 2px rgb(0 0 0 / 0.22);
-  --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.24);
+  --glass-border-strong: rgb(255 255 255 / 0.26);
+  /* The bright inner line along the top (and a fainter one at the bottom). */
+  --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -1px 0 rgb(255 255 255 / 0.05);
+  /* The pane's thickness: light caught inside its edges. */
+  --glass-depth: inset 0 0 22px rgb(255 255 255 / 0.05);
+  /* Words on glass: a soft shadow keeps them apart from a busy room behind. */
+  --glass-text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+  --shadow-sm: 0 6px 18px rgb(0 0 0 / 0.24), 0 1px 3px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.34), 0 2px 8px rgb(0 0 0 / 0.2);
 
   /* ---------- Shape and space ---------- */
   --radius-xs: 8px;
@@ -114,9 +125,9 @@
 /* Phones: less blur (cheaper to composite, still reads as glass at that size). */
 @media (max-width: 599px), (orientation: landscape) and (max-height: 500px) {
   :root {
-    --glass-clear-filter: blur(12px) saturate(160%) brightness(0.72);
-    --glass-regular-filter: blur(18px) saturate(150%) brightness(0.72);
-    --surface-dense-filter: blur(18px) saturate(130%);
+    --glass-clear-filter: blur(8px) saturate(190%) brightness(2.8) brightness(0.34);
+    --glass-regular-filter: blur(12px) saturate(180%) brightness(2.8) brightness(0.34);
+    --surface-dense-filter: blur(16px) saturate(170%) brightness(2.5) brightness(0.38);
   }
 }
 
@@ -131,6 +142,7 @@
     --glass-regular-filter: none;
     --surface-dense-filter: none;
     --glass-sheen: none;
+    --glass-depth: 0 0 0 transparent;
   }
 }
 
@@ -142,6 +154,7 @@
   --glass-regular-filter: none;
   --surface-dense-filter: none;
   --glass-sheen: none;
+  --glass-depth: 0 0 0 transparent;
 }
 
 /* Browsers without backdrop-filter: the tint alone has to carry the text. */

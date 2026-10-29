@@ -3605,11 +3605,14 @@ async function uiLayouts(browser, base) {
           modal: panel.getAttribute('aria-modal'),
           inert: document.querySelector('.cinema-header').inert && document.querySelector('.cinema-screen').inert,
           coverage: Number(((r.width * r.height) / (innerWidth * innerHeight)).toFixed(3)),
+          // The room stays behind the glass (blurred), out of reach: inert, and covered at the centre.
           canvasShown: document.querySelector('canvas').getClientRects().length > 0,
+          centreInPanel: panel.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2)),
+          glass: getComputedStyle(panel).backdropFilter,
           focusInside: panel.contains(document.activeElement),
         };
       });
-      check(`ui ${name}: ${immersive ? 'the map opens as' : '"Mở rộng" makes the sheet'} a full-screen dialog — the map is the page, no strip of 3D left, the rest inert`, dialog.role === 'dialog' && dialog.modal === 'true' && dialog.inert && dialog.coverage > 0.85 && !dialog.canvasShown && dialog.focusInside, dialog);
+      check(`ui ${name}: ${immersive ? 'the map opens as' : '"Mở rộng" makes the sheet'} a full-screen dialog — the map is the page (glass over the room, which stays behind it out of reach), the rest inert`, dialog.role === 'dialog' && dialog.modal === 'true' && dialog.inert && dialog.coverage > 0.85 && dialog.centreInPanel && dialog.focusInside, dialog);
       await shot('4-seats-expanded');
       await page.click('button[data-action="seat-panel-close"]');
       await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });

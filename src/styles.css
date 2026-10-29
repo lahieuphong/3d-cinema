@@ -79,11 +79,14 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-tourbar,
 .cinema-notice,
 .cinema-stick,
-.cinema-overlay > .cinema-mini {
-  border: 1px solid var(--glass-border);
+.cinema-overlay > .cinema-mini,
+.cinema-video2d__label {
+  border: 1px solid;
+  border-color: var(--glass-edge);
   background-color: var(--glass-clear-tint);
   background-image: var(--glass-sheen);
-  box-shadow: var(--glass-highlight), var(--shadow-sm);
+  box-shadow: var(--glass-highlight), var(--glass-depth), var(--shadow-sm);
+  text-shadow: var(--glass-text-shadow);
   -webkit-backdrop-filter: var(--glass-clear-filter);
   backdrop-filter: var(--glass-clear-filter);
 }
@@ -94,28 +97,53 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-seatcard,
 .cinema-hub__panel,
 .cinema-hub__hint,
-.cinema-seats,
-.cinema-status__card {
-  border: 1px solid var(--glass-border);
+.cinema-status__card,
+.cinema-app--inspector .cinema-caption,
+.cinema-dimensions {
+  border: 1px solid;
+  border-color: var(--glass-edge);
   background-color: var(--glass-regular-tint);
   background-image: var(--glass-sheen);
-  box-shadow: var(--glass-highlight), var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--glass-depth), var(--shadow-lg);
+  text-shadow: var(--glass-text-shadow);
   -webkit-backdrop-filter: var(--glass-regular-filter);
   backdrop-filter: var(--glass-regular-filter);
 }
 
-/* Dense, inside a pane (no second blur): the seat map, popovers, the 2D film's label. */
-.cinema-map,
-.cinema-taskbar .cinema-more[data-open='true'],
-.cinema-video2d__label {
+/* Dense: the seat panel (long text, small targets), still glass over the room. */
+.cinema-seats {
+  border: 1px solid;
+  border-color: var(--glass-edge);
   background-color: var(--surface-dense-tint);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-highlight), var(--glass-depth), var(--shadow-lg);
+  text-shadow: var(--glass-text-shadow);
+  -webkit-backdrop-filter: var(--surface-dense-filter);
+  backdrop-filter: var(--surface-dense-filter);
 }
 
-/* Tiết kiệm: lighter glass (the room itself is cheaper too). Less glass wins over it. */
+/* Inside a pane (no second blur): the popover of rarer views, which leaves its pane (a blur there
+   would see nothing behind it), stays nearly solid. */
+.cinema-taskbar .cinema-more[data-open='true'] {
+  background-color: rgb(18 18 22 / 0.94);
+}
+
+/* Words drawn on a light or champagne fill carry no shadow. */
+.cinema-button--accent,
+.cinema-player__primary,
+.cinema-seats__view,
+.cinema-summary__view,
+.cinema-tasks__count,
+.cinema-map__screen,
+.cinema-seat[data-status='selected'] {
+  text-shadow: none;
+}
+
+/* Tiết kiệm: less blur (the room itself is cheaper too), the same darkening. Less glass wins over it. */
 .cinema-app--room[data-quality='economy'] {
-  --glass-clear-filter: blur(8px) saturate(140%) brightness(0.72);
-  --glass-regular-filter: blur(10px) saturate(140%) brightness(0.72);
-  --surface-dense-filter: none;
+  --glass-clear-filter: blur(6px) saturate(170%) brightness(2.8) brightness(0.34);
+  --glass-regular-filter: blur(8px) saturate(170%) brightness(2.8) brightness(0.34);
+  --surface-dense-filter: blur(10px) saturate(160%) brightness(2.5) brightness(0.38);
   --glass-sheen: none;
 }
 
@@ -142,9 +170,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   gap: 6px;
   min-height: var(--tap);
   padding: 0 16px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid;
+  border-color: var(--glass-edge-soft);
   border-radius: var(--radius-md);
   background: var(--fill-subtle);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
   color: var(--ink);
   font: inherit;
   font-size: var(--text-sm);
@@ -257,7 +287,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-segmented__button[aria-pressed='true'] {
-  background-color: rgb(255 255 255 / 0.2);
+  background-color: var(--fill-pressed);
   box-shadow: var(--glass-highlight), 0 1px 3px rgb(0 0 0 / 0.25);
 }
 
@@ -499,7 +529,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-brand:hover {
-  background-color: rgb(40 40 46 / 0.6);
+  background-color: rgb(255 255 255 / 0.08);
 }
 
 .cinema-badge {
@@ -698,7 +728,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-return:hover:not(:disabled) {
-  background-color: rgb(40 40 46 / 0.62);
+  background-color: rgb(255 255 255 / 0.08);
 }
 
 /* Off (no scene for a moment): still a pane over the room, its words dimmed. */
@@ -754,9 +784,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   width: 52px;
   height: 52px;
   margin: -26px 0 0 -26px;
+  border: 1px solid;
+  border-color: rgb(255 255 255 / 0.6) rgb(255 255 255 / 0.3) rgb(255 255 255 / 0.2) rgb(255 255 255 / 0.45);
   border-radius: 50%;
-  background: rgb(245 241 234 / 0.88);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+  background: radial-gradient(60% 45% at 38% 26%, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 70%), rgb(255 255 255 / 0.3);
+  box-shadow: inset 0 -2px 6px rgb(255 255 255 / 0.18), 0 4px 12px rgb(0 0 0 / 0.35);
   pointer-events: none;
 }
 
@@ -1009,6 +1041,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-taskbar__tools .cinema-button:not(.cinema-button--accent, .cinema-player__primary, .cinema-summary__view) {
   border-color: transparent;
   background-color: transparent;
+  box-shadow: none;
 }
 
 .cinema-taskbar__tools .cinema-button:hover:not(:disabled, .cinema-button--accent, .cinema-player__primary, .cinema-summary__view) {
@@ -1619,13 +1652,14 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 2D seat map, on a steadier pane ---------- */
+/* ---------- 2D seat map, in a shallow well of the glass ---------- */
 
 .cinema-map {
   overflow-x: auto;
   padding: 14px 8px 12px;
   border-radius: var(--radius-lg);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  background-color: rgb(0 0 0 / 0.16);
+  box-shadow: inset 0 0 0 1px var(--separator), inset 0 1px 6px rgb(0 0 0 / 0.22);
   /* A horizontal scrollbar shows when the rows do not fit (narrow phones). */
   scrollbar-gutter: stable;
 }
@@ -1665,17 +1699,19 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   text-align: center;
 }
 
-/* Seats: wine red (free), champagne with ✓ (chosen), graphite with ✕ (taken), a white ring (looked at). */
+/* Seats, small drops of tinted glass: wine red (free), champagne with ✓ (chosen), clear with ✕
+   (taken), a white ring (looked at). */
 .cinema-seat {
   display: inline-grid;
   place-items: center;
   width: 26px;
   height: 28px;
   padding: 0;
-  border: 1px solid #b04457;
+  border: 1px solid rgb(232 118 140 / 0.62);
   border-radius: 7px 7px 4px 4px;
-  background: #6a1729;
-  color: #f6dfe3;
+  background: rgb(150 30 56 / 0.62);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22);
+  color: #fbe9ec;
   font: inherit;
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
@@ -1686,6 +1722,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-seat[data-status='selected'] {
   border-color: #f4dba4;
   background: var(--accent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5);
   color: var(--accent-ink);
   font-weight: var(--weight-bold);
 }
@@ -1697,9 +1734,10 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-seat[data-status='reserved'] {
-  border-color: #4b4e56;
-  background: #26272c;
-  color: #a7aab2;
+  border-color: rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: none;
+  color: #b4b7bf;
   cursor: not-allowed;
 }
 
@@ -1909,10 +1947,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border-radius: var(--radius-xl);
 }
 
-.cinema-app--inspector .cinema-caption {
-  border: 1px solid var(--glass-border);
-}
-
 /* Measured seat dimensions in the seat inspector. */
 .cinema-dimensions {
   position: absolute;
@@ -1924,9 +1958,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   max-width: calc(100% - 24px);
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  background: var(--glass-regular-tint);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -2002,26 +2034,30 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
-/* Portrait tablets: the seat panel is a sheet under the view (not modal), which can grow to fill
-   the screen (modal) for focused seat picking. */
+/* Portrait tablets: the seat panel is a glass sheet floating over the lower part of the room (not
+   modal; the room keeps its size behind it), which can grow to fill the screen (modal) for focused
+   seat picking. */
 @media (orientation: portrait) and (max-width: 1024px) {
+  .cinema-app--room {
+    --sheet-height: 52dvh;
+  }
+
   .cinema-main {
     flex-direction: column;
   }
 
   .cinema-app--room .cinema-seats[data-state='open'] {
-    position: static;
+    top: auto;
+    left: calc(var(--edge) + env(safe-area-inset-left, 0px));
     width: auto;
-    max-height: 52vh;
-    max-height: 52dvh;
-    border-width: 1px 0 0;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    box-shadow: var(--glass-highlight);
+    height: 52vh;
+    height: var(--sheet-height);
   }
 
-  /* The sheet is under the room, so the task bar stays centred in what is left of it. */
+  /* The task switch stays centred, just above the sheet. */
   .cinema-app--room[data-panel='open'] .cinema-taskbar {
     right: 0;
+    bottom: calc(var(--sheet-height) + var(--edge) + 12px + env(safe-area-inset-bottom, 0px));
   }
 
   /* The sheet holds the selection: over the room only the switch remains. */
@@ -2033,11 +2069,20 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     display: inline-flex;
   }
 
-  /* Full screen: the map is the page. Header and view leave the layout (the canvas keeps its last
-     frame and draws nothing while hidden); the dialog takes their place. */
-  .cinema-app[data-panel='expanded'] .cinema-header,
-  .cinema-app[data-panel='expanded'] .cinema-screen {
+  /* Full screen: the map is the page, a glass pane over the whole room (inert behind it); the
+     header leaves. */
+  .cinema-app[data-panel='expanded'] .cinema-header {
     display: none;
+  }
+
+  .cinema-app[data-panel='expanded'] .cinema-screen {
+    position: absolute;
+    inset: 0;
+  }
+
+  .cinema-app[data-panel='expanded'] .cinema-seats {
+    position: relative;
+    z-index: var(--z-chrome);
   }
 
   .cinema-app[data-panel='expanded'] .cinema-main {
@@ -2085,9 +2130,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   --chrome-top: calc(12px + env(safe-area-inset-top, 0px));
 }
 
-/* The seat map: closed, or the whole screen (a dialog, as the full-screen sheet was). */
+/* The seat map: closed, or the whole screen (a dialog, as the full-screen sheet was): a glass pane
+   over the room, which stays behind it as it was (inert, the same size, so nothing resizes). */
 .cinema-app[data-layout='immersive'][data-panel='expanded'] .cinema-screen {
-  display: none;
+  position: absolute;
+  inset: 0;
+}
+
+.cinema-app[data-layout='immersive'][data-panel='expanded'] .cinema-seats {
+  position: relative;
+  z-index: var(--z-chrome);
 }
 
 .cinema-app[data-layout='immersive'][data-panel='expanded'] .cinema-main {
@@ -2229,6 +2281,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   pointer-events: none;
 }
 
+/* The round button, a lens of clear glass: the room shows through it, light bends along its rim
+   and catches its top. It holds no words, so it can be clearer than the panes. */
 .cinema-hub__toggle {
   position: fixed;
   z-index: var(--z-hub);
@@ -2237,9 +2291,20 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   width: 56px;
   height: 56px;
   padding: 0;
-  border-color: var(--glass-border-strong);
+  border-color: rgb(255 255 255 / 0.42) rgb(255 255 255 / 0.18) rgb(255 255 255 / 0.12) rgb(255 255 255 / 0.3);
   border-radius: 50%;
-  color: var(--ink);
+  background-color: rgb(255 255 255 / 0.05);
+  background-image:
+    radial-gradient(52% 36% at 34% 18%, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0) 72%),
+    radial-gradient(circle, rgb(255 255 255 / 0) 60%, rgb(255 255 255 / 0.1) 82%, rgb(255 255 255 / 0.22) 100%);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.4),
+    inset 0 -3px 8px rgb(255 255 255 / 0.1),
+    0 8px 22px rgb(0 0 0 / 0.32),
+    0 1px 3px rgb(0 0 0 / 0.24);
+  -webkit-backdrop-filter: blur(5px) saturate(200%) brightness(0.92);
+  backdrop-filter: blur(5px) saturate(200%) brightness(0.92);
+  color: #fff;
   cursor: pointer;
   touch-action: none;
   user-select: none;
@@ -2247,43 +2312,85 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   -webkit-tap-highlight-color: transparent;
   transition:
     background-color var(--duration-medium) var(--ease-out),
-    color var(--duration-medium) var(--ease-out),
+    border-color var(--duration-medium) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
     left var(--duration-medium) var(--ease-out),
     top var(--duration-medium) var(--ease-out);
 }
 
+/* Pressed: the lens gives a little, like glass under a finger. */
+.cinema-hub__toggle:active {
+  transform: scale(0.94);
+}
+
 .cinema-hub__toggle svg {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+  transition: opacity var(--duration-medium) var(--ease-out);
 }
 
 .cinema-hub__ring {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
+  fill: currentColor;
+}
+
+.cinema-hub__ring--outer {
+  fill-opacity: 0.16;
+}
+
+.cinema-hub__ring--inner {
+  fill-opacity: 0.28;
 }
 
 .cinema-hub__dot {
-  fill: var(--accent);
+  fill: currentColor;
+  fill-opacity: 0.94;
 }
 
-/* At rest it steps back, never out of sight: a thinner tint, a softer ring (no opacity on the pane). */
+/* At rest it steps back, never out of sight: thinner glass, a dimmer core. */
 .cinema-hub[data-rest='true'] .cinema-hub__toggle {
-  background-color: rgb(22 22 26 / 0.3);
-  color: rgb(245 241 234 / 0.62);
+  background-color: rgb(255 255 255 / 0.02);
+  border-color: rgb(255 255 255 / 0.26) rgb(255 255 255 / 0.12) rgb(255 255 255 / 0.08) rgb(255 255 255 / 0.18);
+}
+
+.cinema-hub[data-rest='true'] .cinema-hub__toggle svg {
+  opacity: 0.62;
 }
 
 .cinema-hub[data-dragging='true'] .cinema-hub__toggle {
   transition: none;
 }
 
+/* Open: brighter glass and a champagne core. */
 .cinema-hub[data-open='true'] .cinema-hub__toggle {
-  background-color: rgb(245 241 234 / 0.92);
-  color: var(--accent-ink);
+  background-color: rgb(255 255 255 / 0.18);
+  border-color: rgb(255 255 255 / 0.55) rgb(255 255 255 / 0.26) rgb(255 255 255 / 0.18) rgb(255 255 255 / 0.4);
 }
 
 .cinema-hub[data-open='true'] .cinema-hub__dot {
-  fill: #9a7a35;
+  fill: var(--accent-strong);
+  fill-opacity: 1;
+}
+
+/* Less glass: a solid button (the same shape and light). */
+@media (prefers-reduced-transparency: reduce) {
+  .cinema-hub__toggle {
+    background-color: rgb(40 40 46 / 0.96);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+:root[data-glass='reduced'] .cinema-hub__toggle {
+  background-color: rgb(40 40 46 / 0.96);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .cinema-hub__toggle {
+    background-color: rgb(40 40 46 / 0.86);
+  }
 }
 
 /* Modal, but the room stays as it is: a press outside closes the panel and goes no further. */

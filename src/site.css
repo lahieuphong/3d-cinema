@@ -1,7 +1,7 @@
 /* The site around the auditorium: landing page, page loading/error, not found. (The auditorium's
    own styles are src/styles.css, loaded with it.) Built on the shared tokens of src/tokens.css;
-   brand colours follow src/brand.ts. Glass is kept for the floating navigation and the buttons over
-   the hero picture; the reading parts sit on the page itself. */
+   brand colours follow src/brand.ts. The floating navigation and the buttons over the hero picture
+   are clear glass; the cards lower down are light glass over soft glows of the brand's colours. */
 
 :root {
   --site-bg: #14110f;
@@ -143,24 +143,25 @@ html[data-route='landing'] {
 
 /* Clear glass over the picture, a quiet outline on the page. */
 .button--ghost {
-  border-color: var(--glass-border-strong);
+  border-color: var(--glass-edge);
   background-color: var(--glass-clear-tint);
   background-image: var(--glass-sheen);
   color: var(--ink);
-  box-shadow: var(--glass-highlight);
+  box-shadow: var(--glass-highlight), var(--glass-depth);
+  text-shadow: var(--glass-text-shadow);
   -webkit-backdrop-filter: var(--glass-clear-filter);
   backdrop-filter: var(--glass-clear-filter);
 }
 
 .button--ghost:hover {
-  background-color: rgb(40 40 46 / 0.62);
+  background-color: rgb(255 255 255 / 0.1);
 }
 
 /* The way in from the floating navigation: a lit pill inside the glass (the hero keeps the champagne). */
 .button--small {
   min-height: 44px;
   padding: 0 18px;
-  border-color: var(--glass-border);
+  border-color: rgb(255 255 255 / 0.32) rgb(255 255 255 / 0.14) rgb(255 255 255 / 0.1) rgb(255 255 255 / 0.22);
   background-color: rgb(255 255 255 / 0.14);
   color: var(--ink);
   font-size: var(--text-sm);
@@ -226,11 +227,13 @@ html[data-route='landing'] {
   min-height: var(--site-header-height);
   margin: 0 auto;
   padding: 5px 5px 5px 14px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid;
+  border-color: var(--glass-edge);
   border-radius: var(--radius-pill);
   background-color: var(--glass-clear-tint);
   background-image: var(--glass-sheen);
-  box-shadow: var(--glass-highlight), var(--shadow-sm);
+  box-shadow: var(--glass-highlight), var(--glass-depth), var(--shadow-sm);
+  text-shadow: var(--glass-text-shadow);
   -webkit-backdrop-filter: var(--glass-clear-filter);
   backdrop-filter: var(--glass-clear-filter);
 }
@@ -408,15 +411,26 @@ html[data-route='landing'] {
   list-style: none;
 }
 
+.experience {
+  background:
+    radial-gradient(38% 46% at 12% 78%, rgb(138 38 54 / 0.34), rgb(138 38 54 / 0)),
+    radial-gradient(30% 40% at 88% 70%, rgb(217 192 140 / 0.16), rgb(217 192 140 / 0)),
+    var(--site-bg);
+}
+
 .facts li {
   display: grid;
   align-content: start;
   gap: 6px;
   padding: 24px;
-  border: 1px solid var(--site-line);
+  border: 1px solid;
+  border-color: var(--glass-edge);
   border-radius: var(--radius-lg);
-  background: var(--site-surface);
-  box-shadow: var(--glass-highlight);
+  background-color: var(--site-surface);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-highlight), var(--glass-depth), var(--shadow-sm);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
 }
 
 .facts strong {
@@ -449,9 +463,11 @@ html[data-route='landing'] {
   height: auto;
   aspect-ratio: 3 / 2;
   object-fit: cover;
-  border: 1px solid var(--site-line);
+  border: 1px solid;
+  border-color: var(--glass-edge);
   border-radius: var(--radius-lg);
   background: var(--site-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .step h3 {
@@ -472,8 +488,8 @@ html[data-route='landing'] {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--accent-tint);
-  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.45);
+  background: radial-gradient(60% 50% at 36% 24%, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0)), var(--accent-tint);
+  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.3);
   color: var(--accent-strong);
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
@@ -733,6 +749,19 @@ html[data-route='landing'] {
 /* Off the picture, the ghost button is a quiet outline (no glass over a flat page). */
 :is(.route-status, .not-found) .button--ghost {
   background-color: var(--fill-subtle);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Less glass: the cards keep their tint, without the blur. */
+@media (prefers-reduced-transparency: reduce) {
+  .facts li {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+:root[data-glass='reduced'] .facts li {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }

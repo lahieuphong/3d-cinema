@@ -115,8 +115,9 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   anchor.setAttribute('aria-haspopup', 'dialog');
   anchor.setAttribute('aria-expanded', 'false');
   anchor.setAttribute('aria-controls', 'cinema-hub-panel');
+  // Three glass rings around a lit core (the familiar floating home button).
   toggle.innerHTML =
-    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="cinema-hub__ring" cx="12" cy="12" r="9"/><circle class="cinema-hub__dot" cx="12" cy="12" r="4.5"/></svg>';
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="cinema-hub__ring cinema-hub__ring--outer" cx="12" cy="12" r="10.5"/><circle class="cinema-hub__ring cinema-hub__ring--inner" cx="12" cy="12" r="7.75"/><circle class="cinema-hub__dot" cx="12" cy="12" r="5"/></svg>';
 
   const panel = el('div', 'cinema-hub__panel');
   panel.id = 'cinema-hub-panel';
