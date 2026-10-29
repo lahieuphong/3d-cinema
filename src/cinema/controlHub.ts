@@ -324,7 +324,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
     style.left = `${Math.min(Math.max(box.left + GAP, position.side === 'right' ? button.right - width : button.left), box.right - GAP - width)}px`;
     style.top = style.bottom = '';
     if (button.top + button.height / 2 > box.top + box.height / 2) {
-      // Above the button, and above the overlay stack (the film's problems, the credit) when that
+      // Above the button, and above the overlay stack (the film's problems, the seat card) when that
       // stack is down in the same corner: the hint never hides an error.
       const clear = options.keepClear?.();
       const lower = clear && clear.height > 0 && clear.bottom > button.top ? clear.top : Infinity;

@@ -68,7 +68,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 /* ================================================================ Materials
 
    Which part wears which material, in one place. Only the outer pane of a cluster blurs; what is
-   inside it never blurs again. */
+   inside it never blurs again. The task's pane wears its glass on a layer behind its content, so the
+   menus that leave it (the film list, "Góc khác") blur the room themselves, in the same glass: a
+   pane's own backdrop-filter would leave them only the pane to see. */
 
 /* Clear: small floating controls over the room. */
 .cinema-brand,
@@ -92,7 +94,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 /* Regular: the task's controls, menus and panels, notes over the room. */
-.cinema-taskbar__tools > .cinema-dock__panel,
+.cinema-taskbar__tools > .cinema-dock__panel::before,
+.cinema-taskbar .cinema-films__menu,
+.cinema-taskbar .cinema-more[data-open='true'],
 .cinema-filmstatus,
 .cinema-seatcard,
 .cinema-hub__panel,
@@ -120,12 +124,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   text-shadow: var(--glass-text-shadow);
   -webkit-backdrop-filter: var(--surface-dense-filter);
   backdrop-filter: var(--surface-dense-filter);
-}
-
-/* Inside a pane (no second blur): the popover of rarer views, which leaves its pane (a blur there
-   would see nothing behind it), stays nearly solid. */
-.cinema-taskbar .cinema-more[data-open='true'] {
-  background-color: rgb(18 18 22 / 0.94);
 }
 
 /* Words drawn on a light or champagne fill carry no shadow. */
@@ -1077,7 +1075,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-variant-numeric: tabular-nums;
 }
 
-/* Watching, nobody touching the page: the switch steps back (the player and its credit stay). */
+/* Watching, nobody touching the page: the switch steps back (the player stays). */
 .cinema-taskbar[data-rest='true'] > .cinema-tasks {
   visibility: hidden;
   opacity: 0;
@@ -1103,20 +1101,37 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   min-width: 0;
 }
 
+/* The pane anchors the menus it opens (their left edge on its own). Its 1 px rim is drawn by the
+   glass layer, inside the padding. */
 .cinema-taskbar__tools > .cinema-dock__panel {
+  position: relative;
+  z-index: 0;
   max-width: 100%;
-  padding: 6px;
+  padding: 7px;
   border-radius: var(--radius-lg);
+  text-shadow: var(--glass-text-shadow);
 }
 
-/* A new task's controls arrive softly. */
+.cinema-taskbar__tools > .cinema-dock__panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* A new task's controls arrive softly: the glass and what is on it fade in, not the pane (a pane
+   fading as a whole would stop its glass from seeing the room until it is opaque). */
 @starting-style {
-  .cinema-taskbar__tools > .cinema-dock__panel {
+  .cinema-taskbar__tools > .cinema-dock__panel::before,
+  .cinema-taskbar__tools > .cinema-dock__panel > * {
     opacity: 0;
   }
 }
 
-.cinema-taskbar__tools > .cinema-dock__panel {
+.cinema-taskbar__tools > .cinema-dock__panel::before,
+.cinema-taskbar__tools > .cinema-dock__panel > * {
   transition: opacity var(--duration-medium) var(--ease-out);
 }
 
@@ -1303,7 +1318,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-/* Xem phim: title, credit and where the camera is on top; the controls under them. */
+/* Xem phim: the film's title and where the camera is on top; the controls under them. */
 .cinema-player {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1400,38 +1415,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-weight: var(--weight-semibold);
 }
 
-.cinema-player__credit {
-  color: var(--ink-secondary);
-  font-size: var(--text-2xs);
-}
-
-.cinema-player__credit a {
-  color: inherit;
-  text-underline-offset: 2px;
-}
-
-.cinema-player__credit a:hover {
-  color: var(--ink);
-}
-
 /* More than one film: the title is a pill (its film icon, its name, the small arrow of a menu, like
-   "Góc khác") that opens the list above the player; the credit stands beside it, in its own column. */
-.cinema-player__info--films {
-  display: flex;
-  align-items: center;
-  gap: 4px 12px;
-  line-height: 1.35;
-}
-
+   "Góc khác") that opens the list above the task's pane. */
 .cinema-films {
-  position: relative;
   display: flex;
-  flex: none;
-  max-width: 60%;
-}
-
-.cinema-player__info--films .cinema-player__credit {
-  min-width: 0;
+  max-width: 100%;
 }
 
 .cinema-films__toggle {
@@ -1491,11 +1479,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   text-overflow: ellipsis;
 }
 
-/* The list: the films as rows (a still, the name, length and studio, a tick on the one showing).
-   It leaves its pane, so no second blur: nearly solid, like "Góc khác". */
+/* The list: the films as rows (a still, the name, length and studio, a tick on the one showing),
+   in the pane's glass (Materials), its left edge on the pane's, 8 px above it. */
 .cinema-films__menu {
   position: absolute;
-  bottom: calc(100% + 18px);
+  bottom: calc(100% + 8px);
   left: 0;
   z-index: var(--z-popover);
   display: none;
@@ -1503,10 +1491,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   gap: 2px;
   width: min(340px, calc(100vw - 32px));
   padding: 6px;
-  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background-color: rgb(18 18 22 / 0.94);
-  box-shadow: var(--glass-highlight), var(--shadow-lg);
 }
 
 .cinema-films__menu[data-open='true'] {
@@ -2279,9 +2264,14 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     justify-content: center;
   }
 
+  /* Its menu, like the film list: in the pane's glass, its left edge on the pane's, 8 px above it. */
+  .cinema-taskbar .cinema-explore__views {
+    position: static;
+  }
+
   .cinema-taskbar .cinema-more {
     position: absolute;
-    bottom: calc(100% + 14px);
+    bottom: calc(100% + 8px);
     left: 0;
     z-index: var(--z-popover);
     display: none;
@@ -2289,9 +2279,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     gap: 4px;
     min-width: 220px;
     padding: 6px;
-    border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--glass-highlight), var(--shadow-lg);
   }
 
   .cinema-taskbar .cinema-more[data-open='true'] {
@@ -3219,18 +3207,9 @@ button.cinema-hub__row:disabled {
   max-width: none;
 }
 
-/* In the phone's panel the films are simply there, a group of rows under a small title (no menu),
-   the credit under them. */
-.cinema-hub .cinema-player__info--films {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  line-height: 1.4;
-}
-
+/* In the phone's panel the films are simply there, a group of rows under a small title (no menu). */
 .cinema-hub .cinema-films {
   display: block;
-  max-width: none;
 }
 
 .cinema-hub .cinema-films__toggle {
@@ -3243,9 +3222,6 @@ button.cinema-hub__row:disabled {
   display: flex;
   width: auto;
   padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
 }
 
 .cinema-hub .cinema-films__heading {
@@ -3291,7 +3267,8 @@ button.cinema-hub__row:disabled {
   .cinema-tasks__button,
   .cinema-taskbar > .cinema-tasks,
   .cinema-taskbar[data-rest='true'] > .cinema-tasks,
-  .cinema-taskbar__tools > .cinema-dock__panel,
+  .cinema-taskbar__tools > .cinema-dock__panel::before,
+  .cinema-taskbar__tools > .cinema-dock__panel > *,
   .cinema-app--room .cinema-seats[data-state='open'],
   .cinema-switch__track,
   .cinema-switch__track::after,

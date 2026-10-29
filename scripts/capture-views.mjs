@@ -2841,11 +2841,11 @@ async function filmDesktop(browser, base) {
       seek: q('input[data-action="media-seek"]').getAttribute('aria-label'),
       mute: [q('button[data-action="media-mute"]').getAttribute('aria-label'), q('button[data-action="media-mute"]').getAttribute('aria-pressed')],
       volume: q('input[data-action="media-volume"]').getAttribute('aria-label'),
-      credit: q('.cinema-player__credit').textContent,
+      credit: q('.cinema-player__credit') !== null,
       live: q('[data-film-live]')?.getAttribute('aria-live') === 'polite',
     };
   });
-  check('film: controls have names and states; the attribution and licence are shown', a11y.primary === 'Phát' && a11y.seek && a11y.mute[1] === 'false' && a11y.volume && /Blender Foundation/.test(a11y.credit) && /CC BY 3\.0/.test(a11y.credit) && a11y.live, a11y);
+  check('film: controls have names and states; no credit line in the player (the films are credited in Cài đặt › Thông tin)', a11y.primary === 'Phát' && a11y.seek && a11y.mute[1] === 'false' && a11y.volume && !a11y.credit && a11y.live, a11y);
   await screenshot(page, 'film-1-waiting-overview');
   const staticScene = await state(page);
   report.film.metrics.staticNotPlaying = { renders: idle.rendersPerSecond, ...staticScene.view.render, ...staticScene.view.memory };
@@ -3509,7 +3509,7 @@ async function filmMobile(browser, base) {
     await page.waitForTimeout(1500);
     const playing = await canvasShare(page);
     const chipShown = await page.isVisible('.cinema-filmstatus');
-    check(`film mobile ${name}: plays from the control hub; the room fills the screen with nothing over it but the credit and the hub's button`, playing.areaShare > 0.98 && playing.overflowX <= 0 && playing.overflowY <= 0 && !chipShown, { playing, chipShown });
+    check(`film mobile ${name}: plays from the control hub; the room fills the screen with nothing over it but the hub's button`, playing.areaShare > 0.98 && playing.overflowX <= 0 && playing.overflowY <= 0 && !chipShown, { playing, chipShown });
     await screenshot(page, `film-mobile-${name}-playing`);
     // The full-screen map while the film plays, then the view from a seat.
     await openSeatPanel(page);
@@ -3534,7 +3534,7 @@ async function filmMobile(browser, base) {
 
 // Three films: the list over the room (desktop) and in the control hub (phone). Another film on the
 // same element: the old one stops, the new one plays on if the last one was playing, else its
-// poster shows; title, credit and tick follow; the choice survives the inspector round trip.
+// poster shows; title and tick follow; the choice survives the inspector round trip.
 async function filmChoice(browser, base) {
   const FILM_IDS = ['big-buck-bunny-trailer', 'daily-dweebs', 'caminandes-3'];
   const shown = (page) =>
@@ -3551,7 +3551,6 @@ async function filmChoice(browser, base) {
         time: f.snapshot.currentTime,
         screen: f.view?.screen?.content ?? null,
         title: document.querySelector('.cinema-player__title')?.textContent ?? null,
-        credit: document.querySelector('.cinema-player__credit')?.textContent ?? null,
         pressed: [...document.querySelectorAll('.cinema-film[aria-pressed="true"]')].map((b) => b.dataset.film),
         options: [...document.querySelectorAll('.cinema-film')].map((b) => b.dataset.film),
         expanded: document.querySelector('button[data-action="film-menu"]')?.getAttribute('aria-expanded') ?? null,
@@ -3600,7 +3599,7 @@ async function filmChoice(browser, base) {
   }, null, { timeout: 20_000 });
   s = await shown(page);
   const same = await page.evaluate((v) => v === window.__cinema.filmElement() && document.querySelectorAll('video').length === 0, element);
-  check('film choice: chosen while playing, the next film plays on from its start (same element), title, credit and tick follow, the list closes', switched.id === 'daily-dweebs' && switched.src === '/media/daily-dweebs-720p.mp4' && switched.time < 1 && switched.expanded === 'false' && s.state === 'playing' && s.screen === 'video' && same && s.title === 'The Daily Dweebs' && /dailydweebs\.com · CC BY-SA 4\.0/.test(s.credit) && JSON.stringify(s.pressed) === '["daily-dweebs"]', { switched, now: s, same });
+  check('film choice: chosen while playing, the next film plays on from its start (same element), title and tick follow, the list closes', switched.id === 'daily-dweebs' && switched.src === '/media/daily-dweebs-720p.mp4' && switched.time < 1 && switched.expanded === 'false' && s.state === 'playing' && s.screen === 'video' && same && s.title === 'The Daily Dweebs' && JSON.stringify(s.pressed) === '["daily-dweebs"]', { switched, now: s, same });
   check('film choice: screen readers hear the switch once ("Đang phát: …", not "Đang phát" again)', s.live === 'Đang phát: The Daily Dweebs', { live: s.live });
 
   // Paused, then another film: not started, its poster on the screen.
@@ -3825,15 +3824,16 @@ async function uiLayouts(browser, base) {
     const pausedBox = await chromeBox(page);
 
     report.ui.canvas[name] = shares;
-    // The film's CC BY attribution is in the player: Xem phim's dock, or the round button's panel (and on the landing page).
-    await reveal(page, '.cinema-player__credit');
-    const credit = await page.evaluate(() => {
-      const e = document.querySelector('.cinema-player__credit');
-      const r = e.getBoundingClientRect();
-      return { text: e.textContent, shown: e.getClientRects().length > 0 && r.bottom <= innerHeight + 0.5 && r.top >= -0.5 };
-    });
-    await closeMenus(page);
-    check(`ui ${name}: the film's CC BY attribution is shown with the player (${immersive ? 'in the panel of the round button' : 'in Xem phim over the room'})`, credit.shown && /Blender Foundation/.test(credit.text) && /CC BY 3\.0/.test(credit.text), credit);
+    // The films' attribution: all three in Cài đặt › Thông tin (and on the landing page), none in the player.
+    const credit = await page.evaluate(() => ({
+      player: document.querySelector('.cinema-player__credit') !== null,
+      about: [...document.querySelectorAll('#cinema-hub-about a[href]')].map((a) => a.textContent),
+    }));
+    check(
+      `ui ${name}: the three films' attribution and licences are in Cài đặt › Thông tin; the player carries no credit line`,
+      !credit.player && credit.about.length === 6 && ['www.bigbuckbunny.org', 'dailydweebs.com', 'caminandes.com'].every((t) => credit.about.some((x) => x.includes(t))) && ['CC BY 3.0', 'CC BY-SA 4.0', 'CC BY'].every((t) => credit.about.includes(t)),
+      credit,
+    );
     report.ui.chrome[name] = { explore: [chrome['1-explore'], touring, stopped], seats: [chrome['2-seats'], ...counts.slice(-1), summaryFull], watch: [ready, playingBox, pausedBox], exploreWithMini };
     const min = 0.55;
     check(`ui ${name}: Khám phá and Xem phim keep the 3D view ≥ ${Math.round(min * 100)} % of the viewport height (measured canvas)`, shares['1-explore'].heightShare >= min && shares['5-watch'].heightShare >= min, {
@@ -4254,13 +4254,13 @@ async function mobileHub(browser, base) {
         overflow: { x: document.documentElement.scrollWidth - innerWidth, y: document.documentElement.scrollHeight - innerHeight },
         toggle: box(hub.querySelector('.cinema-hub__toggle')),
         panel: box(hub.querySelector('.cinema-hub__panel')),
-        // What can be pressed over the room outside the hub (the credit's links are expected).
+        // What can be pressed over the room outside the hub (nothing).
         outside: [...document.querySelectorAll('button, a[href], input')]
           .filter((e) => visible(e) && !hub.contains(e))
           .map((e) => e.getAttribute('aria-label') || e.textContent.trim().slice(0, 30)),
-        // Buttons and stand-alone links; links inside a line of text (the credit) are exempt (WCAG 2.5.8).
+        // Buttons and stand-alone links in the panel.
         smallTargets: [...hub.querySelectorAll('.cinema-hub__panel button, .cinema-hub__panel a[href]')]
-          .filter((e) => visible(e) && !e.closest('.cinema-player__credit') && e.getBoundingClientRect().height < 44)
+          .filter((e) => visible(e) && e.getBoundingClientRect().height < 44)
           .map((e) => e.getAttribute('aria-label') || e.textContent.trim().slice(0, 30)),
         caption: { fresh: document.querySelector('.cinema-caption').dataset.fresh, shown: visible(document.querySelector('.cinema-caption')) },
       };
@@ -4310,7 +4310,7 @@ async function mobileHub(browser, base) {
       closed.layout === 'immersive' && fills(closed) && followsSize(closed) && closed.overflow.x <= 0 && closed.overflow.y <= 0 && inside(closed.toggle, closed.viewport, 8) && closed.toggle.w >= 48 && closed.toggle.w <= 56,
       { canvas: closed.canvas, buffer: closed.buffer, aspect: closed.aspect, toggle: closed.toggle, overflow: closed.overflow },
     );
-    check(`hub ${name}: closed, nothing else to press over the room but the film's credit links`, closed.outside.every((label) => label === 'credit'), closed.outside);
+    check(`hub ${name}: closed, nothing else to press over the room`, closed.outside.length === 0, closed.outside);
     check(
       `hub ${name}: open, the panel fits the screen, leaves the button visible, scrolls inside to its last control; every control ≥ 44 px`,
       inside(open.panel, open.viewport) && !overlaps(open.panel, open.toggle) && last.within && open.smallTargets.length === 0,
@@ -4856,20 +4856,21 @@ async function uiSettings(browser, base) {
       { help: { ...help, text: help.text.split('\n') }, helpStops, helpBack: { view: helpBack.view, focus: helpBack.focus } },
     );
 
-    // Thông tin: the brand, the demo note, the film's credit with its links; "Quay lại" returns to its row.
+    // Thông tin: the brand, the demo note, each film's credit and licence links; "Quay lại" returns to its row.
     await page.click('[data-action="hub-about"]');
     const about = await panelState(page);
     const links = await page.$$eval('#cinema-hub-about a[href]', (list) => list.map((a) => ({ text: a.textContent, href: a.href, target: a.target })));
-    const credit = await page.isVisible('.cinema-player__credit');
+    const groups = await page.$$eval('#cinema-hub-about .cinema-hub__group-title', (list) => list.map((h) => h.textContent));
     await screenshot(page, 'settings-desktop-3-about');
     await page.click('[data-action="hub-back"]');
     const aboutBack = await panelState(page);
     check(
-      'settings (desktop): "Thông tin" shows Tân Phong Cinema, "Bản demo — không bán vé hoặc giữ chỗ." and the film\'s credit and licence links; "Quay lại" returns focus to its row (the player keeps its own credit)',
+      'settings (desktop): "Thông tin" shows Tân Phong Cinema, "Bản demo — không bán vé hoặc giữ chỗ." and, for each of the three films, its credit and licence links; "Quay lại" returns focus to its row (the player has no credit line)',
       about.view === 'about' && about.title === 'Thông tin' && /Tân Phong Cinema/.test(about.text) && about.text.includes('Bản demo — không bán vé hoặc giữ chỗ.') &&
-        links.some((l) => /Blender Foundation/.test(l.text) && l.href.startsWith('https://')) && links.some((l) => l.text === 'CC BY 3.0' && /creativecommons/.test(l.href)) && links.every((l) => l.target === '_blank') &&
-        aboutBack.view === 'settings' && aboutBack.focus === 'hub-about' && (await page.$$('.cinema-player__credit a[href]')).length === 2,
-      { about: about.text.split('\n'), links, credit, back: aboutBack.focus },
+        JSON.stringify(groups) === JSON.stringify(['Big Buck Bunny (trailer)', 'The Daily Dweebs', 'Caminandes 3: Llamigos']) && links.length === 6 &&
+        links.some((l) => /Blender Foundation/.test(l.text) && l.href.startsWith('https://')) && links.some((l) => l.text === 'CC BY 3.0' && /creativecommons/.test(l.href)) && links.some((l) => l.text === 'CC BY-SA 4.0' && /creativecommons/.test(l.href)) && links.every((l) => l.target === '_blank') &&
+        aboutBack.view === 'settings' && aboutBack.focus === 'hub-about' && (await page.$$('.cinema-player__credit')).length === 0,
+      { about: about.text.split('\n'), groups, links, back: aboutBack.focus },
     );
 
     // Công cụ nâng cao: its two groups and the seat inspector; a switch keeps the screen; × closes all.

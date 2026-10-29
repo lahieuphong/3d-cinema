@@ -44,7 +44,7 @@ export interface CinemaUiHandlers {
 export interface CinemaUiOptions {
   /** A touch screen: the help speaks of fingers rather than a mouse. */
   touch: boolean;
-  /** Every film's title and attribution, for Cài đặt › Thông tin (the player credits the one on). */
+  /** Every film's title and attribution, for Cài đặt › Thông tin (where the films are credited). */
   films: ReadonlyArray<Pick<FilmSource, 'title' | 'credit' | 'creditUrl' | 'license' | 'licenseUrl'>>;
 }
 
@@ -563,7 +563,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       main.inert = open;
       if (open) wakeTaskBar();
     },
-    // The first-visit hint stays above the overlay stack (the film's problems, the credit).
+    // The first-visit hint stays above the overlay stack (the film's problems, the seat card).
     keepClear: () => (overlay.getClientRects().length > 0 ? overlay.getBoundingClientRect() : null),
   });
   // The stack grows (a film problem, the seat card): the hint moves up with it. The task bar's
@@ -676,7 +676,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     ]),
   );
 
-  // Thông tin: what this is, and each film's attribution (the player shows the one on, as the licences ask).
+  // Thông tin: what this is, and each film's attribution and licence, as the licences ask.
   const outLink = (label: string, href: string) => {
     const a = el('a', '', label);
     a.href = href;
@@ -737,8 +737,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   );
 
   // ------------------------------------------------------------------ the task bar at rest
-  // Watching, film playing, nobody touching the page: the task switch steps back (the player and its
-  // credit stay). Any pointer move, key or focus brings it back; never while it is hovered, focused
+  // Watching, film playing, nobody touching the page: the task switch steps back (the player
+  // stays). Any pointer move, key or focus brings it back; never while it is hovered, focused
   // or the timeline is held.
   let task: CinemaTask = 'explore';
   let playing = false;

@@ -102,12 +102,11 @@ hàng đơn điệu (quy hoạch động). Script và kết quả: `artifacts/pr
 
 ### Dòng ghi công hiển thị
 
-Trình phát luôn hiện (desktop, mobile dọc, mobile ngang, chế độ 2D):
-
 > (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org · CC BY 3.0
 
-với liên kết tới https://peach.blender.org/about/ và trang giấy phép. Nếu đổi giao diện player, giữ
-nguyên dòng này (nguồn: `credit` của phim trong `FILMS`, `src/films.ts`).
+với liên kết tới https://peach.blender.org/about/ và trang giấy phép, ở Cài đặt › Thông tin và
+footer trang mở đầu (xem "Ghi công hiển thị cho cả ba phim"). Nguồn: `credit` của phim trong
+`FILMS`, `src/films.ts`.
 
 ### Phụ đề
 
@@ -184,10 +183,13 @@ phụ đề (`captions: null`).
 
 ## Ghi công hiển thị cho cả ba phim
 
-- **Trình phát** hiện dòng ghi công và giấy phép (có liên kết) của phim đang chiếu, ở mọi bố cục
-  (desktop, mobile dọc, mobile ngang, chế độ 2D). Đổi phim thì dòng này đổi theo.
-- **Cài đặt › Thông tin** liệt kê cả ba phim, mỗi phim một nhóm: ghi công và giấy phép.
+- **Cài đặt › Thông tin** (trong phòng chiếu) liệt kê cả ba phim, mỗi phim một nhóm: ghi công và
+  giấy phép, có liên kết.
 - **Footer trang mở đầu** liệt kê cả ba phim với ghi công và giấy phép.
+- **Trình phát** chỉ hiện tên phim (danh sách phim hiện thêm thời lượng và hãng); từ 2026-10-29,
+  theo yêu cầu của chủ dự án, nó không còn dòng ghi công. CC BY / BY-SA cho phép ghi công "theo cách
+  hợp lý với phương tiện", và trang ghi công riêng (Thông tin, footer) là cách thường dùng. Nếu bỏ
+  một trong hai chỗ này, phải ghi công ở chỗ khác.
 - Ảnh nhỏ của *Big Buck Bunny* (`big-buck-bunny-trailer-thumb.webp`, 3 578 byte) thu nhỏ từ poster
   của nó, cùng giấy phép CC BY 3.0.
 

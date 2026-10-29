@@ -37,7 +37,7 @@ Nguyên tắc chung:
 | Vật liệu | Dùng cho | Lớp màu | Bộ lọc (desktop / điện thoại) |
 | --- | --- | --- | --- |
 | clear | brand, cụm “Cài đặt”, thanh chọn tác vụ, nút trở về, thanh tham quan, thông báo, cần đi bộ, mini player điện thoại, nhãn video 2D | `rgb(14 14 18 / .16)` | `blur(8px)` + `saturate(190%) brightness(2.8) brightness(.34)` |
-| regular | dock của tác vụ, bảng Cài đặt / hub, chip lỗi phim, thẻ ghế, gợi ý lần đầu, thẻ trạng thái | `rgb(14 14 18 / .22)` | `blur(14px)` / `blur(12px)` + `saturate(180%) brightness(2.8) brightness(.34)` |
+| regular | dock của tác vụ, danh sách phim, “Góc khác”, bảng Cài đặt / hub, chip lỗi phim, thẻ ghế, gợi ý lần đầu, thẻ trạng thái | `rgb(14 14 18 / .22)` | `blur(14px)` / `blur(12px)` + `saturate(180%) brightness(2.8) brightness(.34)` |
 | dense | sidebar / sheet / sơ đồ ghế toàn màn hình | `rgb(12 12 16 / .3)` | `blur(20px)` / `blur(16px)` + `saturate(170%) brightness(2.5) brightness(.38)` |
 
 - **Bộ giới hạn sáng.** Cặp `brightness(k) brightness(c/k)` giữ nguyên phần tối của khán phòng
@@ -51,8 +51,13 @@ Nguyên tắc chung:
   phía trên, ba vòng tròn đồng tâm kiểu nút home nổi. Khi mở: kính sáng hơn, lõi màu champagne.
 - **Sơ đồ ghế:** một “giếng” nông trong kính (`rgb(0 0 0 / .16)`); ghế là giọt kính màu (đỏ rượu
   vang trong 62%, ghế đã đặt gần như trong suốt có dấu ✕, ghế đang chọn champagne đặc).
-- Popover “Góc khác” (cửa sổ 600–899 px) vẫn gần như đặc: nó nằm ngoài tấm kính chứa nó, blur ở
-  đó không thấy gì phía sau.
+- **Menu bật ra từ dock** (danh sách phim, “Góc khác” ở cửa sổ 600–899 px) là kính regular thật,
+  cùng tông với dock. Dock vẽ lớp kính của nó trên một lớp `::before` nằm sau nội dung, không đặt
+  `backdrop-filter` lên chính dock: một phần tử có `backdrop-filter` thành “backdrop root” của con
+  nó, nên blur của menu nằm ngoài dock chỉ thấy khoảng trống (phòng hiện rõ, không mờ). Hai menu
+  canh mép trái theo mép trái dock, cách dock 8 px (bằng khoảng cách dock với thanh chọn tác vụ).
+  Dock hiện dần bằng cách làm mờ lớp kính và nội dung, không làm mờ cả dock (opacity < 1 cũng là
+  backdrop root).
 - Mỗi cụm chỉ có một lớp blur; nút bên trong không blur lần nữa.
 - **Viền, ánh sáng và bóng.**
   - Viền sáng theo từng cạnh (`--glass-edge`: trên 30%, trái 20%, phải 12%, dưới 8%); nút bên
@@ -118,14 +123,15 @@ Nguyên tắc chung:
     Khám phá / Chọn ghế / Xem phim. Dock gồm:
     - Khám phá: góc nhìn, tham quan, đi bộ;
     - Chọn ghế: tóm tắt, sơ đồ, “Xem từ ghế”;
-    - Xem phim: trình phát kèm dòng ghi công. Tên phim là một nút viên thuốc (icon dải phim, tên,
-      mũi tên menu — cùng khuôn với “Góc khác”); dòng ghi công đứng cạnh, thành cột riêng.
-  - Chọn phim (3 phim): bấm tên phim mở danh sách kính gần đặc phía trên trình phát (như “Góc
-    khác”, không blur lần hai), tiêu đề nhỏ “Phim”, mỗi phim một dòng: ảnh nhỏ 16:9 bo 8 px (shimmer
+    - Xem phim: trình phát. Tên phim là một nút viên thuốc (icon dải phim, tên, mũi tên menu — cùng
+      khuôn với “Góc khác”). Trình phát không có dòng ghi công; ghi công cả ba phim ở Cài đặt ›
+      Thông tin và footer trang mở đầu.
+  - Chọn phim (3 phim): bấm tên phim mở danh sách kính (cùng tông với dock, mép trái thẳng mép trái
+    dock) phía trên trình phát, tiêu đề nhỏ “Phim”, mỗi phim một dòng: ảnh nhỏ 16:9 bo 8 px (shimmer
     tới khi tải xong), tên đậm, “thời lượng · hãng” nhỏ, dấu ✓ champagne ở phim đang chiếu (nền
     sáng hơn, bo tròn). Hover là một giọt sáng bo tròn, không có ô vuông. Esc hoặc bấm ra ngoài là
     đóng và trả focus về tên phim. Đổi phim: phim cũ dừng; nếu đang phát thì phim mới phát tiếp từ
-    đầu, nếu không thì poster của nó lên màn chiếu; tên, ghi công và dấu ✓ đổi theo, trình đọc màn
+    đầu, nếu không thì poster của nó lên màn chiếu; tên và dấu ✓ đổi theo, trình đọc màn
     hình nghe “Đang chiếu: …” (hoặc “Đang phát: …”). Phim đã chọn được giữ khi qua Duyệt mẫu ghế rồi
     quay lại.
   - Nút có chữ trong cùng một cụm đều theo một khuôn: icon 18 px, cách 8 px, rồi chữ (không có nút
@@ -154,7 +160,7 @@ Nguyên tắc chung:
   - Khám phá trong hub: hai nhóm có tiêu đề nhỏ (“Góc nhìn”, “Di chuyển”), mỗi nhóm là lưới 2 cột
     ô bằng nhau; trong ô, icon 20 px rồi chữ, canh trái, nên icon và chữ thẳng cột dù chữ dài ngắn.
   - Xem phim trong hub: trình phát, rồi nhóm “Phim” là ba dòng luôn hiện (ảnh nhỏ 80 px, tên, thời
-    lượng · hãng, ✓), không có menu phải mở; dòng ghi công của phim đang chiếu ở dưới.
+    lượng · hãng, ✓), không có menu phải mở.
   - Khi phim đã phát, mini player “Đang phát / Tạm dừng” ở góc dưới.
   - Sơ đồ ghế vẫn toàn màn hình, giờ là một tấm kính đè lên khán phòng: phòng vẫn hiện mờ phía
     sau (inert, không đổi kích thước), thay cho nền đen.
@@ -175,8 +181,8 @@ chỗ, không mở thêm modal và không bung accordion.
     trình duyệt từ chối toàn màn hình, hoặc lý do các nút bị tắt khi không có cảnh 3D.
 - **Hướng dẫn nhanh:** bốn dòng theo chuột hoặc cảm ứng (Nhìn quanh, Chọn ghế, Đi bộ, Phát phim).
 - **Thông tin:** Tân Phong Cinema, “Bản demo — không bán vé hoặc giữ chỗ.”, rồi mỗi phim một nhóm
-  (tiêu đề là tên phim): ghi công và giấy phép, có liên kết. Dòng ghi công trong trình phát vẫn giữ
-  nguyên (theo phim đang chiếu).
+  (tiêu đề là tên phim): ghi công và giấy phép, có liên kết. Đây là nơi ghi công phim trong phòng
+  chiếu (trình phát không còn dòng ghi công).
 - **Công cụ nâng cao:** Góc kiểm tra (Mặt cắt bên, Mặt bằng), Thành phần phòng (Trần, Vách sau,
   Vách phải), hành động riêng “Kiểm tra ghế”.
 - **Duyệt mẫu ghế (`/cinema?inspect=seat`):** header chỉ có tiêu đề, “Tùy chọn” và “Đóng” (icon +
@@ -213,7 +219,7 @@ bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao
   blur.
 - **Chế độ Tiết kiệm.** Blur giảm còn 6–10 px (giữ nguyên bộ giới hạn sáng), bỏ ánh trên mặt kính.
 - **Thanh tác vụ khi đang xem.** Lúc phim phát và người dùng không chạm vào trang (3,5 s), thanh chọn
-  tác vụ lùi đi. Dock trình phát và dòng ghi công vẫn ở lại. Rê chuột, phím hoặc focus là hiện lại;
+  tác vụ lùi đi. Dock trình phát vẫn ở lại. Rê chuột, phím hoặc focus là hiện lại;
   thanh không lùi khi đang hover, focus hay kéo thanh tua.
 - **Không thêm gì nặng.** Không có canvas WebGL thứ hai, không shader khúc xạ, không đọc pixel
   canvas, không có dependency mới.

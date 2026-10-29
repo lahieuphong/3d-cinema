@@ -36,7 +36,7 @@ export interface MediaSnapshot {
   error: { code: string; message: string } | null;
 }
 
-/** `film`: another film was chosen (title, credit, poster follow). */
+/** `film`: another film was chosen (title, tick, poster follow). */
 export type MediaChange = 'state' | 'time' | 'volume' | 'size' | 'frame' | 'notice' | 'film';
 
 export interface MediaControllerOptions {

@@ -22,7 +22,7 @@ export interface PlayerHandlers {
 }
 
 export interface PlayerUi {
-  /** Controls, title and credits (Xem phim). */
+  /** Controls and the film's title, the way to the other films (Xem phim). Credits: Cài đặt › Thông tin. */
   readonly root: HTMLElement;
   /** Play/pause with the state, for the header while another task is shown (after the first play). */
   readonly mini: HTMLButtonElement;
@@ -35,7 +35,7 @@ export interface PlayerUi {
   /** Playback is impossible for now (no 3D context): play is disabled and `reason` is shown. */
   setUnavailable(reason: string | null): void;
   /**
-   * Another film is on the screen: title, credit, the list's tick; screen readers hear it, and that
+   * Another film is on the screen: title and the list's tick; screen readers hear it, and that
    * it plays on when `playing` (then "Đang phát" is not said again a moment later).
    */
   setFilm(film: FilmSource, playing: boolean): void;
@@ -150,12 +150,6 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers, films
 
   const info = el('div', 'cinema-player__info');
   const title = el('strong', 'cinema-player__title', film.title);
-  const credit = el('span', 'cinema-player__credit');
-  const showCredit = (source: FilmSource) => {
-    credit.replaceChildren(link(source.credit, source.creditUrl), ' · ', link(source.license, source.licenseUrl));
-    credit.title = `${source.credit} · ${source.license}`;
-  };
-  showCredit(film);
 
   // More than one film: the title is the way to the others. Over the room a menu opens above it
   // (like "Góc khác"); in the phone's panel the list is simply there, as rows (the CSS decides).
@@ -237,18 +231,16 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers, films
       { signal },
     );
     choice.append(filmToggle, filmMenu);
-    info.classList.add('cinema-player__info--films');
-    info.append(choice, credit);
+    info.append(choice);
   } else {
-    info.append(title, credit);
+    info.append(title);
   }
   root.append(controls, info);
 
-  /** Another film on the screen: its title, credit and name, the list's tick. */
+  /** Another film on the screen: its title and name, the list's tick. */
   const showFilm = (source: FilmSource) => {
     shown = source;
     title.textContent = source.title;
-    showCredit(source);
     root.setAttribute('aria-label', `Trình phát phim: ${source.title}`);
     filmToggle.setAttribute('aria-label', `${source.title} — đổi phim`);
     for (const [id, option] of filmButtons) option.setAttribute('aria-pressed', String(id === source.id));
@@ -505,12 +497,4 @@ function iconSvg(): SVGSVGElement {
 function setIcon(button: HTMLElement, d: string): void {
   const path = button.querySelector('path')!;
   if (path.getAttribute('d') !== d) path.setAttribute('d', d);
-}
-
-function link(label: string, href: string): HTMLAnchorElement {
-  const a = el('a', '', label);
-  a.href = href;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  return a;
 }

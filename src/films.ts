@@ -1,9 +1,8 @@
 /**
  * The films shown on the screen, chosen in Xem phim. Same-origin files under public/media/, so WebGL
  * can read their frames without CORS and nothing depends on another site staying up. Credits and
- * licences: docs/media-credits.md (each film's attribution is shown in the player while it is on,
- * all of them in Cài đặt › Thông tin and on the landing page, which is why this data lives outside
- * the auditorium's code).
+ * licences: docs/media-credits.md (every film's attribution is in Cài đặt › Thông tin and on the
+ * landing page, which is why this data lives outside the auditorium's code).
  */
 export interface FilmSource {
   id: string;
