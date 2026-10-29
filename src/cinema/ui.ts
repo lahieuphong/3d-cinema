@@ -1,4 +1,4 @@
-import { BRAND, markSvg } from '../brand.ts';
+import { BRAND, markImg } from '../brand.ts';
 import { loadReducedGlass, setReducedGlass } from '../glass.ts';
 import { isPlainClick } from '../router.ts';
 import type { ToggleablePart } from './architecture.ts';
@@ -251,7 +251,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   home.href = '/';
   home.dataset.action = 'home';
   home.setAttribute('aria-label', `${BRAND.name}, về trang chủ`);
-  home.innerHTML = `${markSvg(26)}<span class="cinema-brand__name" aria-hidden="true">${BRAND.name}</span>`;
+  home.innerHTML = `${markImg(32)}<span class="cinema-brand__name" aria-hidden="true">${BRAND.name}</span>`;
   home.addEventListener(
     'click',
     (event) => {

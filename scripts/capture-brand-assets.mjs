@@ -1,19 +1,25 @@
 // Renders the landing page's pictures from the auditorium itself and writes them to public/brand/:
-// hero (16:9 and a portrait cut), three step pictures, the share card and the icons.
+// hero (16:9 and a portrait cut), three step pictures, the share card; and every size of the logo.
 //
-// The screen shows a slate drawn here (fixtures/brand/screen-slate.png, the working wordmark on
-// dark), passed in with the development-only `?poster=` override, so no frame of the demo film ends
-// up in an image without its credit. The auditorium's own film and poster are untouched.
+// The logo comes from one file, fixtures/brand/logo-source.png (the gold film reel, as supplied):
+// faint stray pixels dropped, trimmed and centred on a transparent square, then written as the
+// page's mark (public/brand/logo-{64,128,256}.webp), the tab icon (public/favicon.png) and the home
+// screen icon (public/apple-touch-icon.png, on charcoal: iOS fills transparency with black).
+//
+// The screen shows a slate drawn here (fixtures/brand/screen-slate.png, the logo and the working
+// wordmark on dark), passed in with the development-only `?poster=` override, so no frame of the
+// demo film ends up in an image without its credit. The auditorium's own film and poster are untouched.
 // Starts its own Vite dev server and a locally installed Chrome/Edge with a fresh profile
 // (playwright-core, no browser download). WebP and JPEG are encoded by the browser's canvas.
 //
 //   node scripts/capture-brand-assets.mjs
 //   BRAND_ONLY=step-2,step-3 node scripts/capture-brand-assets.mjs   # only those pictures
 //
-// Picture names for BRAND_ONLY: hero, hero-portrait, step-1, step-2, step-3, icon.
+// Picture names for BRAND_ONLY: logo, hero, hero-portrait, step-1, step-2, step-3. (The logo comes
+// first: the step pictures show the page's header, which shows the mark.)
 
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -34,7 +40,7 @@ const BROWSERS = [
 const only = new Set((process.env.BRAND_ONLY ?? '').split(',').filter(Boolean));
 const wanted = (name) => only.size === 0 || only.has(name);
 
-const COLORS = { charcoal: '#14110f', wine: '#7d2232', champagne: '#d9c08c' };
+const COLORS = { charcoal: '#14110f', champagne: '#d9c08c' };
 
 /** Only the 3D view, filling the window (development page, styles injected by this script). */
 const VIEW_ONLY =
@@ -49,51 +55,110 @@ const POSES = {
   aisle: { position: [5.15, 2.95, 4.2], target: [1.2, 2.2, -8.7] },
 };
 
-/** Draws the slate the screen shows in these pictures. */
-async function drawSlate(page) {
-  return page.evaluate(({ charcoal, wine, champagne }) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1920;
-    canvas.height = 1080;
-    const g = canvas.getContext('2d');
-    const glow = g.createRadialGradient(960, 520, 80, 960, 540, 1100);
-    glow.addColorStop(0, '#2a211c');
-    glow.addColorStop(1, charcoal);
-    g.fillStyle = glow;
-    g.fillRect(0, 0, 1920, 1080);
-    // The mark, 6× its 32-unit drawing, centred above the name.
-    g.save();
-    g.translate(960 - 96, 300);
-    g.scale(6, 6);
-    g.strokeStyle = champagne;
-    g.lineWidth = 2.4;
-    g.beginPath();
-    g.roundRect(3.2, 6.5, 25.6, 14.4, 2.4);
-    g.stroke();
-    g.globalAlpha = 0.22;
-    g.fillStyle = champagne;
-    g.fillRect(7.5, 10.4, 17, 6.6);
-    g.globalAlpha = 1;
-    g.strokeStyle = wine;
-    g.lineWidth = 3.2;
-    g.lineCap = 'round';
-    for (const [a, b] of [[7, 11.6], [13.7, 18.3], [20.4, 25]]) {
-      g.beginPath();
-      g.moveTo(a, 26.2);
-      g.lineTo(b, 26.2);
-      g.stroke();
+/**
+ * The logo as one transparent square (PNG, base64): pixels at alpha ≤ 16 (invisible noise around
+ * the drawing) cleared, the drawing trimmed and centred with a 3 % margin on each side.
+ */
+async function squareLogo(page) {
+  const source = `data:image/png;base64,${(await readFile(path.join(slateDir, 'logo-source.png'))).toString('base64')}`;
+  return page.evaluate(async (source) => {
+    const image = await createImageBitmap(await (await fetch(source)).blob());
+    const { width, height } = image;
+    const work = new OffscreenCanvas(width, height);
+    const g = work.getContext('2d', { willReadFrequently: true });
+    g.drawImage(image, 0, 0);
+    const pixels = g.getImageData(0, 0, width, height);
+    const d = pixels.data;
+    let [x0, y0, x1, y1] = [width, height, -1, -1];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const a = (y * width + x) * 4 + 3;
+        if (d[a] <= 16) {
+          d[a] = 0;
+          continue;
+        }
+        x0 = Math.min(x0, x);
+        x1 = Math.max(x1, x);
+        y0 = Math.min(y0, y);
+        y1 = Math.max(y1, y);
+      }
     }
-    g.restore();
-    g.textAlign = 'center';
-    g.fillStyle = '#f3ede5';
-    g.font = '700 132px system-ui, "Segoe UI", sans-serif';
-    g.fillText('Tân Phong', 960, 700);
-    g.fillStyle = champagne;
-    g.font = '600 52px system-ui, "Segoe UI", sans-serif';
-    g.letterSpacing = '22px';
-    g.fillText('CINEMA', 960 + 11, 790);
-    return canvas.toDataURL('image/png').split(',')[1];
-  }, COLORS);
+    g.putImageData(pixels, 0, 0);
+    const w = x1 - x0 + 1;
+    const h = y1 - y0 + 1;
+    const side = Math.round(Math.max(w, h) * 1.06);
+    const square = new OffscreenCanvas(side, side);
+    square.getContext('2d').drawImage(work, x0, y0, w, h, Math.round((side - w) / 2), Math.round((side - h) / 2), w, h);
+    const bytes = new Uint8Array(await (await square.convertToBlob({ type: 'image/png' })).arrayBuffer());
+    let text = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(text);
+  }, source);
+}
+
+/**
+ * The square logo at `size` px (halved step by step, then drawn at size, so fine detail survives
+ * the scale), optionally inset on a solid `background`. Returns base64 of `type`.
+ */
+async function logoAt(page, logoBase64, size, { type = 'image/png', quality = 0.9, background = null, inset = 0 } = {}) {
+  return page.evaluate(
+    async ({ logoBase64, size, type, quality, background, inset }) => {
+      let current = await createImageBitmap(await (await fetch(`data:image/png;base64,${logoBase64}`)).blob());
+      const drawn = Math.round(size * (1 - 2 * inset));
+      while (current.width / 2 >= drawn) {
+        const half = new OffscreenCanvas(Math.round(current.width / 2), Math.round(current.height / 2));
+        const g = half.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(current, 0, 0, half.width, half.height);
+        current = half;
+      }
+      const canvas = new OffscreenCanvas(size, size);
+      const g = canvas.getContext('2d');
+      if (background) {
+        g.fillStyle = background;
+        g.fillRect(0, 0, size, size);
+      }
+      g.imageSmoothingQuality = 'high';
+      const offset = Math.round((size - drawn) / 2);
+      g.drawImage(current, offset, offset, drawn, drawn);
+      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type, quality })).arrayBuffer());
+      let text = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(text);
+    },
+    { logoBase64, size, type, quality, background, inset },
+  );
+}
+
+/** Draws the slate the screen shows in these pictures: the logo above the wordmark. */
+async function drawSlate(page, logoBase64) {
+  return page.evaluate(
+    async ({ charcoal, champagne, logoBase64 }) => {
+      const logo = await createImageBitmap(await (await fetch(`data:image/png;base64,${logoBase64}`)).blob());
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920;
+      canvas.height = 1080;
+      const g = canvas.getContext('2d');
+      const glow = g.createRadialGradient(960, 520, 80, 960, 540, 1100);
+      glow.addColorStop(0, '#2a211c');
+      glow.addColorStop(1, charcoal);
+      g.fillStyle = glow;
+      g.fillRect(0, 0, 1920, 1080);
+      // The logo, 330 px square, centred above the name.
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(logo, 960 - 165, 215, 330, 330);
+      g.textAlign = 'center';
+      g.fillStyle = '#f3ede5';
+      g.font = '700 132px system-ui, "Segoe UI", sans-serif';
+      g.fillText('Tân Phong', 960, 700);
+      g.fillStyle = champagne;
+      g.font = '600 52px system-ui, "Segoe UI", sans-serif';
+      g.letterSpacing = '22px';
+      g.fillText('CINEMA', 960 + 11, 790);
+      return canvas.toDataURL('image/png').split(',')[1];
+    },
+    { ...COLORS, logoBase64 },
+  );
 }
 
 /** Encodes `pngBase64` at each width (height follows the aspect, or `crop` = target aspect) as WebP and JPEG. */
@@ -167,7 +232,21 @@ async function main() {
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
     const tool = await browser.newPage();
-    await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool), 'base64'));
+    const logo = await squareLogo(tool);
+    if (wanted('logo')) {
+      const write = async (file, base64) => {
+        await writeFile(path.join(root, 'public', file), Buffer.from(base64, 'base64'));
+        console.log(`  public/${file}  ${(Buffer.from(base64, 'base64').length / 1000).toFixed(1)} kB`);
+      };
+      console.log('logo');
+      // The page's mark (shown at 26–40 px, so 64/128/256 cover 1×–3× screens).
+      for (const size of [64, 128, 256]) await write(`brand/logo-${size}.webp`, await logoAt(tool, logo, size, { type: 'image/webp' }));
+      // Tab icon: the reel itself, transparent (gold reads on light and dark tabs).
+      await write('favicon.png', await logoAt(tool, logo, 64));
+      // Home screen icon: on warm charcoal, with room around it for the system's rounded corners.
+      await write('apple-touch-icon.png', await logoAt(tool, logo, 180, { background: COLORS.charcoal, inset: 0.1 }));
+    }
+    await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool, logo), 'base64'));
     console.log('slate: fixtures/brand/screen-slate.png');
 
     let page;
@@ -229,39 +308,6 @@ async function main() {
       }
       await page.close();
     }
-
-    if (!wanted('icon')) return;
-    // Icons: the mark on warm charcoal (the browser tab may be light).
-    const icon = await tool.evaluate(({ charcoal, wine, champagne }) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 180;
-      const g = canvas.getContext('2d');
-      g.fillStyle = charcoal;
-      g.fillRect(0, 0, 180, 180);
-      g.translate(18, 18);
-      g.scale(4.5, 4.5);
-      g.strokeStyle = champagne;
-      g.lineWidth = 2.4;
-      g.beginPath();
-      g.roundRect(3.2, 6.5, 25.6, 14.4, 2.4);
-      g.stroke();
-      g.globalAlpha = 0.22;
-      g.fillStyle = champagne;
-      g.fillRect(7.5, 10.4, 17, 6.6);
-      g.globalAlpha = 1;
-      g.strokeStyle = wine;
-      g.lineWidth = 3.2;
-      g.lineCap = 'round';
-      for (const [a, b] of [[7, 11.6], [13.7, 18.3], [20.4, 25]]) {
-        g.beginPath();
-        g.moveTo(a, 26.2);
-        g.lineTo(b, 26.2);
-        g.stroke();
-      }
-      return canvas.toDataURL('image/png').split(',')[1];
-    }, COLORS);
-    await writeFile(path.join(root, 'public', 'apple-touch-icon.png'), Buffer.from(icon, 'base64'));
-    console.log('icon: public/apple-touch-icon.png');
   } finally {
     await browser.close();
     await server.close();

@@ -23,7 +23,7 @@ export const BRAND = {
     charcoal: '#14110f',
     /** Wine red, from the seat upholstery. */
     wine: '#7d2232',
-    /** Restrained champagne (accents, the screen frame of the mark). */
+    /** Restrained champagne (accents; it sits with the gold of the logo). */
     champagne: '#d9c08c',
   },
   /** Share card (1200 × 630) rendered from the auditorium, see scripts/capture-brand-assets.mjs. */
@@ -38,10 +38,12 @@ export const PAGE_TITLES = {
 } as const;
 
 /**
- * The mark: a 16:9 screen frame in champagne over one row of wine-red seats. Inline SVG, drawn
- * for 32 × 32; decorative (the text next to it carries the name).
+ * The mark: the gold film reel (fixtures/brand/logo-source.png; every size, the tab and home screen
+ * icons and the slate on the screen in the landing's pictures are made from it by
+ * scripts/capture-brand-assets.mjs). A square image, `size` CSS px; decorative (the text next to
+ * it carries the name).
  */
-export function markSvg(size = 32): string {
-  const { champagne, wine } = BRAND.colors;
-  return `<svg class="brand-mark" width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect x="3.2" y="6.5" width="25.6" height="14.4" rx="2.4" fill="none" stroke="${champagne}" stroke-width="2.4"/><rect x="7.5" y="10.4" width="17" height="6.6" rx="1" fill="${champagne}" opacity=".22"/><path d="M7 26.2h4.6M13.7 26.2h4.6M20.4 26.2H25" stroke="${wine}" stroke-width="3.2" stroke-linecap="round"/></svg>`;
+export function markImg(size = 32): string {
+  const srcset = [64, 128, 256].map((w) => `/brand/logo-${w}.webp ${w}w`).join(', ');
+  return `<img class="brand-mark" src="/brand/logo-128.webp" srcset="${srcset}" sizes="${size}px" width="${size}" height="${size}" alt="" aria-hidden="true" decoding="async" draggable="false">`;
 }

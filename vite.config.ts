@@ -1,5 +1,5 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite';
-import { BRAND, markSvg, PAGE_TITLES } from './src/brand.ts';
+import { BRAND, markImg, PAGE_TITLES } from './src/brand.ts';
 import { landingHtml } from './src/landing/content.ts';
 
 /**
@@ -42,7 +42,7 @@ function sitePages(): Plugin {
           meta({ name: 'theme-color', content: BRAND.colors.charcoal }),
           meta({ name: 'color-scheme', content: 'dark' }),
           { tag: 'link', attrs: { rel: 'canonical', href: `${BRAND.origin}${page.path}` }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', href: '/favicon.png', type: 'image/png', sizes: '64x64' }, injectTo: 'head' },
           { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }, injectTo: 'head' },
           meta({ property: 'og:type', content: 'website' }),
           meta({ property: 'og:site_name', content: BRAND.name }),
@@ -56,7 +56,7 @@ function sitePages(): Plugin {
           meta({ property: 'og:image:alt', content: 'Khán phòng 3D với các hàng ghế đỏ hướng về màn chiếu.' }),
           meta({ name: 'twitter:card', content: 'summary_large_image' }),
         ];
-        const body = (cinema ? html : html.replace('<!--landing-->', landingHtml())).replaceAll('<!--mark-->', markSvg(40));
+        const body = (cinema ? html : html.replace('<!--landing-->', landingHtml())).replaceAll('<!--mark-->', markImg(56));
         return { html: body, tags };
       },
     },

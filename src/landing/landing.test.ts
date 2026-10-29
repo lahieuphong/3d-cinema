@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BRAND, markSvg, PAGE_TITLES } from '../brand.ts';
+import { BRAND, markImg, PAGE_TITLES } from '../brand.ts';
 import { isPlainClick, matchRoute } from '../router.ts';
 import { landingHtml, LANDING_IMAGES } from './content.ts';
 import { createLoader, savesData } from './loader.ts';
@@ -105,7 +105,10 @@ describe('landing content', () => {
 
   it('keeps names and titles in one place', () => {
     expect(PAGE_TITLES.cinema).toContain(BRAND.name);
-    expect(markSvg()).toContain('aria-hidden="true"');
+    // The mark is the logo image, decorative, the same file at every size.
+    expect(markImg()).toContain('alt=""');
+    expect(markImg(40)).toContain('src="/brand/logo-128.webp"');
+    expect(html).toContain('/brand/logo-64.webp 64w');
     expect(html).toContain(`${BRAND.name}, trang chủ`);
   });
 });

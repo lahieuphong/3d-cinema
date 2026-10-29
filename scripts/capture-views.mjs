@@ -5395,8 +5395,9 @@ async function landingNetwork(browser, base) {
   };
   const cold = await run('opened');
   // The step pictures are loading="lazy"; Chrome still fetches lazy images within a distance of the
-  // viewport, so they may come early. The film and the auditorium's code never do.
-  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy step pictures', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /hero/.test(p)).length === 1 && cold.before.brand.every((p) => /hero|step-/.test(p)), cold.before);
+  // viewport, so they may come early. The film and the auditorium's code never do. The logo is one
+  // small file (the size for this screen's pixel ratio), not a render.
+  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy step pictures and one logo size', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length === 1 && cold.before.brand.every((p) => /hero|step-|\/logo-\d+\.webp$/.test(p)), cold.before);
   check('landing idle: no WebGL context, no video element, no animation frames once the entrance animation is over', cold.idle.webgl === 0 && cold.idle.videos === 0 && cold.idle.framesIn2s === 0, cold.idle);
   const hover = await run('hover', { hover: true });
   check('landing intent: hovering "Bước vào rạp" fetches the auditorium code (page and 3D part) but builds nothing — no canvas, no WebGL, no video, no film request', hover.after.page && hover.after.view && hover.after.three && hover.after.canvases === 0 && hover.after.webgl === 0 && hover.after.videos === 0 && hover.after.media === 0, hover.after);

@@ -1,6 +1,6 @@
 import './tokens.css';
 import './site.css';
-import { BRAND, markSvg, PAGE_TITLES } from './brand.ts';
+import { BRAND, markImg, PAGE_TITLES } from './brand.ts';
 import type { CinemaSession } from './cinema/page.ts';
 import { applyStoredGlass } from './glass.ts';
 import { mountLandingPage } from './landing/landing.ts';
@@ -137,7 +137,7 @@ function showOpening(current: number, failed = false): void {
     navigate('/');
   });
   actions.append(home);
-  page.insertAdjacentHTML('afterbegin', markSvg(40));
+  page.insertAdjacentHTML('afterbegin', markImg(56));
   page.append(text, actions);
   app.replaceChildren(page);
   if (failed) page.querySelector<HTMLElement>('h1')?.focus();
@@ -147,7 +147,7 @@ function renderNotFound(): void {
   document.title = PAGE_TITLES.notFound;
   const page = document.createElement('main');
   page.className = 'not-found';
-  page.innerHTML = `${markSvg(40)}<h1 tabindex="-1">Không tìm thấy trang</h1><p class="route-status__message">Địa chỉ này không có trong ${BRAND.name}.</p>`;
+  page.innerHTML = `${markImg(56)}<h1 tabindex="-1">Không tìm thấy trang</h1><p class="route-status__message">Địa chỉ này không có trong ${BRAND.name}.</p>`;
   const links = document.createElement('div');
   links.className = 'not-found__links';
   for (const [href, label, kind] of [

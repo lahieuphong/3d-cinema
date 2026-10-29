@@ -111,13 +111,19 @@ không chép thư mục này vào `dist/`.
 
 ## Ảnh của trang mở đầu (Prompt 09)
 
-`public/brand/*` (hero 16:9 và dọc, ba ảnh "Cách sử dụng", ảnh chia sẻ 1200 × 630) và
-`public/apple-touch-icon.png`, `public/favicon.svg`:
+`public/brand/*` (hero 16:9 và dọc, ba ảnh "Cách sử dụng", ảnh chia sẻ 1200 × 630, logo
+`logo-{64,128,256}.webp`) và `public/apple-touch-icon.png`, `public/favicon.png`:
 
-- **Nguồn:** kết xuất từ chính khán phòng 3D của dự án (`node scripts/capture-brand-assets.mjs`,
-  Chrome cục bộ, chất lượng Cao, tỷ lệ điểm ảnh 2). Không dùng ảnh rạp, logo hay font bên ngoài.
-- **Màn chiếu không có frame phim nào.** Màn hiện một tấm slate do script vẽ bằng canvas: dấu
-  hình học và chữ "Tân Phong Cinema". Slate được đưa vào qua tham số `?poster=` *chỉ có ở chế độ dev*;
+- **Logo:** cuộn phim vàng do chủ dự án cung cấp (2026-10-29), lưu nguyên bản ở
+  `fixtures/brand/logo-source.png` (PNG nền trong suốt, 1278 × 1230). Script bỏ các điểm gần như
+  trong suốt (alpha ≤ 16) quanh hình, cắt sát hình, đặt giữa một ô vuông trong suốt (lề 3 %) rồi sinh
+  mọi kích cỡ: logo trên trang (WebP 64/128/256, hiển thị 26–40 px), icon tab (`favicon.png`, 64 px,
+  nền trong suốt) và icon màn hình chính (`apple-touch-icon.png`, 180 px, nền than ấm vì iOS tô đen
+  phần trong suốt). Mọi nơi dùng chung một nguồn nên logo đồng nhất.
+- **Ảnh:** kết xuất từ chính khán phòng 3D của dự án (`node scripts/capture-brand-assets.mjs`,
+  Chrome cục bộ, chất lượng Cao, tỷ lệ điểm ảnh 2). Không dùng ảnh rạp hay font bên ngoài.
+- **Màn chiếu không có frame phim nào.** Màn hiện một tấm slate do script vẽ bằng canvas: logo và
+  chữ "Tân Phong Cinema". Slate được đưa vào qua tham số `?poster=` *chỉ có ở chế độ dev*;
   tệp nằm ở `fixtures/brand/screen-slate.png`, không vào `dist/`.
   - Nguồn phim của khán phòng (Big Buck Bunny và poster của nó) không đổi.
 - **Ảnh bước 2 và 3** là ảnh chụp giao diện thật của trang `/cinema`. Trong đó có dòng ghi công Big

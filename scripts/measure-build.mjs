@@ -111,12 +111,12 @@ async function hostingRules() {
   return {
     pages: table(['/', '/cinema', '/cinema/', '/khong-co-trang-nay', '/cinema/khong-co']),
     missing: table(missing),
-    files: table([entry, FILM, '/brand/hero-960.webp', '/favicon.svg', '/cinema.html', '/index.html']),
+    files: table([entry, FILM, '/brand/hero-960.webp', '/favicon.png', '/cinema.html', '/index.html']),
     destinationsExist: routes.filter((r) => r.dest).every((r) => isFile(r.dest)),
     redirects: (config.redirects ?? []).length + routes.filter((r) => r.status >= 300 && r.status < 400).length,
     cache: {
       immutable: caches([entry]),
-      noCache: caches(['/', '/cinema', '/cinema/', '/index.html', '/cinema.html', '/favicon.svg']),
+      noCache: caches(['/', '/cinema', '/cinema/', '/index.html', '/cinema.html', '/favicon.png']),
       revalidated: caches([FILM, '/media/big-buck-bunny-trailer-poster.jpg', '/brand/hero-960.webp']),
       missing: caches(missing),
     },
@@ -341,7 +341,7 @@ async function main() {
       const cinema = await read('cinema.html');
       const imageFile = index.ogImage ? path.join(dist, new URL(index.ogImage).pathname) : '';
       result.landing.metadata = { index, cinema, shareImageInDist: existsSync(imageFile) };
-      check('metadata: / and /cinema have their own title, description, canonical and share data in the HTML; lang vi; icon and share image shipped', index.title !== cinema.title && index.description && cinema.description && index.canonical?.endsWith('/') && cinema.canonical?.endsWith('/cinema') && index.ogImage && index.lang === 'vi' && cinema.lang === 'vi' && existsSync(path.join(dist, 'favicon.svg')) && result.landing.metadata.shareImageInDist, result.landing.metadata);
+      check('metadata: / and /cinema have their own title, description, canonical and share data in the HTML; lang vi; icon and share image shipped', index.title !== cinema.title && index.description && cinema.description && index.canonical?.endsWith('/') && cinema.canonical?.endsWith('/cinema') && index.ogImage && index.lang === 'vi' && cinema.lang === 'vi' && existsSync(path.join(dist, 'favicon.png')) && result.landing.metadata.shareImageInDist, result.landing.metadata);
     }
 
     // Time to a usable page and to the scene, and bytes transferred by then.

@@ -1,4 +1,4 @@
-import { BRAND, markSvg } from '../brand.ts';
+import { BRAND, markImg } from '../brand.ts';
 import { CINEMA_PATH } from '../router.ts';
 
 /**
@@ -41,7 +41,7 @@ const STEPS = [
 ];
 
 export function wordmarkHtml(className = 'wordmark'): string {
-  return `<a class="${className}" href="/" aria-label="${BRAND.name}, trang chủ">${markSvg()}<span class="wordmark__text" aria-hidden="true"><span class="wordmark__name">${BRAND.wordmark.name}</span><span class="wordmark__suffix">${BRAND.wordmark.suffix}</span></span></a>`;
+  return `<a class="${className}" href="/" aria-label="${BRAND.name}, trang chủ">${markImg()}<span class="wordmark__text" aria-hidden="true"><span class="wordmark__name">${BRAND.wordmark.name}</span><span class="wordmark__suffix">${BRAND.wordmark.suffix}</span></span></a>`;
 }
 
 export function landingHtml(): string {
