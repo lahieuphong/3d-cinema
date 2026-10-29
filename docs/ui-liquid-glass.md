@@ -171,7 +171,7 @@ chỗ, không mở thêm modal và không bung accordion.
   chữ). “Tùy chọn” mở một panel kính cùng kiểu hàng với Cài đặt: Chất lượng (Cao / Tiết kiệm), 3
   ghế, Footprint, Kích thước; bấm ra ngoài hoặc Escape thì đóng (Escape đóng panel trước, rồi mới
   đóng trang). Không còn nút góc nhìn: ghế mở ở góc trước 3/4, người xem tự kéo để xoay, cuộn hoặc
-  chụm để thu phóng (các góc cố định chỉ còn cho `npm run capture`, qua hook dev). Thay dòng chữ
+  chụm để thu phóng (các góc cố định chỉ còn cho `yarn capture`, qua hook dev). Thay dòng chữ
   hướng dẫn là một bàn tay đung đưa dưới mũi tên cong giữa khung; nó mờ đi và biến mất ở lần chạm,
   kéo hoặc cuộn đầu tiên (đứng yên khi giảm chuyển động); câu hướng dẫn vẫn có cho trình đọc màn
   hình.
@@ -208,5 +208,5 @@ bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao
 
 ## Kiểm tra
 
-Dùng `npm run capture`, `npm run acceptance`, `node scripts/measure-build.mjs` như cũ. Số đo của bản
+Dùng `yarn capture`, `yarn acceptance`, `node scripts/measure-build.mjs` như cũ. Số đo của bản
 redesign: `artifacts/prompt-15/`; vòng kính trong suốt: `artifacts/prompt-16/`.

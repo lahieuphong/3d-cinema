@@ -1,4 +1,4 @@
-// Generates the small test videos used by `npm run capture` into fixtures/media/ (development only;
+// Generates the small test videos used by `yarn capture` into fixtures/media/ (development only;
 // nothing here is shipped: Vite serves the folder in dev, the build never copies it).
 //
 // Every picture and sound is made by code in a locally installed Chrome (canvas + Web Audio,

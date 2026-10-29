@@ -1,4 +1,4 @@
-// Measures the production build (dist/, run `npm run build` first) served by `vite preview`, in a
+// Measures the production build (dist/, run `yarn build` first) served by `vite preview`, in a
 // locally installed Chrome with a fresh temporary profile (playwright-core, no browser download):
 // - the landing page `/`: what it downloads before any interaction (no auditorium code, no three.js,
 //   no film), first and largest paint, layout shift, what hovering "Bước vào rạp" fetches, the time
@@ -16,7 +16,7 @@
 //   and after the end.
 // Writes artifacts/<CAPTURE_DIR or prompt-10>/build-metrics.json and prints a summary.
 //
-//   npm run build && node scripts/measure-build.mjs
+//   yarn build && node scripts/measure-build.mjs
 
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -154,7 +154,7 @@ const MARKS = () => {
 };
 
 async function main() {
-  if (!existsSync(path.join(dist, 'index.html'))) throw new Error('dist/ is missing: run `npm run build` first.');
+  if (!existsSync(path.join(dist, 'index.html'))) throw new Error('dist/ is missing: run `yarn build` first.');
   await mkdir(outDir, { recursive: true });
   result.bundle = await bundle();
   check('bundle: dev fixtures are not in dist/', !result.bundle.fixturesInDist);

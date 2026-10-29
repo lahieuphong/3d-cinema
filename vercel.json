@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm ci",
-  "buildCommand": "npm run build",
+  "installCommand": "yarn install --frozen-lockfile",
+  "buildCommand": "yarn build",
   "outputDirectory": "dist",
   "routes": [
     { "src": "^/(?!assets/|media/|brand/).*$", "headers": { "Cache-Control": "no-cache" }, "continue": true },

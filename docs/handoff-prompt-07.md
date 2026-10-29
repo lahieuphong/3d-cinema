@@ -93,7 +93,7 @@ Quyền sở hữu:
   - Khi mất context hoặc dispose renderer, chỉ đúng hàm đó bị gỡ khỏi texture chung.
   - Listener của renderer khác và mọi texture khác (kể cả `VideoTexture`) không bị đụng. Unit test có listener "ngoại lai" và texture phim để chứng minh.
 - **Điều kiện áp dụng:** một renderer giữ một context. Gọi `attach` khi context lên, `collect` sau mỗi frame, `release` khi mất, `dispose` khi huỷ renderer. In ghi chú ở dev nếu `REVISION` khác `186`.
-- **Cách bỏ:** khi three.js tự gỡ listener lúc mất context và lúc dispose renderer, xoá module và các lệnh gọi trong `RenderHost`. Check lifecycle của `npm run capture` (mỗi texture chung chỉ một listener sau nhiều lần khôi phục/remount) cho biết còn cần hay không.
+- **Cách bỏ:** khi three.js tự gỡ listener lúc mất context và lúc dispose renderer, xoá module và các lệnh gọi trong `RenderHost`. Check lifecycle của `yarn capture` (mỗi texture chung chỉ một listener sau nhiều lần khôi phục/remount) cho biết còn cần hay không.
 - **Video không bị ảnh hưởng:** sau mất/khôi phục, phim vẫn phát và vẽ frame mới (23,9 frame/s). Không có cảnh báo "does not belong to this context".
 - **Không khẳng định về bộ nhớ GPU:** chỉ đo được số đếm `renderer.info`, đối tượng JS sống sau GC và heap JS.
 
@@ -153,12 +153,12 @@ Chrome 156 headless, ANGLE D3D11, RTX 3090. Viewport 1440 × 900, DPR 1, mức C
 
 ## Kiểm tra
 
-- **`npm test`: 160/160** (10 file; trước là 136/8).
+- **`yarn test`: 160/160** (10 file; trước là 136/8).
   - `media.test.ts` (fake element, sự kiện do test phát): không autoplay; "playing" chỉ theo sự kiện; `play()` bị từ chối; play → pause; play → rời trang; mất context khi play chờ; ẩn tab; tua khi đang tải; kẹp tua; thời lượng không biết; kết thúc/phát lại; buffering và thông báo chậm (fake timer, không tự thử lại); lỗi và thử lại; `canPlayType`; mute/volume; phát hiện không tiếng; resume từ session; contain; poster/video; định dạng giờ; nút chính; `devFilm`.
   - Cũng trong `media.test.ts`: `VideoFrameClock` (một callback, nhiều vòng không tích tụ, fallback giới hạn).
   - `sharedTextureListeners.test.ts`: chỉ gỡ listener của context đã kết thúc, giữ listener ngoại lai và texture phim, 20 vòng không tích tụ.
-- `npm run typecheck`: sạch. `npm run build`: thành công (cảnh báo chunk > 500 kB như trước).
-- **`npm run capture`: 325/325**, 0 cảnh báo console ngoài dự kiến. 63 check video mới gồm:
+- `yarn typecheck`: sạch. `yarn build`: thành công (cảnh báo chunk > 500 kB như trước).
+- **`yarn capture`: 325/325**, 0 cảnh báo console ngoài dự kiến. 63 check video mới gồm:
   - không autoplay; poster; phát thật (currentTime tăng, frame decode/trình chiếu, ảnh trên màn đổi);
   - nhịp render; mute/volume đọc lại từ element; giữ thanh tua; ←/→; pause dừng render; tua khi dừng hiện frame mới rồi dừng;
   - player không chọn ghế, không xoay camera, không làm người đi bộ di chuyển; Space;
@@ -169,7 +169,7 @@ Chrome 156 headless, ANGLE D3D11, RTX 3090. Viewport 1440 × 900, DPR 1, mức C
   - 3 loại lỗi và "Thử lại"; `play()` bị chặn; mạng chậm (giả lập bằng cách giữ request range ở route Playwright); không có rVFC;
   - mobile dọc/ngang (sheet, seat view, khám phá); 2D khi không có WebGL.
 - **Bằng chứng âm thanh:** có track được giải mã (`webkitAudioDecodedByteCount` > 0); `muted`/`volume` đọc lại từ element sau khi bấm. **Chưa kiểm chứng bằng tai.**
-- **Lỗi "no tests" của Vitest:** chạy `npm test` 4 lần ở chế độ ổn định (không sửa file đồng thời, lưu stdout/stderr và exit code), đều 160/160, exit 0. Không tái diễn nên không có log lỗi để điều tra thêm. Log ở `artifacts/prompt-07/logs/`.
+- **Lỗi "no tests" của Vitest:** chạy `yarn test` 4 lần ở chế độ ổn định (không sửa file đồng thời, lưu stdout/stderr và exit code), đều 160/160, exit 0. Không tái diễn nên không có log lỗi để điều tra thêm. Log ở `artifacts/prompt-07/logs/`.
 
 ## Ảnh và video (`artifacts/prompt-07/`)
 
@@ -196,7 +196,7 @@ Chrome 156 headless, ANGLE D3D11, RTX 3090. Viewport 1440 × 900, DPR 1, mức C
 - **Mới:** `src/cinema/{media,mediaController,screenVideo,videoFrames,playerUi,sharedTextureListeners}.ts`, `src/cinema/{media,sharedTextureListeners}.test.ts`, `scripts/make-media-fixtures.mjs`, `fixtures/media/*`, `public/media/*`, `docs/media-credits.md`, tài liệu này.
 - **Sửa:** `src/cinema/{view,page,renderHost,ui,exploreInput}.ts`, `src/main.ts`, `src/styles.css`, `scripts/capture-views.mjs` (thư mục mặc định `prompt-07`, mục film, `compare-p06-p07-*`).
 - **Lệnh:**
-  - `npm test`, `npm run typecheck`, `npm run build`
-  - `npm run capture` (khoảng 16 phút)
+  - `yarn test`, `yarn typecheck`, `yarn build`
+  - `yarn capture` (khoảng 16 phút)
   - `node scripts/make-media-fixtures.mjs` (sinh lại fixture)
-  - `npm run dev` rồi mở `/cinema` hoặc `/cinema?film=pattern-16x9.mp4`
+  - `yarn dev` rồi mở `/cinema` hoặc `/cinema?film=pattern-16x9.mp4`

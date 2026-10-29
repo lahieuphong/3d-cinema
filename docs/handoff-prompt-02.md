@@ -104,7 +104,7 @@ Chế độ inspect và khán phòng dùng **cùng** `createCinemaSeatModel` + `
 - `ui.ts` xuất thêm `renderStatus`, `switchControl`, `el`, `group` để inspector dùng lại.
 - `validation.ts` bỏ phép kiểm tra trần dựa trên số placeholder; thay bằng test dùng bounds geometry thật của ghế hàng J trong `seats.test.ts`.
 - Test ghế chuyển từ `scene.test.ts` sang `seats.test.ts`; các assertion cũ giữ nguyên với cùng dung sai.
-- `npm run capture` mặc định ghi vào `artifacts/prompt-02/`; ảnh Prompt 01 không bị đụng tới.
+- `yarn capture` mặc định ghi vào `artifacts/prompt-02/`; ảnh Prompt 01 không bị đụng tới.
 
 ## Số liệu renderer trước/sau
 
@@ -126,8 +126,8 @@ Chế độ inspect và khán phòng dùng **cùng** `createCinemaSeatModel` + `
 
 ## Kết quả kiểm tra
 
-- `npm run typecheck`: sạch.
-- `npm test`: 38/38 (3 file). `seats.test.ts` kiểm tra trên geometry thật:
+- `yarn typecheck`: sạch.
+- `yarn test`: 38/38 (3 file). `seats.test.ts` kiểm tra trên geometry thật:
   - Kích thước nằm trong khoảng gợi ý; mọi piece (kể cả tựa ngả, tay vịn, hốc cốc) nằm trong footprint.
   - Chỉ chân và tấm đế chạm sàn (đáy = 0 trong dung sai 1 µm).
   - Ghế nhìn −Z, tựa ngả về +Z.
@@ -139,8 +139,8 @@ Chế độ inspect và khán phòng dùng **cùng** `createCinemaSeatModel` + `
   - Bounding sphere bao mọi đỉnh của mọi instance.
   - Mỗi geometry và vật liệu dùng chung bị dispose đúng một lần.
 - Thử đột biến: cho tay vịn bịt hốc cốc → test hốc cốc fail; đảo chiều ngả lưng → test hướng fail. Cả hai đã khôi phục.
-- `npm run build`: thành công. JS chính 632 kB (gzip 164 kB), chunk inspector 8 kB; vẫn có cảnh báo chunk > 500 kB do three.js.
-- `npm run capture`: 75/75, không có cảnh báo console ngoài dự kiến (chỉ 2 lỗi cố ý của bài giả lập không có WebGL). Gồm toàn bộ kiểm tra Prompt 01, cộng thêm:
+- `yarn build`: thành công. JS chính 632 kB (gzip 164 kB), chunk inspector 8 kB; vẫn có cảnh báo chunk > 500 kB do three.js.
+- `yarn capture`: 75/75, không có cảnh báo console ngoài dự kiến (chỉ 2 lỗi cố ý của bài giả lập không có WebGL). Gồm toàn bộ kiểm tra Prompt 01, cộng thêm:
   - Inspector mở thẳng, chỉ 1 canvas và không có renderer khán phòng chạy song song.
   - Đủ các góc nhìn; kích thước đo trong trình duyệt khớp; cụm 3 ghế; overlay footprint và kích thước.
   - Đóng → `/cinema` với context của inspector đã được giải phóng; Back mở lại; Esc đóng.

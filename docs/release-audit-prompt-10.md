@@ -60,7 +60,7 @@ do tài khoản `lahieuphong` tạo (theo metadata của commit). Không reset, 
 | `vercel.json` | Rewrite dự phòng chỉ áp cho đường dẫn trang | Sửa lỗi tệp thiếu trả landing HTML với mã 200 (mục 5) |
 | `.vercelignore` (mới) | Bỏ `/artifacts`, `/fixtures`, `/dist` khi tải lên Vercel | Vercel CLI tải lên mọi tệp không có trong danh sách mặc định; `.gitignore` không áp |
 | `.gitignore` | Thêm `/artifacts/` | Ảnh/video QA giữ trên máy (mục 3) |
-| `scripts/acceptance.mjs` (mới), `package.json` (`npm run acceptance`) | Luồng nghiệm thu trên bản production; kiểm tra hosting với `BASE_URL` | Kiểm chứng ứng viên cuối và bản preview sau này |
+| `scripts/acceptance.mjs` (mới), `package.json` (`yarn acceptance`) | Luồng nghiệm thu trên bản production; kiểm tra hosting với `BASE_URL` | Kiểm chứng ứng viên cuối và bản preview sau này |
 | `scripts/measure-build.mjs` | Kiểm tra quy tắc `vercel.json` trên `dist/`; check "video thôi đọc khi để yên"; ghi vào `prompt-10` | Mục 6 và 9 |
 | `scripts/capture-views.mjs` | Thư mục mặc định `prompt-10` | Không ghi đè ảnh Prompt 09 |
 | `docs/release-audit-prompt-10.md`, `docs/preview-deployment-plan.md` (mới), `docs/release-checklist.md` | Tài liệu | Mục 13 của prompt |
@@ -72,7 +72,7 @@ giống hệt bản đang chạy production: cùng tên chunk có hash.
 
 | Nhóm | Đường dẫn | Dung lượng | Chính sách |
 | --- | --- | ---: | --- |
-| **A. Source và cấu hình** | `src/`, `index.html`, `cinema.html`, `vite.config.ts`, `tsconfig.json`, `package.json`, `package-lock.json`, `vercel.json`, `.vercelignore`, `.gitignore` | ~1 MB | Commit |
+| **A. Source và cấu hình** | `src/`, `index.html`, `cinema.html`, `vite.config.ts`, `tsconfig.json`, `package.json`, `yarn.lock`, `vercel.json`, `.vercelignore`, `.gitignore` | ~1 MB | Commit |
 | **B. Public assets** | `public/media/` (video 8 347 668 B + poster 100 075 B), `public/brand/` (22 ảnh), `favicon.svg`, `apple-touch-icon.png` | 8,97 MB | Commit; đều có trong `dist/` và đều được tham chiếu (đã đối chiếu từng tệp) |
 | **C. Test, scripts, fixture** | `src/**/*.test.ts`, `scripts/*.mjs`, `fixtures/media/` (7 clip do code sinh), `fixtures/brand/screen-slate.png` | fixture 2,61 MB | Giữ; fixture không vào `dist/` (kiểm tra trong `measure:build`) |
 | **D. Tài liệu** | `docs/*.md` | nhỏ | Commit |
@@ -151,7 +151,7 @@ giống hệt bản đang chạy production: cùng tên chunk có hash.
 | `/brand/does-not-exist.webp` | `200`, `text/html` |
 | `/media/khong-co.mp4`, `/favicon.ico` | `200`, `text/html` |
 
-Lặp lại bằng `BASE_URL=https://tp3d-cinema.vercel.app ACCEPTANCE_ONLY=hosting npm run acceptance`:
+Lặp lại bằng `BASE_URL=https://tp3d-cinema.vercel.app ACCEPTANCE_ONLY=hosting yarn acceptance`:
 6/7, chỉ hỏng mục tệp thiếu.
 
 **Hậu quả.**
@@ -304,16 +304,16 @@ cho cùng tên chunk.
 
 | Kiểm tra | Kết quả | Log (ở máy, `artifacts/prompt-10/logs/`) |
 | --- | --- | --- |
-| `npm test` | **180/180** (12 tệp) | `test.log` |
-| `npm run typecheck` | sạch | `typecheck.log` |
-| `npm run build` | thành công; vẫn có cảnh báo chunk three.js > 500 kB | `build.log` |
-| `npm run measure:build` | **21/21** (16 cũ + 4 hosting/cấu hình + 1 video thôi đọc) | `measure-build.log`, `artifacts/prompt-10/build-metrics.json` |
-| `npm run acceptance`, Chrome 156.0.8078.47 | **16/16** (14 luồng + console sạch) | `acceptance-chrome.log` |
-| `npm run acceptance`, Edge 156.0.4314.42 | **16/16** | `acceptance-edge.log` |
-| `npm run capture` (harness đầy đủ, dev server) | **456/456**; 0 lỗi console ngoài dự kiến (12 dự kiến, từ các luồng cố tình gây lỗi) | `capture.log`, `artifacts/prompt-10/report.json` |
+| `yarn test` | **180/180** (12 tệp) | `test.log` |
+| `yarn typecheck` | sạch | `typecheck.log` |
+| `yarn build` | thành công; vẫn có cảnh báo chunk three.js > 500 kB | `build.log` |
+| `yarn measure:build` | **21/21** (16 cũ + 4 hosting/cấu hình + 1 video thôi đọc) | `measure-build.log`, `artifacts/prompt-10/build-metrics.json` |
+| `yarn acceptance`, Chrome 156.0.8078.47 | **16/16** (14 luồng + console sạch) | `acceptance-chrome.log` |
+| `yarn acceptance`, Edge 156.0.4314.42 | **16/16** | `acceptance-edge.log` |
+| `yarn capture` (harness đầy đủ, dev server) | **456/456**; 0 lỗi console ngoài dự kiến (12 dự kiến, từ các luồng cố tình gây lỗi) | `capture.log`, `artifacts/prompt-10/report.json` |
 | Hosting production (trước sửa) | 6/7 (hỏng: tệp thiếu) | `acceptance-production-before-fix.log` |
 
-Vitest chạy từ `cmd /c "cd /d E:\Phong_Nho_IT\3d-cinema && npm test"`; không gặp lỗi "no tests".
+Vitest chạy từ `cmd /c "cd /d E:\Phong_Nho_IT\3d-cinema && yarn test"`; không gặp lỗi "no tests".
 
 **Luồng nghiệm thu trên bản production** (`scripts/acceptance.mjs`; chỉ dùng giao diện, vì bản build không có
 hook debug):
@@ -426,7 +426,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ### 12.3 Kiểm tra trước khi commit
 
 - `git status --short` chỉ có các đường dẫn trên.
-- `npm test`, `npm run typecheck`, `npm run build` sạch (đã chạy, mục 9).
+- `yarn test`, `yarn typecheck`, `yarn build` sạch (đã chạy, mục 9).
 
 ## 13. Kế hoạch preview
 
@@ -434,5 +434,5 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 - nhánh `preview/p10-release-audit`;
 - push nhánh (không push `main`);
 - xác nhận commit status `Vercel` của đúng SHA;
-- `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting npm run acceptance`, rồi một lượt đầy đủ, rồi thử tay;
+- `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting yarn acceptance`, rồi một lượt đầy đủ, rồi thử tay;
 - không promote lên production.

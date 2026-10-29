@@ -2,7 +2,7 @@
 // page's own controls only (the build has no development hooks), in a locally installed Chrome
 // with a fresh temporary profile (playwright-core, no browser download).
 //
-// - Default: `vite preview` of dist/ (run `npm run build` first).
+// - Default: `vite preview` of dist/ (run `yarn build` first).
 // - A deployment: BASE_URL=https://… node scripts/acceptance.mjs. Adds the hosting checks (status
 //   codes, types, cache headers, missing files, ranges, canonical) and whether the deployment serves
 //   the same build as the local dist/ (same hashed file names). A protected Vercel preview needs
@@ -12,7 +12,7 @@
 //
 // Writes artifacts/<CAPTURE_DIR or prompt-10>/acceptance/report.json and a few screenshots.
 //
-//   npm run build && npm run acceptance
+//   yarn build && yarn acceptance
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -504,7 +504,7 @@ async function hosting(base) {
 
 async function main() {
   const deployed = Boolean(process.env.BASE_URL);
-  if (!deployed && !existsSync(path.join(dist, 'index.html'))) throw new Error('dist/ is missing: run `npm run build` first.');
+  if (!deployed && !existsSync(path.join(dist, 'index.html'))) throw new Error('dist/ is missing: run `yarn build` first.');
   await mkdir(outDir, { recursive: true });
   const server = deployed ? null : await preview({ root, logLevel: 'warn', preview: { port: 4318, strictPort: false } });
   const base = (process.env.BASE_URL ?? server.resolvedUrls.local[0]).replace(/\/$/, '');

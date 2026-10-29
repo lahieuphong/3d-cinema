@@ -187,7 +187,7 @@ kiểm chữ cấm). Có skip link "Bỏ qua, tới nội dung chính". Heading 
 
 ## Số đo
 
-Bản production (`npm run measure:build`): `vite preview` có gzip, Chrome 156 headless với profile tạm
+Bản production (`yarn measure:build`): `vite preview` có gzip, Chrome 156 headless với profile tạm
 riêng, viewport 1280×720, ANGLE D3D11 / RTX 3090. Cache tắt, trừ phần "cache ấm". Số liệu máy mạnh,
 không đại diện cho điện thoại.
 
@@ -235,21 +235,21 @@ video.
 
 ## Kiểm tra
 
-- **`npm test`: 180/180** (12 file; Prompt 08: 170/11).
+- **`yarn test`: 180/180** (12 file; Prompt 08: 170/11).
   - Mới: `src/landing/landing.test.ts` (10 test): route, click thường hay click mở tab, loader (một
     request; lỗi thì thử lại; không unhandled rejection; Save-Data), nội dung landing (chữ đã chốt,
     một h1, ba link thật vào rạp, hero không lazy, ảnh bước lazy và có kích thước, không base64,
     không có chữ về giá vé/lịch chiếu/đánh giá, có ghi công).
-- `npm run typecheck`: sạch. `npm run build`: thành công.
+- `yarn typecheck`: sạch. `yarn build`: thành công.
   - Hai tài liệu HTML; cảnh báo chunk > 500 kB vẫn cho chunk three.js, không nâng giới hạn.
-- **`npm run capture`: 456/456**, 0 lỗi console ngoài dự kiến, 12 lỗi dự kiến của các luồng cố tình gây lỗi (`logs/capture-3.log`).
+- **`yarn capture`: 456/456**, 0 lỗi console ngoài dự kiến, 12 lỗi dự kiến của các luồng cố tình gây lỗi (`logs/capture-3.log`).
   - 49 check mới cho trang mở đầu và lối vào. Các check Prompt 03–08 chạy lại, đều đạt.
   - `logs/capture-2.log`: 456/456. Lượt đó có `report.json` bị một lượt chạy riêng phần so sánh ghi đè, nên chạy lại toàn bộ (`capture-3.log`).
   - Lượt đầu (`logs/capture-1.log`) dừng giữa chừng vì hai check cần cập nhật:
     - check "tải phần 3D thất bại" (P08): giờ app hỏi phần 3D hai lần cùng lúc nên một request lỗi tự
       được thử lại; test phải chặn cả hai;
     - check "phím W" so tọa độ bằng chuỗi JSON, fail vì sai số 3·10⁻¹⁶ m; nay so có dung sai.
-- **`npm run measure:build`: 16/16** (`artifacts/prompt-09/build-metrics.json`).
+- **`yarn measure:build`: 16/16** (`artifacts/prompt-09/build-metrics.json`).
   - Ngưỡng "video đọc trước" nâng từ 20 % lên 25 % tệp vì Chrome đọc 1,0–1,8 MB tuỳ lần (ghi chú
     trong script); vẫn yêu cầu ≤ 2 request.
 - **Edge 156.0.4314.42** (`artifacts/prompt-09/edge/`): luồng landing, mạng landing, luồng A–F của rạp,
@@ -328,8 +328,8 @@ video.
   - `scripts/capture-views.mjs`: landing, luồng, mạng; thư mục mặc định `prompt-09`;
   - `scripts/measure-build.mjs`: landing production, cache, không JS, metadata.
 - **Lệnh:**
-  - `npm test`, `npm run typecheck`, `npm run build`;
-  - `npm run capture` (khoảng 30 phút; `CAPTURE_ONLY=landing-layouts,landing-network,landing-flows`
+  - `yarn test`, `yarn typecheck`, `yarn build`;
+  - `yarn capture` (khoảng 30 phút; `CAPTURE_ONLY=landing-layouts,landing-network,landing-flows`
     cho phần mới);
-  - `npm run measure:build`;
+  - `yarn measure:build`;
   - `node scripts/capture-brand-assets.mjs` (vẽ lại ảnh).

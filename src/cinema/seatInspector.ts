@@ -40,7 +40,7 @@ import { CLOSE_ICON, el, icon, ICONS, renderStatus, switchControl } from './ui.t
  * "Đóng"; over the view a hand shows that the seat turns, until the view is first touched.
  */
 
-/** Framed views: the opening one, and the rest for `npm run capture` (dev hook; no buttons). */
+/** Framed views: the opening one, and the rest for `yarn capture` (dev hook; no buttons). */
 export type InspectorViewId = 'front' | 'side' | 'back' | 'top' | 'cup';
 
 /** A pointing hand under a two-headed arc: "drag to turn". Decorative (the words are kept for screen readers). */
@@ -452,7 +452,7 @@ const metres = (value: number) => `${millimetreFormat.format(value)} m`;
 
 declare global {
   interface Window {
-    /** Development-only inspection hook used by `npm run capture` (it also frames the fixed views). */
+    /** Development-only inspection hook used by `yarn capture` (it also frames the fixed views). */
     __seatInspector?: { getState(): unknown; setView(id: InspectorViewId): void };
   }
 }

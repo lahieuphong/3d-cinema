@@ -25,7 +25,7 @@ Bối cảnh: [release-audit-prompt-10.md](release-audit-prompt-10.md). Checklis
 | Liên kết CLI | Không có thư mục `.vercel/` trong máy; không có `vercel` CLI trong project | Không deploy bằng CLI |
 | Dashboard | Link "Details" của commit status `Vercel` trỏ tới `vercel.com/la-hieu-phongs-projects/tp3d-cinema/…` | Đó là slug của team và project. Project ID và team ID không có trong repo, không suy ra từ tên miền |
 | Biến môi trường | Mã chỉ dùng `import.meta.env.DEV`; không có `.env` | Không cần biến nào |
-| Build trên Vercel | `vercel.json`: `npm ci`, `npm run build`, output `dist`, framework `vite` | Giữ nguyên |
+| Build trên Vercel | `vercel.json`: `yarn install --frozen-lockfile`, `yarn build`, output `dist`, framework `vite` | Giữ nguyên |
 
 **Chưa xác minh được từ máy này** (cần nhìn dashboard Vercel, Settings của project):
 - *Git → Production Branch* là `main`. Bằng chứng gián tiếp ở bảng trên.
@@ -71,7 +71,7 @@ không bỏ theo dõi tệp cũ.
    - Hoặc gửi **một** request:
      `curl -s https://api.github.com/repos/lahieuphong/3d-cinema/commits/<SHA>/status`.
 3. Lấy URL bản preview từ commit status (liên kết "Details") hoặc dashboard Vercel. Không đoán URL.
-4. Build `dist/` ở máy từ đúng commit đó (working tree sạch): `npm ci && npm run build`.
+4. Build `dist/` ở máy từ đúng commit đó (working tree sạch): `yarn install --frozen-lockfile && yarn build`.
    - Script nghiệm thu so tên các chunk có hash trong `cinema.html` của bản preview với `dist/`. Trùng nhau
      nghĩa là bản preview được build từ cùng source.
 
@@ -88,7 +88,7 @@ Chạy từng bước một, không lặp. Vercel có checkpoint chống bot n�
 **Bước 1 — trả lời của server** (khoảng 20 request):
 
 ```sh
-BASE_URL=https://<preview-url> ACCEPTANCE_ONLY=hosting npm run acceptance
+BASE_URL=https://<preview-url> ACCEPTANCE_ONLY=hosting yarn acceptance
 ```
 
 Script kiểm tra:
@@ -109,7 +109,7 @@ Thêm hai điểm cần xem tay trong kết quả:
 **Bước 2 — luồng nghiệm thu trong trình duyệt** (một lượt, 14 luồng, khoảng 3 phút):
 
 ```sh
-BASE_URL=https://<preview-url> npm run acceptance
+BASE_URL=https://<preview-url> yarn acceptance
 ```
 
 Gồm:

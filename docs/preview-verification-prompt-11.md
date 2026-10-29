@@ -37,7 +37,7 @@ production lúc 07:04Z. Base này đã gồm bản sửa rewrite. Không reset, 
   - `src/`, HTML, `vite.config.ts`, `vercel.json`, `package.json` không tham chiếu tới;
   - chỉ `capture-views`, `measure-build`, `acceptance` ghi kết quả vào đó (và `capture-views` đọc
     `baseline/` nếu có).
-- Sau khi gỡ: `npm test` 180/180, `npm run build` thành công.
+- Sau khi gỡ: `yarn test` 180/180, `yarn build` thành công.
 - **Commit này không làm giảm dung lượng lịch sử**: các tệp vẫn nằm trong những commit cũ. Không viết lại
   lịch sử, không dùng Git LFS.
 

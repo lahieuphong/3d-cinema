@@ -6,29 +6,29 @@ Trạng thái: hoàn thành, chờ duyệt (27/10/2026). Chưa commit, project c
 
 | Thành phần | Phiên bản |
 | --- | --- |
-| Node / npm | 24.19 / 11.16 |
+| Node / Yarn | 24.19 / 1.22.22 |
 | Vite | 8.3.5 |
 | TypeScript | 6.0.3 (theo template `create-vite` hiện hành) |
 | three / @types/three | 0.186.1 / 0.186.0 (r186, renderer WebGL 2) |
 | Vitest | 5.0.5 |
-| playwright-core | 1.64.1 (chỉ dùng cho `npm run capture`, chạy Chrome/Edge có sẵn trên máy) |
+| playwright-core | 1.64.1 (chỉ dùng cho `yarn capture`, chạy Chrome/Edge có sẵn trên máy) |
 
 Toàn bộ hình học được dựng bằng code, không có file model.
 
 ## Chạy
 
 ```bash
-npm install
-npm run dev          # http://localhost:5173/cinema  ("/" tự chuyển sang /cinema)
-npm run typecheck
-npm test             # kiểm tra dữ liệu bố trí và hình học (Node, không cần WebGL)
-npm run build        # typecheck + build production vào dist/
-npm run preview      # phục vụ dist/, /cinema vẫn hoạt động nhờ SPA fallback
-npm run capture      # kiểm tra trên trình duyệt thật + chụp ảnh vào artifacts/prompt-01/
+yarn install
+yarn dev          # http://localhost:5173/cinema  ("/" tự chuyển sang /cinema)
+yarn typecheck
+yarn test             # kiểm tra dữ liệu bố trí và hình học (Node, không cần WebGL)
+yarn build        # typecheck + build production vào dist/
+yarn preview      # phục vụ dist/, /cinema vẫn hoạt động nhờ SPA fallback
+yarn capture      # kiểm tra trên trình duyệt thật + chụp ảnh vào artifacts/prompt-01/
 ```
 
-`npm run capture` tự bật Vite dev server, mở Chrome (hoặc Edge) headless, chạy 67 kiểm tra và ghi
-`artifacts/prompt-01/report.json`. Nếu máy dùng trình duyệt ở vị trí khác: `BROWSER_PATH=... npm run capture`.
+`yarn capture` tự bật Vite dev server, mở Chrome (hoặc Edge) headless, chạy 67 kiểm tra và ghi
+`artifacts/prompt-01/report.json`. Nếu máy dùng trình duyệt ở vị trí khác: `BROWSER_PATH=... yarn capture`.
 
 ## Cấu trúc mã
 
@@ -137,8 +137,8 @@ Sàn bậc, vị trí ghế và camera tầm mắt đều đọc từ cùng ngu�
 
 ## Kết quả kiểm chứng (27/10/2026)
 
-- `npm run typecheck`: sạch. `npm test`: 29/29. `npm run build`: thành công (cảnh báo chunk 604 kB, xem hạn chế).
-- `npm run capture`: 67/67 kiểm tra trên Chrome 156 headless với GPU thật (ANGLE D3D11). Viewport giả lập
+- `yarn typecheck`: sạch. `yarn test`: 29/29. `yarn build`: thành công (cảnh báo chunk 604 kB, xem hạn chế).
+- `yarn capture`: 67/67 kiểm tra trên Chrome 156 headless với GPU thật (ANGLE D3D11). Viewport giả lập
   desktop 1440×900, tablet 820×1180 @2x, mobile 390×844 @3x. Gồm: vào thẳng /cinema, `/` chuyển hướng, đủ 4 preset,
   reset, công tắc, bàn phím, kéo orbit rồi đổi preset (không trôi), bấm preset liên tiếp, resize desktop → mobile,
   không tràn ngang, giới hạn pixel ratio, mất/khôi phục context, re-mount bằng HMR thật (vẫn 1 canvas, context cũ

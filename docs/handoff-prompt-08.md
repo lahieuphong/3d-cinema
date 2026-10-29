@@ -79,7 +79,7 @@ sheet.
 ## Tỷ lệ canvas đo thực tế
 
 Chiều cao và diện tích canvas chia cho viewport, đo bằng `getBoundingClientRect` của canvas trong Chrome
-(giả lập). Prompt 07 đo trên bản build của chính nó; Prompt 08 đo trong `npm run capture`.
+(giả lập). Prompt 07 đo trên bản build của chính nó; Prompt 08 đo trong `yarn capture`.
 
 | Viewport | Trạng thái | P07 chiều cao | P07 diện tích | P08 chiều cao | P08 diện tích |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -173,7 +173,7 @@ Prompt 07 có một chunk JS duy nhất: trang chỉ hiện gì đó sau khi ~1 
 việc dựng UI. Tác vụ, sơ đồ ghế 2D và player chạy trước khi phần 3D tới. Không đổi area light, vật
 liệu hay chất lượng hình; không nâng dependency; không nâng `chunkSizeWarningLimit`.
 
-| Tệp (`npm run build`) | raw | gzip | brotli | Tải khi |
+| Tệp (`yarn build`) | raw | gzip | brotli | Tải khi |
 | --- | ---: | ---: | ---: | --- |
 | `index-*.js`: trang, tác vụ, sơ đồ, player, media controller | 63,7 kB | 22,4 kB | 20,0 kB | màn hình đầu |
 | `index-*.css` | 22,1 kB | 4,9 kB | 4,4 kB | màn hình đầu |
@@ -189,7 +189,7 @@ liệu hay chất lượng hình; không nâng dependency; không nâng `chunkSi
   - Cảnh báo chunk > 500 kB vẫn còn, cho `seats-*.js` (phần lớn là three.js). Không che bằng cách nâng
     giới hạn.
   - Rolldown tự đặt tên chunk dùng chung theo module đầu tiên (`seats`).
-- **Thời gian** (`npm run measure:build`: `vite preview` có gzip, Chrome 156, cache tắt, trung vị 3 lần):
+- **Thời gian** (`yarn measure:build`: `vite preview` có gzip, Chrome 156, cache tắt, trung vị 3 lần):
 
 | Mạng | Trang dùng được | Byte tới lúc đó | Cảnh 3D sẵn sàng | Byte tới lúc đó | Prompt 07 (trang có gì đó / cảnh) |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -301,7 +301,7 @@ phép và dòng ghi công giữ nguyên.
 
 | Trình duyệt / engine | Phiên bản | Cách chạy | Đã thử |
 | --- | --- | --- | --- |
-| Google Chrome (Blink) | 156.0.8078.47, Windows 11, ANGLE D3D11, RTX 3090 | headless, playwright-core | Toàn bộ `npm run capture` và `npm run measure:build` |
+| Google Chrome (Blink) | 156.0.8078.47, Windows 11, ANGLE D3D11, RTX 3090 | headless, playwright-core | Toàn bộ `yarn capture` và `yarn measure:build` |
 | Microsoft Edge (Blink) | 156.0.4314.42 | headless, `BROWSER_PATH` | Luồng A, B, D, E, F, bàn phím/focus, không WebGL (`CAPTURE_ONLY=ui-flows,ui-focus,webgl-failure`): **21/21** (`artifacts/prompt-08/edge/`) |
 | Firefox, WebKit/Safari | — | không có trong môi trường, không cài | chưa thử |
 | Điện thoại / tablet thật | — | — | chưa thử (chỉ giả lập kích thước, DPR, cảm ứng) |
@@ -326,7 +326,7 @@ Các luồng end-to-end (`report.json` mục `ui.flows`, video `video-p08-flow-*
 
 ## Kiểm tra và regression
 
-- **`npm test`: 170/170** (11 file; trước là 160/10).
+- **`yarn test`: 170/170** (11 file; trước là 160/10).
   - Mới: `taskLayout.test.ts` (9 test: đổi tác vụ, nhớ panel, toàn màn hình không tự mở, Escape từng
     bước, "Xem từ ghế này" trên sheet/panel bên, đổi bố cục, chỉ dừng tham quan/đi bộ khi rời Khám
     phá).
@@ -336,9 +336,9 @@ Các luồng end-to-end (`report.json` mục `ui.flows`, video `video-p08-flow-*
     và mọi suite hỏng. `cd /d E:\…` thì luôn pass.
   - Tái hiện 4/4 lần; log và giải thích ở `artifacts/prompt-08/logs/vitest-no-tests-NOTE.md`.
   - Không phải lỗi code dự án; không nâng Vitest. Cách tránh: chạy từ terminal có ổ đĩa viết hoa.
-- `npm run typecheck`: sạch. `npm run build`: thành công; cảnh báo chunk > 500 kB cho chunk three.js.
-- **`npm run capture`: 407/407**, 0 cảnh báo console ngoài dự kiến (`artifacts/prompt-08/report.json`, log `logs/capture-2.log`). Lượt trước khi thêm dòng credits cạnh caption: 400/400 (`logs/capture-1-before-credit-line.log`)**; baseline Prompt 07 là 325/325.
-- **`npm run measure:build`: 11/11** (`artifacts/prompt-08/build-metrics.json`).**
+- `yarn typecheck`: sạch. `yarn build`: thành công; cảnh báo chunk > 500 kB cho chunk three.js.
+- **`yarn capture`: 407/407**, 0 cảnh báo console ngoài dự kiến (`artifacts/prompt-08/report.json`, log `logs/capture-2.log`). Lượt trước khi thêm dòng credits cạnh caption: 400/400 (`logs/capture-1-before-credit-line.log`)**; baseline Prompt 07 là 325/325.
+- **`yarn measure:build`: 11/11** (`artifacts/prompt-08/build-metrics.json`).**
 
 **Check cũ phải đổi cách thao tác.** Mục đích giữ nguyên; helper `reveal`/`clickUi` thao tác như
 người dùng: chuyển tác vụ, mở "Cài đặt"/"Góc khác"/panel trước khi bấm.
@@ -460,7 +460,7 @@ Chrome 156 headless; đếm đối tượng JS sống sau GC qua CDP (`Runtime.q
   - `src/cinema/taskLayout.ts` (+ `taskLayout.test.ts`): tác vụ và trạng thái panel;
   - `src/cinema/seatSummary.ts`: dòng tóm tắt của Chọn ghế;
   - `scripts/remux-mp4.mjs`: remux MP4 phân mảnh;
-  - `scripts/measure-build.mjs` (`npm run measure:build`): đo bản build;
+  - `scripts/measure-build.mjs` (`yarn measure:build`): đo bản build;
   - `docs/release-checklist.md`, tài liệu này;
   - `artifacts/prompt-08/`.
 - **Sửa:**
@@ -478,7 +478,7 @@ Chrome 156 headless; đếm đối tượng JS sống sau GC qua CDP (`Runtime.q
   - `public/media/big-buck-bunny-trailer-720p.mp4` (remux);
   - `scripts/capture-views.mjs`.
 - **Lệnh:**
-  - `npm test`, `npm run typecheck`, `npm run build`;
-  - `npm run capture` (~25 phút; `CAPTURE_ONLY=ui-layouts,ui-flows` chạy một phần);
-  - `npm run measure:build` (sau `npm run build`);
+  - `yarn test`, `yarn typecheck`, `yarn build`;
+  - `yarn capture` (~25 phút; `CAPTURE_ONLY=ui-layouts,ui-flows` chạy một phần);
+  - `yarn measure:build` (sau `yarn build`);
   - `node scripts/remux-mp4.mjs <vào.mp4> <ra.mp4>`.

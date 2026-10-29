@@ -106,7 +106,7 @@ phụ đề (`captions: null`).
 `fixtures/media/` chứa các clip **do code sinh ra** bằng `node scripts/make-media-fixtures.mjs`
 (canvas + Web Audio trong Chrome, ghi bằng `MediaRecorder`): bảng màu 16:9, 9:16, 2,39:1, bản không
 tiếng, bản WebM không có thời lượng, một tệp không phải video và một tệp hỏng dữ liệu. Không dùng hình
-hay âm thanh bên ngoài. Chỉ dùng cho `npm run capture` qua `?film=<tên tệp>` ở chế độ dev; `vite build`
+hay âm thanh bên ngoài. Chỉ dùng cho `yarn capture` qua `?film=<tên tệp>` ở chế độ dev; `vite build`
 không chép thư mục này vào `dist/`.
 
 ## Ảnh của trang mở đầu (Prompt 09)

@@ -125,13 +125,13 @@ Chỉ có một trạng thái ánh sáng, "Khám phá rạp". Không có đèn c
 
 ## Test và kiểm tra
 
-- `npm test`: **94/94** test pass (5 file). Phần mới:
+- `yarn test`: **94/94** test pass (5 file). Phần mới:
   - Mọi kiểm tra hình học ghế chạy cho **cả hai mức**: chạm sàn tại pivot, nằm trong footprint, tỉ lệ, hướng −Z, tay vịn, giá cốc thông, winding và normal, mắt ngồi.
   - Mức Tiết kiệm: cùng thành phần, ±1 cm, ≤ 50 % tam giác, ánh xạ 110 instance.
   - `render.test.ts`: giá trị chất lượng hợp lệ, mặc định theo thiết bị, lưu/đọc/storage bị chặn; mức Tiết kiệm rẻ hơn ở mọi tham số; đúng một nguồn đổ bóng; khung bóng ôm sát; đèn tắt theo trần/vách phải và phục hồi; đổi kích thước shadow map; texture thảm có seed, tile liền và dải giá trị hẹp.
   - `interior.test.ts`: giải phóng mọi texture đúng một lần (exit sign và thảm dùng chung); dải LED không va chạm.
-- `npm run typecheck`: sạch. `npm run build`: thành công, vẫn có cảnh báo chunk > 500 kB.
-- `npm run capture`: **106/106** check pass, 0 cảnh báo console ngoài dự kiến. Phần mới:
+- `yarn typecheck`: sạch. `yarn build`: thành công, vẫn có cảnh báo chunk > 500 kB.
+- `yarn capture`: **106/106** check pass, 0 cảnh báo console ngoài dự kiến. Phần mới:
   - Mặc định Cao trên desktop, Tiết kiệm trên tablet/mobile.
   - Cùng camera ở hai mức; đổi mức giữ camera, ẩn/hiện và preset; lưu lựa chọn và đọc lại khi tải lại trang; giá trị lạ thì về mặc định; tài nguyên ổn định sau 6 lần đổi; không render khi đứng yên.
   - Đèn và bóng theo trần/vách phải; camera di chuyển không vẽ lại bóng.
@@ -190,4 +190,4 @@ Các góc `material-*` và `state-*` là góc trình bày bổ sung, không thay
   - `ui.ts`, `page.ts`, `styles.css` (nút chất lượng)
   - `seats.test.ts`, `interior.test.ts`, `scripts/capture-views.mjs`
 
-**Lệnh:** `npm test`, `npm run typecheck`, `npm run build`, `npm run capture` (dùng Chrome hoặc Edge đã cài, ghi ra `artifacts/prompt-04/`). Đo lại baseline bằng `CAPTURE_DIR=prompt-04/baseline npm run capture`, chạy trên code của prompt trước.
+**Lệnh:** `yarn test`, `yarn typecheck`, `yarn build`, `yarn capture` (dùng Chrome hoặc Edge đã cài, ghi ra `artifacts/prompt-04/`). Đo lại baseline bằng `CAPTURE_DIR=prompt-04/baseline yarn capture`, chạy trên code của prompt trước.

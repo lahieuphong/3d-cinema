@@ -99,8 +99,8 @@ Tách chi phí (hook `measureCost` trong chế độ dev: lần lượt render k
 
 ## Kiểm tra
 
-- `npm run typecheck`: sạch. `npm run build`: thành công. JS chính 652 kB (gzip 170 kB), chunk inspector 8 kB; vẫn có cảnh báo chunk > 500 kB.
-- `npm test`: 67/67, trong đó `interior.test.ts` có 29 test:
+- `yarn typecheck`: sạch. `yarn build`: thành công. JS chính 652 kB (gzip 170 kB), chunk inspector 8 kB; vẫn có cảnh báo chunk > 500 kB.
+- `yarn test`: 67/67, trong đó `interior.test.ts` có 29 test:
   - Mặt panel nằm đúng X ±6,00.
   - Lối đi thông thoáng 1,50 m đo từ geometry, giới hạn bởi mặt panel.
   - Loa cao hơn sàn lối đi ≥ 2,1 m; không chi tiết nào lấn footprint của 110 ghế.
@@ -118,7 +118,7 @@ Tách chi phí (hook `measureCost` trong chế độ dev: lần lượt render k
   - Tay vịn lấn vào lối đi → 2 test fail.
   - Loa hạ ngang đầu người → 2 test fail.
   - Dầm đặt trên màn → ban đầu **lọt** vì vùng kiểm tra được dựng từ chính cấu hình dầm. Đã sửa để vùng kiểm tra độc lập với cấu hình, chạy lại thì test bắt được.
-- `npm run capture`: 78/78, không có cảnh báo console ngoài 2 lỗi cố ý của bài giả lập không có WebGL. Gồm:
+- `yarn capture`: 78/78, không có cảnh báo console ngoài 2 lỗi cố ý của bài giả lập không có WebGL. Gồm:
   - Đủ 4 preset ở desktop, tablet, mobile; reset; công tắc; bàn phím; không trôi camera; resize.
   - HMR re-mount vẫn một canvas; mất/khôi phục context.
   - Inspector mở/đóng/Back/Esc.

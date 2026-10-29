@@ -22,7 +22,7 @@ import { DataTexture, type Material, REVISION, type Texture, UniformsLib, type W
  * Applies only while one renderer owns a context: call `attach` when a context comes up,
  * `release` when it is lost, `dispose` when the renderer goes (`collect` after frames). Remove this
  * module (and its calls in RenderHost) once three.js drops its listeners on context loss and renderer disposal itself;
- * the lifecycle check in `npm run capture` (one listener per shared texture after restores and
+ * the lifecycle check in `yarn capture` (one listener per shared texture after restores and
  * remounts) shows whether it is still needed.
  */
 export class SharedTextureListeners {

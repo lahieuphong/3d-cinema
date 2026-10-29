@@ -29,7 +29,7 @@ type SceneModule = typeof import('./view.ts');
 
 declare global {
   interface Window {
-    /** Development-only inspection hook used by `npm run capture`. */
+    /** Development-only inspection hook used by `yarn capture`. */
     __cinema?: {
       layout: ReturnType<typeof createAuditoriumLayout>;
       getState(): unknown;

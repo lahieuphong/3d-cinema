@@ -209,7 +209,7 @@ Giao diện ghi rõ: "Dữ liệu ghế minh họa — chưa giữ chỗ thực 
 
 ## Kiểm tra
 
-- `npm test`: **136/136** (8 file). File mới:
+- `yarn test`: **136/136** (8 file). File mới:
   - `selection.test.ts`:
     - quy tắc, fixture, giới hạn, active độc lập;
     - màu highlight nhân với màu nền;
@@ -220,8 +220,8 @@ Giao diện ghi rõ: "Dữ liệu ghế minh họa — chưa giữ chỗ thực 
     - giới hạn tầm với; bỏ qua ghế đang ngồi;
     - chi phí truy vấn proxy.
   - `tapTracker.test.ts`: ngưỡng theo loại con trỏ, kéo quay về chỗ cũ, nhấn lâu, chuột phải, nhiều ngón, ngón trên cần điều khiển, cancel, blur, lần nhấn dừng tour.
-- `npm run typecheck`: sạch. `npm run build`: thành công (vẫn có cảnh báo chunk > 500 kB).
-- `npm run capture`: **261/261**, 0 cảnh báo console ngoài dự kiến.
+- `yarn typecheck`: sạch. `yarn build`: thành công (vẫn có cảnh báo chunk > 500 kB).
+- `yarn capture`: **261/261**, 0 cảnh báo console ngoài dự kiến.
   - Desktop, chuột thật:
     - chọn 3D → sơ đồ, sơ đồ → 3D;
     - ghế đã đặt; hover;
@@ -242,7 +242,7 @@ Giao diện ghi rõ: "Dữ liệu ghế minh họa — chưa giữ chỗ thực 
   - Lifecycle: 5 chu kỳ mất/khôi phục và 6 lần mở/đóng inspector như bảng trên.
   - Không WebGL: sơ đồ vẫn chọn được, nút xem bị khóa kèm lý do.
 - **Phân biệt giả lập:** "mobile" là Chrome giả lập viewport/DPR/touch, cảm ứng gửi qua CDP `Input.dispatchTouchEvent`. Chưa thử trên điện thoại thật, Safari iOS, Firefox, hay với trình đọc màn hình thật (NVDA/VoiceOver). ARIA chỉ được kiểm tra bằng thuộc tính và hành vi phím.
-- **Flake quan sát được:** hai lần `npm test` chạy trong một chuỗi lệnh ngay sau khi sửa file báo "8 failed / no tests" mà không có lỗi test nào. Mọi lần chạy khác (foreground, chạy nền, sau khi chạm file) đều 136/136. Không tái hiện được; có thể do Vitest nạp module trong lúc file vừa được ghi.
+- **Flake quan sát được:** hai lần `yarn test` chạy trong một chuỗi lệnh ngay sau khi sửa file báo "8 failed / no tests" mà không có lỗi test nào. Mọi lần chạy khác (foreground, chạy nền, sau khi chạm file) đều 136/136. Không tái hiện được; có thể do Vitest nạp module trong lúc file vừa được ghi.
 
 ## Ảnh và video (`artifacts/prompt-06/`)
 
@@ -281,4 +281,4 @@ Giao diện ghi rõ: "Dữ liệu ghế minh họa — chưa giữ chỗ thực 
   - `exploreInput.ts` (bỏ qua phím thuộc widget), `seatInspector.ts` (`textureProbe`), `styles.css`
   - `scripts/capture-views.mjs`
 
-**Lệnh:** `npm test`, `npm run typecheck`, `npm run build`, `npm run capture` (ghi ra `artifacts/prompt-06/`; đo baseline bằng `CAPTURE_DIR=prompt-06/baseline`).
+**Lệnh:** `yarn test`, `yarn typecheck`, `yarn build`, `yarn capture` (ghi ra `artifacts/prompt-06/`; đo baseline bằng `CAPTURE_DIR=prompt-06/baseline`).

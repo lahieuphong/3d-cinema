@@ -199,7 +199,7 @@ Khoảng 29,9 s, cộng khoảng 0,6 s di chuyển tới điểm đầu; không 
 
 ## Kiểm tra
 
-- `npm test`: **119/119** (6 file). File mới `camera.test.ts` có 25 test:
+- `yarn test`: **119/119** (6 file). File mới `camera.test.ts` có 25 test:
   - collider phủ ghế ở cả hai mức;
   - đứng được ở đâu;
   - lên/xuống bậc;
@@ -216,11 +216,11 @@ Khoảng 29,9 s, cộng khoảng 0,6 s di chuyển tới điểm đầu; không 
   - preset nằm trong phòng; tổng quan thấy trọn màn và một lối đi;
   - mặt bằng thấy trọn phòng;
   - "Nhìn về ghế" thấy ≥ 95 % ghế (màn ngang) hoặc ≥ 50 % (màn dọc).
-- `npm run typecheck`: sạch. `npm run build`: thành công.
+- `yarn typecheck`: sạch. `yarn build`: thành công.
   - JS chính 944,7 kB (gzip 291 kB), trước đây 916 / 281 kB.
   - Inspector 10,2 kB.
   - Vẫn có cảnh báo chunk > 500 kB.
-- `npm run capture`: **203/203**, 0 cảnh báo console ngoài dự kiến. Chạy trên Chrome 156 headless, ANGLE D3D11, RTX 3090.
+- `yarn capture`: **203/203**, 0 cảnh báo console ngoài dự kiến. Chạy trên Chrome 156 headless, ANGLE D3D11, RTX 3090.
   - Thiết bị: desktop, tablet, mobile dọc, mobile ngang (mới).
   - Tour: đường đi, độ hở, roll, một bên ghi camera, 6 cách dừng, tab ẩn, đổi chất lượng giữa chừng.
   - Khám phá: điểm bắt đầu, va chạm, đi chéo khi CPU chậm 6×, ô nhập không nhận phím, blur, pointercancel, cầu thang, đổi chất lượng.
@@ -282,4 +282,4 @@ Khoảng 29,9 s, cộng khoảng 0,6 s di chuyển tới điểm đầu; không 
   - `config.ts` (`camera`), `ui.ts`, `page.ts`, `main.ts`, `styles.css`
   - `scripts/capture-views.mjs`
 
-**Lệnh:** `npm test`, `npm run typecheck`, `npm run build`, `npm run capture` (ghi ra `artifacts/prompt-05/`; đo baseline bằng `CAPTURE_DIR=prompt-05/baseline`).
+**Lệnh:** `yarn test`, `yarn typecheck`, `yarn build`, `yarn capture` (ghi ra `artifacts/prompt-05/`; đo baseline bằng `CAPTURE_DIR=prompt-05/baseline`).

@@ -28,8 +28,8 @@
 // its renderer figures are copied into the report and its screenshots are paired with the new ones
 // from the same cameras in compare-*.png.
 //
-//   npm run capture                       # uses the first browser found
-//   BROWSER_PATH=/path/to/chrome npm run capture
+//   yarn capture                       # uses the first browser found
+//   BROWSER_PATH=/path/to/chrome yarn capture
 //
 // Exits non-zero if any check fails.
 

@@ -30,10 +30,10 @@ Phạm vi:
 ## 1. Đã kiểm chứng
 
 Bằng chứng (ứng viên Prompt 10; kết quả ở mục 9 của bản rà soát):
-- `npm test`, `npm run typecheck`, `npm run build`;
-- `npm run capture`: harness trên dev server, `artifacts/prompt-10/report.json`;
-- `npm run measure:build`: bản production trên `vite preview`, `artifacts/prompt-10/build-metrics.json`;
-- `npm run acceptance`: 14 luồng nghiệm thu trên bản production, Chrome và Edge.
+- `yarn test`, `yarn typecheck`, `yarn build`;
+- `yarn capture`: harness trên dev server, `artifacts/prompt-10/report.json`;
+- `yarn measure:build`: bản production trên `vite preview`, `artifacts/prompt-10/build-metrics.json`;
+- `yarn acceptance`: 14 luồng nghiệm thu trên bản production, Chrome và Edge.
 
 Ảnh và báo cáo trong `artifacts/` chỉ ở máy; từ Prompt 10 chúng không vào Git.
 
@@ -87,7 +87,7 @@ Bằng chứng (ứng viên Prompt 10; kết quả ở mục 9 của bản rà s
 
 **Hosting trên bản preview `dc759bf` (Vercel thật, Prompt 11)**
 
-Kiểm tra bằng `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting npm run acceptance`, kèm secret bypass tạm.
+Kiểm tra bằng `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting yarn acceptance`, kèm secret bypass tạm.
 - [x] Đúng nguồn build: `gitSource.sha = dc759bf…`, target Preview, READY; commit status `Vercel — success`.
 - [x] `/` → landing; `/cinema`, `/cinema/`, `/cinema?inspect=seat` → `cinema.html`; HTML `no-cache`;
   canonical và `og:url` riêng cho `/` và `/cinema`.
@@ -171,11 +171,11 @@ Kiểm tra bằng `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting npm run acceptance
 - [x] Prompt 11: ngừng theo dõi toàn bộ `artifacts/` (`1ef002f`); sửa header 404 (`dc759bf`); preview đã
   kiểm chứng.
 - [ ] Người dùng duyệt preview (hình ảnh, tên, luồng, âm thanh, thiết bị thật).
-- [ ] `npm test`, `npm run typecheck`, `npm run build` sạch.
-  - Trên Windows chạy từ thư mục có ổ đĩa viết hoa: `cmd /c "cd /d E:\Phong_Nho_IT\3d-cinema && npm test"`.
-    Nếu process chạy từ `e:\…` (chữ thường), npm nạp hai bản Vitest và mọi suite báo "no tests"
+- [ ] `yarn test`, `yarn typecheck`, `yarn build` sạch.
+  - Trên Windows chạy từ thư mục có ổ đĩa viết hoa: `cmd /c "cd /d E:\Phong_Nho_IT\3d-cinema && yarn test"`.
+    Nếu process chạy từ `e:\…` (chữ thường), Node nạp hai bản Vitest và mọi suite báo "no tests"
     (Prompt 08 đã tái hiện chắc chắn, 4/4 lần; `process.chdir` trong config không giúp).
-  - `npm run capture`, `npm run measure:build`, `npm run acceptance` cần Chrome hoặc Edge cài sẵn.
+  - `yarn capture`, `yarn measure:build`, `yarn acceptance` cần Chrome hoặc Edge cài sẵn.
 - [ ] `git status --short`: chỉ có các đường dẫn ở mục 12 của bản rà soát.
   - Stage từng đường dẫn, không dùng `git add .`.
   - `artifacts/` bị `.gitignore` loại.
