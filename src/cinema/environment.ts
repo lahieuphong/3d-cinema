@@ -1,12 +1,15 @@
 import {
   BackSide,
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   DoubleSide,
   FrontSide,
-  type BufferGeometry,
   Color,
+  type Material,
   Mesh,
   MeshBasicMaterial,
+  PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
   Scene,
@@ -14,6 +17,7 @@ import {
   type Texture,
   Vector3,
   type WebGLRenderer,
+  type WebGLRenderTarget,
 } from 'three';
 
 export interface InteriorEnvironment {
@@ -29,6 +33,76 @@ export interface InteriorEnvironment {
  * Rebuild it after a WebGL context restore, since the prefiltered target is lost with the context.
  */
 export function createInteriorEnvironment(renderer: WebGLRenderer): InteriorEnvironment {
+  const room = environmentRoom();
+  const generator = new PMREMGenerator(renderer);
+  const target = generator.fromScene(room.scene, SIGMA, NEAR, FAR, { size: SIZE, position: VIEW });
+  generator.dispose();
+  room.dispose();
+  return { texture: target.texture, dispose: () => target.dispose() };
+}
+
+/**
+ * The same environment, with the shader programs it needs compiled first, in the background where
+ * the browser can (KHR_parallel_shader_compile). On a first visit (no shader cache yet) compiling
+ * them inside the prefiltering held the page for about 0.4 s on a fast desktop. Reaches into
+ * PMREMGenerator (three r186) for its blur and GGX materials; if those are not where expected, the
+ * prefiltering compiles them itself as before.
+ */
+export async function createInteriorEnvironmentAsync(renderer: WebGLRenderer): Promise<InteriorEnvironment> {
+  const room = environmentRoom();
+  const generator = new PMREMGenerator(renderer);
+  try {
+    await precompile(renderer, generator, room.scene);
+    const target = generator.fromScene(room.scene, SIGMA, NEAR, FAR, { size: SIZE, position: VIEW });
+    return { texture: target.texture, dispose: () => target.dispose() };
+  } finally {
+    generator.dispose();
+    room.dispose();
+  }
+}
+
+/** Seen from mid-room at seated-eye height; blur, near and far of the cube camera; the cube size. */
+const VIEW = new Vector3(0, 2.2, 1);
+const SIGMA = 0.04;
+const NEAR = 0.1;
+const FAR = 40;
+const SIZE = 256;
+
+interface PmremInternals {
+  _setSize?(size: number): void;
+  _allocateTargets?(): WebGLRenderTarget;
+  _blurMaterial?: Material | null;
+  _ggxMaterial?: Material | null;
+}
+
+async function precompile(renderer: WebGLRenderer, generator: PMREMGenerator, scene: Scene): Promise<void> {
+  const internals = generator as unknown as PmremInternals;
+  if (typeof internals._setSize !== 'function' || typeof internals._allocateTargets !== 'function') return;
+  internals._setSize(SIZE);
+  // Allocates the generator's working target and its blur and GGX materials (kept for fromScene).
+  const target = internals._allocateTargets();
+  // Like the generator's own planes, it has positions: whether a geometry has them is part of a
+  // program's identity, so without them these would be other programs than the ones it draws with.
+  const geometry = new BufferGeometry().setAttribute('position', new BufferAttribute(new Float32Array(9), 3));
+  const passes = new Scene();
+  for (const material of [internals._blurMaterial, internals._ggxMaterial]) if (material) passes.add(new Mesh(geometry, material));
+  const camera = new PerspectiveCamera(90, 1, NEAR, FAR);
+  // Programs for a half-float target, as the prefiltering draws them (no tone mapping, linear
+  // output). Compiling starts in these calls; only the waiting is asynchronous.
+  const previous = renderer.getRenderTarget();
+  renderer.setRenderTarget(target);
+  const ready = [renderer.compileAsync(scene, camera), renderer.compileAsync(passes, camera)];
+  renderer.setRenderTarget(previous);
+  try {
+    await Promise.all(ready);
+  } finally {
+    target.dispose();
+    geometry.dispose();
+  }
+}
+
+/** The room standing in for the reflections, before prefiltering; disposed once prefiltered. */
+function environmentRoom(): { scene: Scene; dispose(): void } {
   const scene = new Scene();
   scene.background = new Color(0x0b0a0c);
   const geometries: BufferGeometry[] = [];
@@ -53,15 +127,11 @@ export function createInteriorEnvironment(renderer: WebGLRenderer): InteriorEnvi
     m.position.y = 0.02;
   }, FrontSide);
 
-  const generator = new PMREMGenerator(renderer);
-  // Seen from mid-room at seated-eye height.
-  const target = generator.fromScene(scene, 0.04, 0.1, 40, { position: new Vector3(0, 2.2, 1) });
-  generator.dispose();
-  for (const geometry of geometries) geometry.dispose();
-  for (const material of materials) material.dispose();
-
   return {
-    texture: target.texture,
-    dispose: () => target.dispose(),
+    scene,
+    dispose: () => {
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
+    },
   };
 }

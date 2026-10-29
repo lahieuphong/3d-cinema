@@ -1,8 +1,10 @@
+import { PerspectiveCamera } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createAuditoriumLayout } from './layout.ts';
 import { DEMO_FILM, devFilm, FILMS, type FilmSource } from './media.ts';
 import { MediaController, type MediaChange, type MediaSnapshot } from './mediaController.ts';
 import { formatTime, primaryAction } from './playerUi.ts';
-import { containSize, screenContent } from './screenVideo.ts';
+import { containSize, screenContent, ScreenVideo } from './screenVideo.ts';
 import { VideoFrameClock } from './videoFrames.ts';
 
 /**
@@ -421,6 +423,22 @@ describe('film picture and controls', () => {
     expect(screenContent({ ...base, started: true, state: 'playing' }, true)).toBe('video');
     expect(screenContent({ ...base, started: true, hasFrame: false, state: 'buffering' }, true)).toBe('poster');
     expect(screenContent({ ...base, started: true, state: 'error' }, true)).toBe('poster');
+  });
+
+  it('knows whether the picture is in view, so a film frame nobody can see draws nothing', () => {
+    const layout = createAuditoriumLayout();
+    const screen = new ScreenVideo(layout, new FakeVideo() as unknown as HTMLVideoElement, null);
+    const camera = new PerspectiveCamera(50, 16 / 9, 0.1, 100);
+    camera.position.set(0, 2, 6);
+    camera.lookAt(layout.screen.center.x, layout.screen.center.y, layout.screen.center.z);
+    // Blank (nothing loaded yet): nothing to draw.
+    expect(screen.inView(camera)).toBe(false);
+    screen.update({ state: 'playing', started: true, hasFrame: true, videoWidth: 1280, videoHeight: 720 } as MediaSnapshot);
+    expect(screen.inView(camera)).toBe(true);
+    camera.lookAt(0, 2, 20);
+    expect(screen.inView(camera)).toBe(false);
+    screen.dispose();
+    expect(screen.inView(camera)).toBe(false);
   });
 
   it('formats times and picks the main button', () => {

@@ -6,7 +6,7 @@ import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
 import { createControlHub } from './controlHub.ts';
 import type { FilmSource } from './media.ts';
-import { QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
+import { QUALITY_CHOICES, QUALITY_LABELS, QUALITY_LEVEL_LABELS, type QualityChoice, type QualityLevel } from './quality.ts';
 import { CINEMA_TASKS, type CinemaTask, type PanelState } from './taskLayout.ts';
 
 export const TOGGLEABLE_PARTS: ReadonlyArray<{ part: ToggleablePart; label: string }> = [
@@ -27,7 +27,7 @@ export interface CinemaUiHandlers {
   /** Starts walking ("Đi bộ"), or stops it while walking. */
   onExplore(): void;
   onToggle(part: ToggleablePart, visible: boolean): void;
-  onQuality(level: QualityLevel): void;
+  onQuality(choice: QualityChoice): void;
   onOpenInspector(): void;
   /** Leaves a seat view for the view it was opened from. */
   onReturn(): void;
@@ -97,7 +97,10 @@ export interface CinemaUi {
   setTour(status: UiTourStatus | null): void;
   setExploring(active: boolean): void;
   setPartVisible(part: ToggleablePart, visible: boolean): void;
-  setQuality(level: QualityLevel): void;
+  /** The user's choice: Tự động, Ưu tiên đẹp or Tiết kiệm. */
+  setQuality(choice: QualityChoice): void;
+  /** The level drawn now (the glass follows it); with "Tự động", said under the choice. */
+  setQualityLevel(level: QualityLevel, reason?: string): void;
   setCaption(text: string): void;
   setStatus(status: UiStatus): void;
   setTransitioning(active: boolean): void;
@@ -296,17 +299,27 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const qualityGroup = el('div', 'cinema-segmented');
   qualityGroup.setAttribute('role', 'group');
   qualityGroup.setAttribute('aria-labelledby', qualityHeading.id);
-  const qualityButtons = new Map<QualityLevel, HTMLButtonElement>();
-  for (const level of QUALITY_LEVELS) {
-    const element = button(QUALITY_LABELS[level], 'cinema-segmented__button');
-    element.dataset.quality = level;
+  const qualityButtons = new Map<QualityChoice, HTMLButtonElement>();
+  for (const choice of QUALITY_CHOICES) {
+    const element = button(QUALITY_LABELS[choice], 'cinema-segmented__button');
+    element.dataset.quality = choice;
     element.setAttribute('aria-pressed', 'false');
-    element.setAttribute('aria-label', `Chất lượng ${QUALITY_LABELS[level].toLowerCase()}`);
-    element.addEventListener('click', () => handlers.onQuality(level), { signal });
-    qualityButtons.set(level, element);
+    element.setAttribute('aria-label', `Chất lượng: ${QUALITY_LABELS[choice].toLowerCase()}`);
+    element.addEventListener('click', () => handlers.onQuality(choice), { signal });
+    qualityButtons.set(choice, element);
     qualityGroup.append(element);
   }
   qualityRow.append(qualityHeading, qualityGroup);
+  // With "Tự động": the level it is on now (it follows the frames measured on this device).
+  const qualityNote = el('p', 'cinema-hub__note');
+  let qualityChoice: QualityChoice = 'auto';
+  let qualityLevel: QualityLevel | null = null;
+  const paintQualityNote = () => {
+    qualityNote.textContent =
+      qualityChoice === 'auto' && qualityLevel
+        ? `Đang ở mức ${QUALITY_LEVEL_LABELS[qualityLevel]}, chọn theo khung hình đo được trên thiết bị này.`
+        : '';
+  };
 
   // Giảm hiệu ứng kính: solid panes (also follows the system's "reduce transparency").
   const glass = switchControl('Giảm hiệu ứng kính', 'glass', loadReducedGlass(), (on) => setReducedGlass(on), signal);
@@ -642,7 +655,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
 
   hub.content('settings').append(
     settingsNote,
-    rowGroup('Hiển thị', rows(qualityRow, glass.wrapper, fullscreenButton, fullscreenNote)),
+    rowGroup('Hiển thị', rows(qualityRow, qualityNote, glass.wrapper, fullscreenButton, fullscreenNote)),
     rowGroup(
       'Khác',
       rows(
@@ -861,9 +874,18 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       const input = toggles.get(part);
       if (input) input.checked = visible;
     },
-    setQuality(level) {
+    setQuality(choice) {
+      qualityChoice = choice;
+      for (const [value, element] of qualityButtons) element.setAttribute('aria-pressed', String(value === choice));
+      paintQualityNote();
+    },
+    setQualityLevel(level, reason) {
+      qualityLevel = level;
       root.dataset.quality = level;
-      for (const [value, element] of qualityButtons) element.setAttribute('aria-pressed', String(value === level));
+      // Why "Tự động" is there (for checks and the measuring scripts; not shown).
+      if (reason) root.dataset.qualityReason = reason;
+      else delete root.dataset.qualityReason;
+      paintQualityNote();
     },
     setCaption(text) {
       // The caption is a live region: rewriting the same sentence would read it again.
@@ -980,6 +1002,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       clearTimeout(captionTimer);
       clearTimeout(seatCardTimer);
       clearTimeout(restTimer);
+      stopStatusFade(status);
       listeners.abort();
       overlayResize.disconnect();
       hub.dispose();
@@ -1010,6 +1033,20 @@ const LOADING_TEXT = {
   scene: 'Đang dựng phòng chiếu 3D…',
 };
 
+/** The skeleton's fade-out once the first frame is drawn (styles.css: --duration-medium). */
+const STATUS_FADE_MS = 240;
+/** Status overlays fading out, with the timer that hides them at the end. */
+const leaving = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
+/**
+ * Stops a skeleton's fade-out (the page is going): its timer would otherwise keep the page's
+ * detached elements, and everything their listeners reach, alive until it fires.
+ */
+export function stopStatusFade(status: HTMLElement): void {
+  clearTimeout(leaving.get(status));
+  leaving.delete(status);
+}
+
 /**
  * Shows `next` in a status overlay and mirrors it on `root.dataset.status`. Shared by the
  * auditorium and the seat inspector. While waiting (loading, a lost context coming back) it shows a
@@ -1019,6 +1056,26 @@ const LOADING_TEXT = {
  */
 export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiStatus, onRetry?: () => void): void {
   root.dataset.status = next.kind;
+  stopStatusFade(status);
+  status.classList.remove('cinema-status--leaving');
+  // Ready after the skeleton: it fades out over the first frame instead of vanishing (at once with
+  // reduced motion, see styles.css). Nothing under it waits for the fade; it takes no input.
+  if (next.kind === 'ready' && !status.hidden && status.classList.contains('cinema-status--waiting')) {
+    status.classList.add('cinema-status--leaving');
+    status.setAttribute('aria-hidden', 'true');
+    leaving.set(
+      status,
+      setTimeout(() => {
+        leaving.delete(status);
+        status.classList.remove('cinema-status--leaving', 'cinema-status--waiting');
+        status.removeAttribute('aria-hidden');
+        status.replaceChildren();
+        status.hidden = true;
+      }, STATUS_FADE_MS),
+    );
+    return;
+  }
+  status.removeAttribute('aria-hidden');
   status.replaceChildren();
   status.hidden = next.kind === 'ready';
   status.setAttribute('role', next.kind === 'error' ? 'alert' : 'status');

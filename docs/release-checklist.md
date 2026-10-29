@@ -104,6 +104,28 @@ Kiểm tra bằng `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting yarn acceptance`, 
   `public, max-age=31536000, immutable`.
 - [ ] Bản sửa (`dc759bf`) chờ người dùng yêu cầu đưa lên production.
 
+**Hiệu năng và chất lượng tự động (vòng tối ưu cuối, 30/10/2026)**
+
+Chi tiết, số đo trước/sau và cách đo lại: [performance.md](performance.md).
+
+Bằng chứng:
+- `node scripts/measure-perf.mjs` trên bản production (trước: `b7df72d`);
+- RTX 3090, Intel UHD 770 và SwiftShader, 3 lượt mỗi phép đo chính.
+
+- [x] Lần vào đầu tiên không còn chặn trang vì biên dịch shader.
+  - Shader được biên dịch nền trước khung đầu, kể cả môi trường PMREM.
+  - Dựng cảnh chia thành các task ngắn.
+  - Skeleton mờ dần khi có khung hình đầu.
+- [x] Phim khi camera đứng yên chỉ vẽ lại vùng màn chiếu; phần còn lại trùng từng pixel với khung vẽ
+  toàn bộ. Màn chiếu ngoài khung nhìn thì không vẽ lại.
+- [x] Chất lượng: Tự động (mặc định) / Ưu tiên đẹp / Tiết kiệm.
+  - Chỉ lưu lựa chọn.
+  - "Tự động" học từ khung hình trong phiên, hạ khi quá tải kéo dài, nâng chậm khi đứng yên.
+  - Nó không hạ khi mức dưới không thật sự rẻ hơn.
+- [x] Render phần mềm: bậc tối giản, camera chuyển cảnh tức thì, có thông báo.
+  Không WebGL: sơ đồ ghế và video 2D.
+- [ ] Chưa đo trên thiết bị thật, Safari, Firefox hay GPU AMD/Apple/Adreno/Mali (xem performance.md).
+
 ## 2. Chưa kiểm chứng
 
 - [ ] **Âm thanh bằng tai** — chưa nghe; chỉ biết track tiếng được giải mã và mute/volume đúng.

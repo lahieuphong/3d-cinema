@@ -1,4 +1,33 @@
 /**
+ * Seat curve and ring segments (proportions never change): `fine` for the higher drawing levels,
+ * `coarse` for the cheaper ones (about 40 % of the triangles).
+ */
+const SEAT_DETAIL = {
+  fine: {
+    pillowRadial: 24,
+    pillowRings: 7,
+    shellCurveSegments: 8,
+    shellBevelSegments: 3,
+    standardCurveSegments: 6,
+    smallBevelSegments: 2,
+    boxSegments: 2,
+    revolveSegments: 24,
+    hubSegments: 16,
+  },
+  coarse: {
+    pillowRadial: 14,
+    pillowRings: 4,
+    shellCurveSegments: 4,
+    shellBevelSegments: 1,
+    standardCurveSegments: 3,
+    smallBevelSegments: 1,
+    boxSegments: 1,
+    revolveSegments: 12,
+    hubSegments: 8,
+  },
+};
+
+/**
  * Single source of truth for every auditorium dimension.
  *
  * Units are metres. +Y is up, X runs across the room, Z runs along it.
@@ -319,42 +348,19 @@ export const AUDITORIUM_CONFIG = {
   },
 
   /**
-   * Two fixed quality levels sharing one seat design and one lighting design. Economy lowers
-   * curve and ring segments, the pixel ratio and the shadow map resolution.
+   * Drawing levels, from the best looking to the cheapest (quality.ts), sharing one seat design,
+   * one lighting design and the same materials and textures (so no level ever compiles other
+   * shaders). Going down they give up, in this order: the pixel density above 1.5, then glass blur,
+   * shadow map resolution and seat curve segments together, then the pixel density above 1.
+   * `high` is "Ưu tiên đẹp", `economy` "Tiết kiệm"; "Tự động" moves between all four.
    */
   quality: {
-    high: {
-      maxPixelRatio: 2,
-      shadowMapSize: 2048,
-      shadowRadius: 3,
-      seat: {
-        pillowRadial: 24,
-        pillowRings: 7,
-        shellCurveSegments: 8,
-        shellBevelSegments: 3,
-        standardCurveSegments: 6,
-        smallBevelSegments: 2,
-        boxSegments: 2,
-        revolveSegments: 24,
-        hubSegments: 16,
-      },
-    },
-    economy: {
-      maxPixelRatio: 1.25,
-      shadowMapSize: 1024,
-      shadowRadius: 2,
-      seat: {
-        pillowRadial: 14,
-        pillowRings: 4,
-        shellCurveSegments: 4,
-        shellBevelSegments: 1,
-        standardCurveSegments: 3,
-        smallBevelSegments: 1,
-        boxSegments: 1,
-        revolveSegments: 12,
-        hubSegments: 8,
-      },
-    },
+    high: { maxPixelRatio: 2, shadowMapSize: 2048, shadowRadius: 3, seat: SEAT_DETAIL.fine },
+    // The same room at a pixel density of at most 1.5: identical on 1× screens.
+    balanced: { maxPixelRatio: 1.5, shadowMapSize: 2048, shadowRadius: 3, seat: SEAT_DETAIL.fine },
+    economy: { maxPixelRatio: 1.25, shadowMapSize: 1024, shadowRadius: 2, seat: SEAT_DETAIL.coarse },
+    // Software rendering or a GPU that cannot keep up even at economy: one pixel per CSS pixel.
+    minimal: { maxPixelRatio: 1, shadowMapSize: 1024, shadowRadius: 2, seat: SEAT_DETAIL.coarse },
   },
 
   /** Interior fit-out (Prompt 03). Positions are derived from the room, rows and these values. */

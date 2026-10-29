@@ -3,25 +3,48 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuditoriumLayout } from './layout.ts';
 import { createRoomLighting } from './lighting.ts';
 import { createCarpetTexture } from './materials.ts';
-import { defaultQuality, isQualityLevel, loadQuality, QUALITY_LEVELS, saveQuality } from './quality.ts';
+import { autoStartLevel, classifyGpu, isQualityChoice, loadQuality, pinnedLevel, QUALITY_CHOICES, QUALITY_LEVELS, saveQuality } from './quality.ts';
 
 const layout = createAuditoriumLayout();
 const { config, structure } = layout;
 
-describe('quality levels', () => {
+describe('quality', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('accepts only the two known levels', () => {
-    expect(QUALITY_LEVELS.every(isQualityLevel)).toBe(true);
-    for (const value of ['ultra', '', 'HIGH', null, undefined, 1]) expect(isQualityLevel(value)).toBe(false);
+  it('offers three choices: Tự động, Ưu tiên đẹp, Tiết kiệm', () => {
+    expect(QUALITY_CHOICES).toEqual(['auto', 'high', 'economy']);
+    expect(QUALITY_CHOICES.every(isQualityChoice)).toBe(true);
+    for (const value of ['ultra', '', 'HIGH', 'balanced', 'minimal', null, undefined, 1]) expect(isQualityChoice(value)).toBe(false);
+    expect([pinnedLevel('auto'), pinnedLevel('high'), pinnedLevel('economy')]).toEqual([null, 'high', 'economy']);
   });
 
-  it('defaults conservatively from capability hints, not the user agent', () => {
-    expect(defaultQuality({ coarsePointer: false, logicalCores: 16, deviceMemoryGiB: 8 })).toBe('high');
-    expect(defaultQuality({ coarsePointer: false })).toBe('high');
-    expect(defaultQuality({ coarsePointer: true, logicalCores: 16, deviceMemoryGiB: 8 })).toBe('economy');
-    expect(defaultQuality({ coarsePointer: false, logicalCores: 4 })).toBe('economy');
-    expect(defaultQuality({ coarsePointer: false, logicalCores: 8, deviceMemoryGiB: 4 })).toBe('economy');
+  it('starts "Tự động" moderately, from capability hints and the kind of GPU, not the user agent', () => {
+    expect(autoStartLevel({ coarsePointer: false, logicalCores: 16, deviceMemoryGiB: 8 }, 'discrete')).toBe('balanced');
+    expect(autoStartLevel({ coarsePointer: false }, 'integrated')).toBe('balanced');
+    expect(autoStartLevel({ coarsePointer: false }, 'unknown')).toBe('balanced');
+    expect(autoStartLevel({ coarsePointer: true, logicalCores: 16, deviceMemoryGiB: 8 }, 'integrated')).toBe('economy');
+    expect(autoStartLevel({ coarsePointer: false, logicalCores: 4 }, 'discrete')).toBe('economy');
+    expect(autoStartLevel({ coarsePointer: false, logicalCores: 8, deviceMemoryGiB: 4 }, 'discrete')).toBe('economy');
+    expect(autoStartLevel({ coarsePointer: false, logicalCores: 16 }, 'software')).toBe('minimal');
+  });
+
+  it('tells a discrete GPU, an integrated one (still a GPU) and software rendering apart', () => {
+    const cases: Array<[string | null, string]> = [
+      ['ANGLE (NVIDIA, NVIDIA GeForce RTX 3090 (0x00002204) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'discrete'],
+      ['ANGLE (Intel, Intel(R) UHD Graphics 770 (0x00004680) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'integrated'],
+      ['ANGLE (Intel, Intel(R) Arc(TM) A770 Graphics (0x000056A0) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'discrete'],
+      ['ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001681) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'integrated'],
+      ['ANGLE (AMD, AMD Radeon RX 6800 XT (0x000073BF) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'discrete'],
+      ['Apple GPU', 'integrated'],
+      ['Adreno (TM) 740', 'integrated'],
+      ['Mali-G78 MC14', 'integrated'],
+      ['ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', 'software'],
+      ['llvmpipe (LLVM 15.0.7, 256 bits)', 'software'],
+      ['ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)', 'software'],
+      ['WebKit WebGL', 'unknown'],
+      [null, 'unknown'],
+    ];
+    for (const [name, expected] of cases) expect(classifyGpu(name), String(name)).toBe(expected);
   });
 
   function stubBrowser(storage: Pick<Storage, 'getItem' | 'setItem'>, coarse = false) {
@@ -29,15 +52,20 @@ describe('quality levels', () => {
     vi.stubGlobal('navigator', { hardwareConcurrency: 8 });
   }
 
-  it('keeps a valid stored choice, ignores an invalid one, and survives blocked storage', () => {
+  it('stores only the choice: keeps a valid one ("Cao" from before is "Ưu tiên đẹp"), ignores an invalid one, survives blocked storage', () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value) };
     stubBrowser(storage, true);
-    expect(loadQuality()).toEqual({ level: 'economy', source: 'device' });
+    expect(loadQuality()).toEqual({ choice: 'auto', source: 'default' });
     saveQuality('high');
-    expect(loadQuality()).toEqual({ level: 'high', source: 'stored' });
+    expect(loadQuality()).toEqual({ choice: 'high', source: 'stored' });
+    saveQuality('auto');
+    expect(loadQuality()).toEqual({ choice: 'auto', source: 'stored' });
+    // A level "Tự động" was on is never what gets stored, and a stray one is ignored.
+    values.set([...values.keys()][0], 'balanced');
+    expect(loadQuality()).toEqual({ choice: 'auto', source: 'default' });
     values.set([...values.keys()][0], 'ultra');
-    expect(loadQuality()).toEqual({ level: 'economy', source: 'device' });
+    expect(loadQuality()).toEqual({ choice: 'auto', source: 'default' });
 
     const blocked = {
       getItem: () => {
@@ -48,18 +76,26 @@ describe('quality levels', () => {
       },
     };
     stubBrowser(blocked);
-    expect(loadQuality()).toEqual({ level: 'high', source: 'device' });
+    expect(loadQuality()).toEqual({ choice: 'auto', source: 'default' });
     expect(() => saveQuality('economy')).not.toThrow();
   });
 
-  it('makes economy cheaper on every setting', () => {
-    const { high, economy } = config.quality;
-    expect(economy.maxPixelRatio).toBeLessThan(high.maxPixelRatio);
-    expect(economy.shadowMapSize).toBeLessThan(high.shadowMapSize);
-    for (const size of [high.shadowMapSize, economy.shadowMapSize]) expect(Math.log2(size) % 1).toBe(0);
-    for (const key of Object.keys(high.seat) as Array<keyof typeof high.seat>) {
-      expect(economy.seat[key], key).toBeLessThanOrEqual(high.seat[key]);
-      expect(economy.seat[key], key).toBeGreaterThanOrEqual(1);
+  it('makes each level down no dearer than the one above on every setting, and cheaper on one', () => {
+    for (let i = 1; i < QUALITY_LEVELS.length; i++) {
+      const above = config.quality[QUALITY_LEVELS[i - 1]];
+      const level = config.quality[QUALITY_LEVELS[i]];
+      const name = QUALITY_LEVELS[i];
+      expect(level.maxPixelRatio, name).toBeLessThanOrEqual(above.maxPixelRatio);
+      expect(level.maxPixelRatio, name).toBeGreaterThanOrEqual(1);
+      expect(level.shadowMapSize, name).toBeLessThanOrEqual(above.shadowMapSize);
+      expect(Math.log2(level.shadowMapSize) % 1, name).toBe(0);
+      let cheaper = level.maxPixelRatio < above.maxPixelRatio || level.shadowMapSize < above.shadowMapSize;
+      for (const key of Object.keys(above.seat) as Array<keyof typeof above.seat>) {
+        expect(level.seat[key], `${name} ${key}`).toBeLessThanOrEqual(above.seat[key]);
+        expect(level.seat[key], `${name} ${key}`).toBeGreaterThanOrEqual(1);
+        cheaper ||= level.seat[key] < above.seat[key];
+      }
+      expect(cheaper, name).toBe(true);
     }
   });
 });

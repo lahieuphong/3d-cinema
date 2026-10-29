@@ -12,6 +12,7 @@
     "test": "vitest run",
     "capture": "node scripts/capture-views.mjs",
     "measure:build": "node scripts/measure-build.mjs",
+    "measure:perf": "node scripts/measure-perf.mjs",
     "acceptance": "node scripts/acceptance.mjs"
   },
   "dependencies": {

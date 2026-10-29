@@ -176,9 +176,10 @@ Một panel, mỗi lúc một màn (state nội bộ của `controlHub.ts`: `tas
 chỗ, không mở thêm modal và không bung accordion.
 
 - **Màn chính “Cài đặt”** (header: tiêu đề, ×; trên điện thoại thêm nút Quay lại về màn tác vụ):
-  - Hiển thị: Chất lượng (Cao / Tiết kiệm, xuống dưới nhãn khi không đủ rộng), Giảm hiệu ứng kính
-    (switch, giữ tên và giá trị lưu `tp-glass`), Toàn màn hình (thành “Thoát toàn màn hình” khi đang
-    bật; ẩn nếu trình duyệt không hỗ trợ).
+  - Hiển thị: Chất lượng (Tự động / Ưu tiên đẹp / Tiết kiệm, xuống dưới nhãn khi không đủ rộng; với
+    Tự động, một dòng nhỏ nói đang ở mức nào), Giảm hiệu ứng kính (switch, giữ tên và giá trị lưu
+    `tp-glass`), Toàn màn hình (thành “Thoát toàn màn hình” khi đang bật; ẩn nếu trình duyệt không
+    hỗ trợ). Chi tiết các mức: `docs/performance.md`.
   - Khác: Hướng dẫn nhanh ›, Thông tin ›, Công cụ nâng cao ›.
   - Cuối: link “Về trang chủ”.
   - Không có mô tả camera, danh sách hướng dẫn hay chú thích thường trực. Chỉ hiện chữ khi cần:
@@ -221,7 +222,10 @@ bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao
 - **Ít chuyển động.** `prefers-reduced-motion` tắt mọi transition/animation.
 - **Giảm độ trong.** `prefers-reduced-transparency` và nút “Giảm hiệu ứng kính” cho nền đặc, không
   blur.
-- **Chế độ Tiết kiệm.** Blur giảm còn 6–10 px (giữ nguyên bộ giới hạn sáng), bỏ ánh trên mặt kính.
+- **Kính theo mức vẽ.** Mức đẹp nhất và cân bằng: kính đầy đủ. Mức tiết kiệm: blur giảm còn
+  6–10 px (giữ nguyên bộ giới hạn sáng), bỏ ánh trên mặt kính. Mức tối giản (chỉ “Tự động” tới, khi
+  render bằng phần mềm hoặc GPU không theo kịp): không blur, nền đặc như “Giảm hiệu ứng kính”. Lựa
+  chọn “Giảm hiệu ứng kính” và `prefers-reduced-transparency` luôn thắng.
 - **Thanh tác vụ khi đang xem.** Lúc phim phát và người dùng không chạm vào trang (3,5 s), thanh chọn
   tác vụ lùi đi. Dock trình phát vẫn ở lại. Rê chuột, phím hoặc focus là hiện lại;
   thanh không lùi khi đang hover, focus hay kéo thanh tua.

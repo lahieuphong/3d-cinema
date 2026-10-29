@@ -41,12 +41,73 @@ export interface Architecture {
  * visible surfaces are coplanar.
  */
 export function buildArchitecture(layout: AuditoriumLayout, materials: BlockoutMaterials): Architecture {
-  const { interior, structure, shell, config } = layout;
+  const { steps, finish } = architectureSteps(layout, materials);
+  for (const step of steps) step();
+  return finish();
+}
+
+/**
+ * The same build as steps, one or two groups each (built and merged), so a caller can let the page
+ * respond between them; `finish()` after the last one returns the room.
+ */
+export function architectureSteps(layout: AuditoriumLayout, materials: BlockoutMaterials): { steps: Array<() => void>; finish(): Architecture } {
   const group = new Group();
   group.name = 'architecture';
   const pieces: PieceRecord[] = [];
   const batch = (name: string) => new MeshBatch(name, materials, pieces);
+  const geometries: BufferGeometry[] = [];
+  const built = new Map<string, MeshBatch<BlockoutMaterials>>();
+  // Each group is merged into one mesh per material as soon as it is complete.
+  const done = (...batches: Array<MeshBatch<BlockoutMaterials>>) => {
+    for (const b of batches) {
+      geometries.push(...b.build(new Set(['exitSign', 'carpet', 'aisle'])));
+      group.add(b.group);
+      built.set(b.group.name, b);
+    }
+  };
+  const steps = [
+    () => done(buildFloor(layout, batch)),
+    () => {
+      const screen = buildScreen(layout, batch);
+      const ceiling = batch('ceiling');
+      buildCeiling(ceiling, layout);
+      done(screen, ceiling);
+    },
+    () => {
+      const leftWall = batch('left-wall');
+      buildSideWall(leftWall, layout, -1);
+      done(leftWall);
+    },
+    () => {
+      const rightWall = batch('right-wall');
+      buildSideWall(rightWall, layout, 1);
+      done(rightWall);
+    },
+    () => {
+      const frontWall = batch('front-wall');
+      buildFrontWall(frontWall, layout);
+      const backWall = batch('back-wall');
+      buildBackWall(backWall, layout);
+      done(frontWall, backWall);
+    },
+  ];
+  return {
+    steps,
+    finish: () => ({
+      group,
+      toggleable: { ceiling: built.get('ceiling')!.group, backWall: built.get('back-wall')!.group, rightWall: built.get('right-wall')!.group },
+      pieces,
+      dispose() {
+        for (const geometry of geometries) geometry.dispose();
+        geometries.length = 0;
+      },
+    }),
+  };
+}
 
+/** Stepped floor and aisles, their nosings, the stage and the handrails. */
+function buildFloor(layout: AuditoriumLayout, batch: (name: string) => MeshBatch<BlockoutMaterials>): MeshBatch<BlockoutMaterials> {
+  const { interior, structure, shell, config } = layout;
   const floor = batch('floor');
   const slab = new BoxGeometry(shell.x.max - shell.x.min, interior.y.min - shell.y.min, shell.z.max - shell.z.min);
   slab.translate((shell.x.min + shell.x.max) / 2, (shell.y.min + interior.y.min) / 2, (shell.z.min + shell.z.max) / 2);
@@ -79,8 +140,12 @@ export function buildArchitecture(layout: AuditoriumLayout, materials: BlockoutM
   }
   floor.addBox('stage', 'stage', layout.stage);
   buildHandrails(floor, layout);
+  return floor;
+}
 
-  // Screen: the surface extends slightly behind the frame so no gap shows at the edges.
+/** Screen: the surface extends slightly behind the frame so no gap shows at the edges. */
+function buildScreen(layout: AuditoriumLayout, batch: (name: string) => MeshBatch<BlockoutMaterials>): MeshBatch<BlockoutMaterials> {
+  const { config } = layout;
   const screen = batch('screen');
   const { frame } = config.screen;
   const surface = new PlaneGeometry(layout.screen.width + 2 * frame.overlap, layout.screen.height + 2 * frame.overlap);
@@ -92,33 +157,7 @@ export function buildArchitecture(layout: AuditoriumLayout, materials: BlockoutM
   screen.addBox('frame-bottom', 'screenFrame', { x: outer.x, y: { min: outer.y.min, max: picture.y.min }, z: outer.z });
   screen.addBox('frame-left', 'screenFrame', { x: { min: outer.x.min, max: picture.x.min }, y: picture.y, z: outer.z });
   screen.addBox('frame-right', 'screenFrame', { x: { min: picture.x.max, max: outer.x.max }, y: picture.y, z: outer.z });
-
-  const ceiling = batch('ceiling');
-  buildCeiling(ceiling, layout);
-  const leftWall = batch('left-wall');
-  buildSideWall(leftWall, layout, -1);
-  const rightWall = batch('right-wall');
-  buildSideWall(rightWall, layout, 1);
-  const frontWall = batch('front-wall');
-  buildFrontWall(frontWall, layout);
-  const backWall = batch('back-wall');
-  buildBackWall(backWall, layout);
-
-  const geometries: BufferGeometry[] = [];
-  for (const b of [floor, screen, ceiling, leftWall, rightWall, frontWall, backWall]) {
-    geometries.push(...b.build(new Set(['exitSign', 'carpet', 'aisle'])));
-    group.add(b.group);
-  }
-
-  return {
-    group,
-    toggleable: { ceiling: ceiling.group, backWall: backWall.group, rightWall: rightWall.group },
-    pieces,
-    dispose() {
-      for (const geometry of geometries) geometry.dispose();
-      geometries.length = 0;
-    },
-  };
+  return screen;
 }
 
 /**

@@ -388,6 +388,22 @@ async function main() {
   const executablePath = findBrowser();
   const browser = await chromium.launch({ executablePath, headless: true });
   report.browser = { executablePath, version: browser.version(), baseUrl: base };
+  // "Tự động" (the default) moves between levels from the frames it measures, which would make the
+  // checks below depend on this machine's speed. Pages are pinned to the levels the earlier prompts
+  // measured (High on desktops, Economy on touch screens) unless a check stores another choice or
+  // asks for the default (`autoQuality: true`); the default itself has checks of its own.
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async ({ autoQuality = false, ...options } = {}) => {
+    const context = await newContext(options);
+    if (!autoQuality) {
+      await context.addInitScript((level) => {
+        try {
+          if (!localStorage.getItem('cinema3d.quality')) localStorage.setItem('cinema3d.quality', level);
+        } catch {}
+      }, options.hasTouch ? 'economy' : 'high');
+    }
+    return context;
+  };
 
   // CAPTURE_ONLY=viewports,film-desktop,… runs only those sections (development; a full run is the record).
   const only = new Set((process.env.CAPTURE_ONLY ?? '').split(',').filter(Boolean));
@@ -406,12 +422,28 @@ async function main() {
     }
 
     for (const { name, ...options } of run('viewports') ? VIEWPORTS : []) {
-      const context = await browser.newContext(options);
+      const context = await browser.newContext({ ...options, autoQuality: true });
+      // How the loading skeleton leaves: every class it has, from the start.
+      await context.addInitScript(() => {
+        window.__statusClasses = [];
+        new MutationObserver(() => {
+          const status = document.querySelector('.cinema-status');
+          if (!status) return;
+          const entry = `${status.hidden ? 'hidden' : 'shown'} ${status.className} ${status.getAttribute('aria-hidden') ?? ''}`;
+          if (window.__statusClasses.at(-1) !== entry) window.__statusClasses.push(entry);
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden'], childList: true });
+      });
       const page = await context.newPage();
       attachConsole(page, name);
       await page.goto(`${base}cinema`);
       const status = await waitForStatus(page);
       check(`${name}: /cinema opens directly and reaches "ready"`, status === 'ready', status);
+      if (status === 'ready') {
+        const gone = await page.waitForFunction(() => document.querySelector('.cinema-status').hidden, null, { timeout: 2000 }).then(() => true, () => false);
+        const steps = await page.evaluate(() => window.__statusClasses);
+        const faded = steps.some((x) => x.startsWith('shown') && x.includes('cinema-status--leaving') && x.endsWith('true'));
+        check(`${name}: the room's skeleton fades out over the first frame (hidden from assistive tech meanwhile) and is gone`, gone && faded && steps.at(-1).startsWith('hidden'), steps.slice(-4));
+      }
       if (status !== 'ready') {
         await screenshot(page, `${name}-error`);
         await context.close();
@@ -429,15 +461,24 @@ async function main() {
         });
       }
 
-      // Touch-first devices start at Economy, desktops at High, while nothing is stored yet.
+      // Nothing stored yet: "Tự động", starting moderately (Economy on touch screens, Balanced on
+      // desktops; the cheapest level on a software renderer). Then pinned to the level the earlier
+      // prompts measured here, so what follows does not depend on this machine's speed.
       {
         const s = await state(page);
-        const expected = options.hasTouch ? 'economy' : 'high';
-        const pressed = await page.getAttribute(`button[data-quality="${expected}"]`, 'aria-pressed');
-        check(`${name}: default quality is ${expected} (no stored choice)`, s.view.quality === expected && s.qualitySource === 'device' && pressed === 'true', {
-          quality: s.view.quality,
+        const software = /swiftshader|llvmpipe|software/i.test(report.webgl?.renderer ?? '');
+        const expected = software ? 'minimal' : options.hasTouch ? 'economy' : 'balanced';
+        const pressed = await page.getAttribute('button[data-quality="auto"]', 'aria-pressed');
+        const glass = await page.getAttribute('.cinema-app', 'data-quality');
+        check(`${name}: the default is "Tự động" (nothing stored), starting at ${expected}`, s.qualityChoice === 'auto' && s.qualitySource === 'default' && s.view.autoQuality && s.view.quality === expected && pressed === 'true' && glass === s.view.quality, {
+          choice: s.qualityChoice,
+          level: s.view.quality,
           source: s.qualitySource,
+          glass,
+          gpu: s.view.gpu,
         });
+        await setQuality(page, options.hasTouch ? 'economy' : 'high');
+        await nextFrames(page);
       }
 
       // The page opens in Khám phá with the seat panel out of the way (Prompt 07 opened it on wide
@@ -917,18 +958,26 @@ async function qualityChecks(page) {
   await waitForStatus(page);
   s = await state(page);
   const pressed = await page.getAttribute('button[data-quality="economy"]', 'aria-pressed');
-  check('quality: the choice is stored and restored on reload', s.view.quality === 'economy' && s.qualitySource === 'stored' && pressed === 'true', {
+  check('quality: the choice is stored and restored on reload', s.view.quality === 'economy' && !s.view.autoQuality && s.qualityChoice === 'economy' && s.qualitySource === 'stored' && pressed === 'true', {
     quality: s.view.quality,
+    choice: s.qualityChoice,
     source: s.qualitySource,
   });
   await page.evaluate(() => localStorage.setItem('cinema3d.quality', 'ultra'));
   await page.reload();
   await waitForStatus(page);
   s = await state(page);
-  check('quality: an invalid stored value falls back to the device default', s.view.quality === 'high' && s.qualitySource === 'device', {
+  check('quality: an invalid stored value falls back to "Tự động"', s.qualityChoice === 'auto' && s.view.autoQuality && s.qualitySource === 'default', {
     quality: s.view.quality,
+    choice: s.qualityChoice,
     source: s.qualitySource,
   });
+  // "Tự động" is never what is stored as a level: choosing it stores the choice itself.
+  await setQuality(page, 'auto');
+  const stored = await page.evaluate(() => localStorage.getItem('cinema3d.quality'));
+  check('quality: "Tự động" stores the choice, never a level it measured', stored === 'auto', stored);
+  await setQuality(page, 'high');
+  await nextFrames(page);
   await selectPreset(page, 'overview');
 }
 
@@ -2865,6 +2914,66 @@ async function filmDesktop(browser, base) {
   });
   check('film: UI shows "Tạm dừng" while playing', (await page.getAttribute(PRIMARY, 'aria-label')) === 'Tạm dừng' && (await page.getAttribute(PLAYER, 'data-state')) === 'playing');
   check('film: still camera renders at the film’s frame rate, not the display’s (≤ 1.25 × video fps, < 40/s)', rates.rendersPerSecond <= rates.videoFramesPerSecond * 1.25 + 1 && rates.rendersPerSecond < 40, rates);
+  {
+    // From a moving part of the film, two reads of the canvas 0.7 s apart while it plays with the
+    // camera still: outside the redrawn part nothing changes; inside, the changes span the picture.
+    const resumeAt = (await film(page)).snapshot.currentTime;
+    await page.evaluate(() => {
+      window.__cinema.filmElement().currentTime = 14;
+    });
+    await page.waitForFunction(() => window.__cinema.filmElement().currentTime > 14.5 && !window.__cinema.filmElement().seeking);
+    await page.waitForTimeout(300);
+    const canvasPixels = () => page.evaluate(() => document.querySelector('canvas.cinema-canvas').toDataURL('image/png'));
+    const partialBefore = (await film(page)).view.clock.partialRenders;
+    const first = await canvasPixels();
+    await page.waitForTimeout(700);
+    const second = await canvasPixels();
+    const partialAfter = (await film(page)).view.clock.partialRenders;
+    const region = await page.evaluate(() => window.__cinema.screenRegion());
+    const compared = await page.evaluate(async ([a, b, r]) => {
+      const load = (src) => new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.src = src;
+      });
+      const [ia, ib] = await Promise.all([load(a), load(b)]);
+      const canvas = document.createElement('canvas');
+      canvas.width = ia.width;
+      canvas.height = ia.height;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(ia, 0, 0);
+      const da = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      context.drawImage(ib, 0, 0);
+      const db = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let outside = 0;
+      let inside = 0;
+      const span = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const i = (y * canvas.width + x) * 4;
+          if (Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]) <= 6) continue;
+          if (r && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) {
+            inside++;
+            span.minX = Math.min(span.minX, x);
+            span.maxX = Math.max(span.maxX, x);
+            span.minY = Math.min(span.minY, y);
+            span.maxY = Math.max(span.maxY, y);
+          } else outside++;
+        }
+      }
+      const covered = r && inside > 0 ? [(span.maxX - span.minX) / r.width, (span.maxY - span.minY) / r.height].map((v) => Number(v.toFixed(2))) : [0, 0];
+      return { outside, inside, covered, pixels: canvas.width * canvas.height, region: r };
+    }, [first, second, region]);
+    report.film.metrics.partialRedraws = { partialRenders: partialAfter - partialBefore, ...compared };
+    check(
+      'film: with the camera still, each film frame redraws only the screen’s part of the canvas: the whole picture changes, nothing outside it does',
+      partialAfter - partialBefore >= 10 && region !== null && compared.outside === 0 && compared.covered.every((v) => v > 0.9),
+      report.film.metrics.partialRedraws,
+    );
+    await page.evaluate((t) => {
+      window.__cinema.filmElement().currentTime = t;
+    }, resumeAt);
+  }
   check('film: sound — an audio track is decoded, not muted, volume 1 (not verified by ear)', f.snapshot.hasAudio === true && f.audioDecodedBytes > 0 && !f.snapshot.muted && f.snapshot.volume === 1, {
     hasAudio: f.snapshot.hasAudio,
     audioDecodedBytes: f.audioDecodedBytes,
@@ -2872,6 +2981,21 @@ async function filmDesktop(browser, base) {
   const playingStill = await state(page);
   report.film.metrics.playingStillCamera = { ...rates, ...playingStill.view.render, ...playingStill.view.memory };
   await screenshot(page, 'film-2-playing-overview');
+
+  // Looking away from the screen while it plays: no frame of the room is drawn for a picture nobody
+  // sees; turning back shows the film's current frame at once.
+  {
+    const { center } = await page.evaluate(() => window.__cinema.layout.screen);
+    await page.evaluate((c) => window.__cinema.setCamera({ x: c.x, y: 2, z: 4 }, { x: c.x, y: 2, z: 12 }, 'eye'), center);
+    await nextFrames(page);
+    const away = await filmRates(page, 1500);
+    const skipped = (await film(page)).view.clock.skippedOutOfView;
+    await faceScreen(page);
+    await nextFrames(page);
+    const back = await filmRates(page, 1000);
+    check('film: looking away while it plays draws nothing for the picture (frames skipped); facing the screen again draws at the film’s rate', away.rendersPerSecond < 2 && away.videoFramesPerSecond > 15 && skipped > 15 && back.rendersPerSecond > 15, { away, skipped, back });
+    await selectPreset(page, 'overview');
+  }
 
   // Mute and volume, read back from the element (its volumechange events arrive a moment later).
   const muteButton = 'button[data-action="media-mute"]';

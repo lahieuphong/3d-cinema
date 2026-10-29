@@ -1,13 +1,26 @@
 import {
+  type Camera,
+  Frustum,
   Group,
   LinearFilter,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
   SRGBColorSpace,
   Texture,
+  Vector3,
+  Vector4,
   VideoTexture,
 } from 'three';
+
+/** The picture area's corners, as signs from its centre. */
+const CORNERS = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+] as const;
 import type { AuditoriumLayout } from './layout.ts';
 import type { MediaSnapshot } from './mediaController.ts';
 
@@ -66,6 +79,10 @@ export class ScreenVideo {
   private content: ScreenContent = 'blank';
   private aspect = 0;
   private disposed = false;
+  private readonly frustum = new Frustum();
+  private readonly viewProjection = new Matrix4();
+  private readonly corner = new Vector3();
+  private readonly clip = new Vector4();
 
   constructor(layout: AuditoriumLayout, video: HTMLVideoElement, poster: HTMLImageElement | null) {
     this.layout = layout;
@@ -150,6 +167,53 @@ export class ScreenVideo {
     if (this.disposed || this.content !== 'video' || !snapshot.hasFrame) return false;
     this.videoTexture.needsUpdate = true;
     return true;
+  }
+
+  /**
+   * Whether the picture is in `camera`'s view. A film frame nobody can see needs no new frame of
+   * the room (and a picture outside the view is not drawn, so its texture is not uploaded either).
+   */
+  inView(camera: Camera): boolean {
+    if (this.disposed || !this.picture.visible) return false;
+    camera.updateMatrixWorld();
+    this.picture.updateWorldMatrix(true, false);
+    this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.viewProjection);
+    return this.frustum.intersectsObject(this.picture);
+  }
+
+  /**
+   * The part of a `width × height` (CSS px) view where the screen's picture area is drawn, from the
+   * bottom left, a little wider than the area; null if any corner is behind the camera (the whole
+   * view is drawn then).
+   */
+  screenRegion(camera: Camera, width: number, height: number): { x: number; y: number; width: number; height: number } | null {
+    if (this.disposed || !this.matte.visible) return null;
+    camera.updateMatrixWorld();
+    this.matte.updateWorldMatrix(true, false);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    // The matte covers the whole picture area (its geometry is the screen's own size).
+    const { width: w, height: h } = this.layout.screen;
+    for (const [u, v] of CORNERS) {
+      this.corner.set((u * w) / 2, (v * h) / 2, 0).applyMatrix4(this.matte.matrixWorld);
+      // Behind the camera (w ≤ 0 after projection): projected x and y mean nothing.
+      this.clip.set(this.corner.x, this.corner.y, this.corner.z, 1).applyMatrix4(camera.matrixWorldInverse).applyMatrix4(camera.projectionMatrix);
+      if (this.clip.w <= 0) return null;
+      const x = ((this.clip.x / this.clip.w + 1) / 2) * width;
+      const y = ((this.clip.y / this.clip.w + 1) / 2) * height;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+    const x = Math.max(0, Math.floor(minX) - 2);
+    const y = Math.max(0, Math.floor(minY) - 2);
+    const right = Math.min(width, Math.ceil(maxX) + 2);
+    const top = Math.min(height, Math.ceil(maxY) + 2);
+    return { x, y, width: Math.max(0, right - x), height: Math.max(0, top - y) };
   }
 
   /** Development/tests: what is shown, the picture size in metres and the screen's. */

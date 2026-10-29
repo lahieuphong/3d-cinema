@@ -24,10 +24,16 @@ import { createInteriorEnvironment, type InteriorEnvironment } from './environme
 import { toRadians, type SeatData, type Vec3 } from './layout.ts';
 import { createStudioLighting, type StudioLighting } from './lighting.ts';
 import { createSeatMaterials, disposeMaterials, type SeatMaterials } from './materials.ts';
-import { loadQuality, QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
+import { loadQuality, pinnedLevel, type QualityLevel } from './quality.ts';
+
+/** The seat at the room's two seat details: the finest level and "Tiết kiệm". */
+const INSPECTOR_LEVELS: ReadonlyArray<{ level: QualityLevel; label: string }> = [
+  { level: 'high', label: 'Cao' },
+  { level: 'economy', label: 'Tiết kiệm' },
+];
 import { prefersReducedMotion, RenderHost, WebGLUnavailableError, type ViewStatus } from './renderHost.ts';
 import { computeSeatModelBounds, createCinemaSeatModel, createSeatInstances, type SeatInstances, type SeatModel } from './seats.ts';
-import { CLOSE_ICON, el, icon, ICONS, renderStatus, switchControl } from './ui.ts';
+import { CLOSE_ICON, el, icon, ICONS, renderStatus, stopStatusFade, switchControl } from './ui.ts';
 
 /**
  * Development seat inspector (/cinema?inspect=seat): the auditorium's seat model on a neutral
@@ -496,8 +502,8 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   qualityGroup.setAttribute('role', 'group');
   qualityGroup.setAttribute('aria-labelledby', qualityHeading.id);
   const qualityButtons = new Map<QualityLevel, HTMLButtonElement>();
-  for (const level of QUALITY_LEVELS) {
-    const button = el('button', 'cinema-segmented__button', QUALITY_LABELS[level]);
+  for (const { level, label } of INSPECTOR_LEVELS) {
+    const button = el('button', 'cinema-segmented__button', label);
     button.type = 'button';
     button.dataset.quality = level;
     button.setAttribute('aria-pressed', 'false');
@@ -567,7 +573,8 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
   root.dataset.transitioning = 'false';
 
   let view: SeatInspectorView | null = null;
-  const initialQuality = loadQuality().level;
+  // "Tiết kiệm" shows the seat at its detail; "Ưu tiên đẹp" and "Tự động" at the finest.
+  const initialQuality: QualityLevel = pinnedLevel(loadQuality().choice) === 'economy' ? 'economy' : 'high';
   let activeView: InspectorViewId = 'front';
 
   function selectView(id: InspectorViewId, animate: boolean) {
@@ -647,6 +654,7 @@ export function mountSeatInspector(host: HTMLElement, { onClose }: { onClose(): 
 
   return () => {
     listeners.abort();
+    stopStatusFade(status);
     view?.dispose();
     view = null;
     root.remove();

@@ -6,7 +6,7 @@ import { createAuditoriumLayout, type Vec3 } from './layout.ts';
 import { DEMO_FILM, devFilm, FILMS } from './media.ts';
 import { MediaController, type MediaControllerOptions } from './mediaController.ts';
 import { createPlayerUi } from './playerUi.ts';
-import { loadQuality, prefersReducedMotion, saveQuality } from './quality.ts';
+import { autoStartLevel, loadQuality, pinnedLevel, prefersReducedMotion, readDeviceHints, saveQuality, type QualityLevel } from './quality.ts';
 import { createSeatPanel } from './seatPanel.ts';
 import { createSeatSummary } from './seatSummary.ts';
 import { DEMO_RESERVED_SEAT_IDS, SeatSelection } from './selection.ts';
@@ -42,6 +42,10 @@ declare global {
       seatScreenPoint(seatId: string): { x: number; y: number; visible: boolean } | null;
       seatLook(seatId: string): unknown;
       measurePicking(samples?: number): unknown;
+      /** The part of the canvas (pixels from the top left) a film frame redraws, or null. */
+      screenRegion(): { x: number; y: number; width: number; height: number } | null;
+      /** Pins a drawing level ("Tự động" stops), including the ones only "Tự động" reaches. */
+      setQualityLevel(level: QualityLevel): void;
       /** The film: media snapshot, playback quality, frame clock and screen. */
       film(): unknown;
       /** Canvas pixels of points of the picture next to the same points of the video frame. */
@@ -63,6 +67,8 @@ export interface CinemaSession {
   media: (NonNullable<MediaControllerOptions['resume']> & { film: string }) | null;
   /** The task shown when the page was left (null: start in Khám phá). */
   task: CinemaTask | null;
+  /** Where "Tự động" got to in this visit, so coming back starts there (never stored). */
+  qualityLevel: QualityLevel | null;
 }
 
 export interface CinemaPageOptions {
@@ -76,7 +82,7 @@ export interface CinemaPageOptions {
 /** A visit's state, created with the auditorium's first mount and kept while the tab stays on the site. */
 export function createCinemaSession(): CinemaSession {
   const { seats, config } = createAuditoriumLayout();
-  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null, media: null, task: null };
+  return { selection: new SeatSelection(seats, DEMO_RESERVED_SEAT_IDS, config.selection.maxSeats), seatPanelOpen: null, media: null, task: null, qualityLevel: null };
 }
 
 const FREE_CAMERA_CAPTION = 'Camera tự do: kéo để xoay, cuộn hoặc chụm để thu phóng. Chọn một góc để quay lại.';
@@ -288,10 +294,20 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       autoHidden.delete(part);
       setPartVisible(part, visible);
     },
-    onQuality: (level) => {
-      view?.setQuality(level);
-      saveQuality(level);
-      ui.setQuality(level);
+    onQuality: (choice) => {
+      qualityChoice = choice;
+      saveQuality(choice);
+      ui.setQuality(choice);
+      const pinned = pinnedLevel(choice);
+      if (pinned) {
+        view?.setQuality(pinned);
+        ui.setQualityLevel(pinned);
+      } else if (view) {
+        // It reports the level it starts from (onQualityLevel).
+        view.setAutoQuality(true);
+      } else {
+        ui.setQualityLevel(startLevel());
+      }
     },
     onOpenInspector: () => options.openInspector(),
     onReturn: () => applyPreset(returnPreset ?? DEFAULT_PRESET, true),
@@ -405,9 +421,14 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   });
   ui.setSeatCount(selection.selectedCount);
 
-  // The user's stored choice, else a conservative default from device capabilities.
+  // The user's stored choice, else "Tự động", which starts where it got to earlier in this visit, or
+  // at a moderate level from the device's capability hints (the view may start lower on a software
+  // renderer), and then follows the frames it measures.
   const quality = loadQuality();
-  ui.setQuality(quality.level);
+  let qualityChoice = quality.choice;
+  const startLevel = (): QualityLevel => pinnedLevel(qualityChoice) ?? options.session.qualityLevel ?? autoStartLevel(readDeviceHints(), 'unknown');
+  ui.setQuality(qualityChoice);
+  ui.setQualityLevel(startLevel());
 
   // Reduced motion can change while the page is open (system setting); follow it.
   const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -464,6 +485,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       const stop = isImmersive() ? 'Để dừng: Đi bộ trong nút điều khiển.' : 'Bấm Đi bộ lần nữa để dừng.';
       ui.setCaption(`${relocatedTo ? `Đã đưa bạn tới ${relocatedTo.label}. ` : ''}Đi bộ: ${how} ${stop}`);
     },
+    onQualityLevel: (level, reason) => {
+      if (qualityChoice === 'auto') options.session.qualityLevel = level;
+      ui.setQualityLevel(level, reason);
+    },
     onSeatTap: (id) => {
       // Same rules as the map: the seat becomes the active one, and its selection toggles.
       selection.setActive(id);
@@ -500,18 +525,37 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     if (first && tasks.task === 'explore') dispatch(isImmersive() ? { type: 'task', task: 'seats' } : { type: 'panel', open: true });
   };
 
-  const createView = (module: SceneModule) => {
+  const createView = async (module: SceneModule) => {
     poster ??= film.poster ? loadImage(film.poster) : null;
+    const level = startLevel();
+    // The room's parts first, in steps (the page stays responsive), then the renderer.
+    let prepared: Awaited<ReturnType<SceneModule['prepareScene']>> | null = null;
+    try {
+      prepared = await module.prepareScene(layout, level);
+    } catch (error) {
+      if (disposed) return;
+      console.error('[cinema] Could not build the 3D scene:', error);
+      failScene('Đã xảy ra lỗi khi dựng cảnh. Xem chi tiết trong console.', true);
+      return;
+    }
+    if (disposed || view) {
+      prepared.dispose();
+      return;
+    }
     try {
       view = new module.CinemaView(ui.viewport, layout, callbacks, {
-        quality: quality.level,
+        quality: level,
+        autoQuality: qualityChoice === 'auto',
         reducedMotion: prefersReducedMotion(),
         touchStick: touch,
         selection,
         media: { controller: media, poster },
+        prepared,
       });
     } catch (error) {
       view = null;
+      // Released by the view if it got that far; disposing twice is harmless.
+      prepared.dispose();
       console.error('[cinema] Could not start the 3D view:', error);
       const unavailable = error instanceof module.WebGLUnavailableError;
       failScene(unavailable ? error.message : 'Đã xảy ra lỗi khi dựng cảnh. Xem chi tiết trong console.', !unavailable);
@@ -525,7 +569,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       summary.setViewAvailable(true);
     }
     for (const { part } of TOGGLEABLE_PARTS) if (!visibility[part]) view.setPartVisible(part, false);
-    ui.setQuality(quality.level);
+    ui.setQuality(qualityChoice);
+    ui.setQualityLevel(view.qualityLevel);
     const seat = viewingSeat;
     if (seat) {
       // A rebuilt scene comes back to the same seat.
@@ -534,6 +579,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       viewFromSeat(seat);
     } else {
       applyPreset(activePreset ?? DEFAULT_PRESET, false);
+    }
+    // No GPU acceleration: every frame takes about a second. Said once, where captions go.
+    if (view.gpu === 'software') {
+      ui.setCaption('Máy đang dựng hình 3D bằng phần mềm (không có tăng tốc GPU), nên mỗi khung hình chậm; camera chuyển thẳng tới góc mới. Sơ đồ ghế và phim vẫn dùng bình thường.');
     }
   };
 
@@ -559,7 +608,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       setTimeout(resolve, 100);
     });
     if (disposed || view) return;
-    createView(scene);
+    await createView(scene);
   };
 
   /** "Thử lại" / "Dựng lại cảnh 3D": the scene only; selection, film and quality stay as they are. */
@@ -583,6 +632,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
         task: tasks.task,
         panel: tasks.panel,
         qualitySource: quality.source,
+        qualityChoice,
         visibility: { ...visibility },
         seats: {
           selected: selection.selectedIds,
@@ -617,6 +667,11 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       seatScreenPoint: (id) => view?.debugSeatScreenPoint(id) ?? null,
       seatLook: (id) => view?.debugSeatLook(id) ?? null,
       measurePicking: (samples) => view?.measurePicking(samples) ?? null,
+      screenRegion: () => view?.debugScreenRegion() ?? null,
+      setQualityLevel: (level) => {
+        view?.setQuality(level);
+        ui.setQualityLevel(level);
+      },
       film: () => {
         const quality = media.video.getVideoPlaybackQuality?.();
         return {

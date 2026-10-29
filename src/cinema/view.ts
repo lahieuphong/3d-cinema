@@ -19,12 +19,12 @@ import {
   Vector3,
   WebGLRenderTarget,
 } from 'three';
-import { buildArchitecture, INTERIOR_MATERIALS, type Architecture, type ToggleablePart } from './architecture.ts';
+import { architectureSteps, INTERIOR_MATERIALS, type Architecture, type ToggleablePart } from './architecture.ts';
 import { planCameraPath } from './cameraPath.ts';
 import { CameraRig, type CameraDriver } from './cameraRig.ts';
 import { computePresetPose, presetInfo, resolveEyeSeat, type CameraMode, type CameraPose, type CameraPresetId } from './cameraPresets.ts';
 import { createCollisionWorld, type CollisionWorld } from './collision.ts';
-import { createInteriorEnvironment, type InteriorEnvironment } from './environment.ts';
+import { createInteriorEnvironment, createInteriorEnvironmentAsync, type InteriorEnvironment } from './environment.ts';
 import { ExploreInput, isMovementKey, keyBelongsToFocus } from './exploreInput.ts';
 import { measureCameraPath, measurePlacedFrames } from './frameProbe.ts';
 import type { AuditoriumLayout, Vec3 } from './layout.ts';
@@ -37,16 +37,18 @@ import {
   type SeatMaterials,
 } from './materials.ts';
 import type { MediaChange, MediaController, MediaSnapshot } from './mediaController.ts';
-import type { QualityLevel } from './quality.ts';
+import { classifyGpu, QUALITY_LEVELS, type GpuClass, type QualityLevel } from './quality.ts';
+import { QualityGovernor } from './qualityGovernor.ts';
 import { RenderHost, type ViewStatus } from './renderHost.ts';
 import { ScreenVideo } from './screenVideo.ts';
 import { SeatHighlighter } from './seatHighlight.ts';
 import { pickSeat, SeatPicker, visibleMeshes, type SeatHit } from './seatPicking.ts';
-import { createCinemaSeatModel, createSeatInstances, seatPivotMatrix, type SeatInstances, type SeatModel } from './seats.ts';
+import { createCinemaSeatModel, createSeatInstances, seatPivotMatrix, type SeatDetail, type SeatInstances, type SeatModel } from './seats.ts';
 import { seatViewPose } from './seatView.ts';
 import type { SeatSelection } from './selection.ts';
 import { TapTracker } from './tapTracker.ts';
 import { createTour, TourPath } from './tour.ts';
+import { measure, timed } from './timing.ts';
 import { VideoFrameClock } from './videoFrames.ts';
 import { chooseWalkStart, stepWalker, turnWalker, type StartPoint, type WalkerState } from './walker.ts';
 
@@ -91,7 +93,12 @@ export interface CinemaViewCallbacks {
   onExploreStart(relocatedTo: StartPoint | null): void;
   /** A tap or click (not a drag) landed on a seat that is not hidden behind anything. */
   onSeatTap(seatId: string): void;
+  /** "Tự động" moved to another drawing level (or started on one), with why. */
+  onQualityLevel?(level: QualityLevel, reason: string): void;
 }
+
+/** Nothing drawn for this long (and no press held) counts as at rest: a better level may come in. */
+const REST_MS = 700;
 
 /** Room materials that cast shadows from the ceiling downlight (the rest only receive them). */
 const SHADOW_CASTING_MATERIALS = new Set(['panel', 'graphite', 'trim', 'curtain', 'projector', 'stage']);
@@ -102,14 +109,114 @@ interface SceneContent {
   seatMaterials: SeatMaterials;
   architecture: Architecture;
   lighting: RoomLighting;
-  environment: InteriorEnvironment;
+  /** Null until the first build has prefiltered it (compileThenStart); at once after a restore. */
+  environment: InteriorEnvironment | null;
   seatModel: SeatModel;
   seatInstances: SeatInstances;
+  /** The segment counts the seat model was built with. */
+  seatDetail: SeatDetail;
   /** Seat states drawn onto the instances, and picking proxies for the same model. */
   highlighter: SeatHighlighter;
   picker: SeatPicker;
   /** The film's picture on the screen (null when the page has no film). */
   screenVideo: ScreenVideo | null;
+}
+
+/**
+ * The room's parts that need no renderer (materials, the built shell and fit-out, lights, the seats):
+ * all CPU work, prepared in steps before the view exists (`prepareScene`), or at once after a lost
+ * context comes back.
+ */
+export interface RoomParts {
+  level: QualityLevel;
+  materials: BlockoutMaterials;
+  seatMaterials: SeatMaterials;
+  architecture: Architecture;
+  lighting: RoomLighting;
+  seatModel: SeatModel;
+  seatInstances: SeatInstances;
+}
+
+/** Prepared parts not (yet) handed to a view: released by whoever gives up on them. */
+export interface PreparedScene extends RoomParts {
+  dispose(): void;
+}
+
+/** Building the parts, as steps that each stay well under a long task on a mid-range device. */
+function roomSteps(layout: AuditoriumLayout, level: QualityLevel, parts: Partial<RoomParts>): Array<() => void> {
+  parts.level = level;
+  parts.materials = createBlockoutMaterials();
+  parts.seatMaterials = createSeatMaterials();
+  const architecture = architectureSteps(layout, parts.materials);
+  const steps = architecture.steps.map((step, i) => () => timed(`architecture-${i + 1}`, step));
+  // The last group's step also finishes the room and adds its lights (both small).
+  const last = steps.pop()!;
+  return [
+    ...steps,
+    () => {
+      last();
+      parts.architecture = architecture.finish();
+      configureShadows(parts.architecture);
+      const settings = layout.config.quality[level];
+      parts.lighting = timed('lighting', () => createRoomLighting(layout));
+      parts.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
+    },
+    () => {
+      [parts.seatModel, parts.seatInstances] = timed('seats', () => buildSeatInstances(layout, parts.seatMaterials!, level));
+    },
+  ];
+}
+
+function disposeParts(parts: Partial<RoomParts>): void {
+  parts.seatInstances?.dispose();
+  parts.seatModel?.dispose();
+  parts.architecture?.dispose();
+  parts.lighting?.dispose();
+  if (parts.materials) disposeMaterials(parts.materials);
+  if (parts.seatMaterials) disposeMaterials(parts.seatMaterials);
+}
+
+/**
+ * Builds the room's parts in steps, giving the page a turn between them (input, the skeleton's
+ * animation), so the build never blocks the page in one long task. Hand the result to the view
+ * (`prepared`), or dispose it if the page went away meanwhile.
+ */
+export async function prepareScene(layout: AuditoriumLayout, level: QualityLevel): Promise<PreparedScene> {
+  const start = performance.now();
+  const parts: Partial<RoomParts> = {};
+  try {
+    for (const step of roomSteps(layout, level, parts)) {
+      step();
+      await nextTask();
+    }
+  } catch (error) {
+    disposeParts(parts);
+    throw error;
+  }
+  measure('prepare', start);
+  let released = false;
+  return {
+    ...(parts as RoomParts),
+    dispose: () => {
+      if (released) return;
+      released = true;
+      disposeParts(parts);
+    },
+  };
+}
+
+/** Lets the browser handle what is waiting (input, a frame) before the next step. */
+function nextTask(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (typeof scheduler?.yield === 'function') return scheduler.yield();
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
 }
 
 /** The film as the view sees it: its element (owned by the page's controller) and its poster. */
@@ -149,6 +256,17 @@ export class CinemaView {
   private readonly listeners = new AbortController();
   private content: SceneContent;
   private quality: QualityLevel;
+  /**
+   * What draws the room (from the renderer's name). Only a software rasteriser changes anything:
+   * "Tự động" starts at the cheapest level and the camera cuts instead of moving.
+   */
+  readonly gpu: GpuClass;
+  /** "Tự động": picks the level from this session's frames; null while a level is pinned. */
+  private governor: QualityGovernor | null = null;
+  private restTimer: ReturnType<typeof setTimeout> | undefined;
+  private lastFrameAt = 0;
+  /** A cheaper or finer seat model is due, swapped in at rest (never under the user's hands). */
+  private seatsPending = false;
   private readonly hiddenParts = new Set<ToggleablePart>();
   private preset: CameraPresetId | null = null;
   /** The camera is exactly at the active preset's pose (not orbited away), so it reframes on resize. */
@@ -166,13 +284,30 @@ export class CinemaView {
   private readonly frameClock: VideoFrameClock | null;
   private readonly unsubscribeMedia: () => void;
   private contextLost = false;
+  /** Film frames not drawn because the picture was out of view (for checks). */
+  private videoFramesSkipped = 0;
+  /** Frames that drew only the screen's part of the canvas (for checks). */
+  private partialRenders = 0;
+  private readonly regionSize = new Vector2();
+  /** The context was lost before the first frame: start once it is back. */
+  private startPending = false;
   private disposed = false;
 
   constructor(
     container: HTMLElement,
     layout: AuditoriumLayout,
     callbacks: CinemaViewCallbacks,
-    options: { quality: QualityLevel; reducedMotion: boolean; touchStick: boolean; selection: SeatSelection; media?: ViewMedia | null },
+    options: {
+      /** The level to draw at; with `autoQuality`, where "Tự động" starts. */
+      quality: QualityLevel;
+      autoQuality?: boolean;
+      reducedMotion: boolean;
+      touchStick: boolean;
+      selection: SeatSelection;
+      media?: ViewMedia | null;
+      /** Parts built beforehand (`prepareScene`); the view owns them from here on. */
+      prepared?: PreparedScene | null;
+    },
   ) {
     this.layout = layout;
     this.callbacks = callbacks;
@@ -183,16 +318,18 @@ export class CinemaView {
     this.reducedMotion = options.reducedMotion;
     this.touchStick = options.touchStick;
     const { config } = layout;
-    const settings = config.quality[options.quality];
 
     this.host = new RenderHost(container, {
       background: config.render.background,
-      maxPixelRatio: settings.maxPixelRatio,
+      maxPixelRatio: config.quality[options.quality].maxPixelRatio,
       maxDeltaSeconds: config.camera.explore.maxStepSeconds,
       ariaLabel:
         'Khung nhìn 3D của phòng chiếu. Nhấn vào một ghế để chọn; với bàn phím hoặc trình đọc màn hình, dùng Sơ đồ ghế. Kéo để xoay hoặc nhìn quanh; ở chế độ Khám phá dùng W A S D hoặc phím mũi tên để đi.',
       onResize: (width, height) => this.handleResize(width / height),
-      onFrame: (_time, dt) => this.renderFrame(dt),
+      onFrame: (_time, dt, interval, partial) => this.renderFrame(dt, interval, partial),
+      onGpuTime: (ms, continuous) => {
+        if (continuous) this.governor?.gpuTime(ms);
+      },
       onStatus: (status) => callbacks.onStatus(status),
       onContextLost: () => this.handleContextLost(),
       onContextRestored: () => this.handleContextRestored(),
@@ -206,9 +343,16 @@ export class CinemaView {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFShadowMap;
     renderer.shadowMap.autoUpdate = false;
+    this.gpu = classifyGpu(rendererName(renderer));
+    // A software rasteriser starts "Tự động" at the cheapest level, before anything is built at another.
+    if (options.autoQuality && this.gpu === 'software') this.quality = 'minimal';
+    // It takes about a second per frame there: the camera cuts instead of moving, and the tour steps
+    // between its stops, as with reduced motion (whatever the system setting says).
+    if (this.gpu === 'software') this.reducedMotion = true;
+    this.host.setMaxPixelRatio(config.quality[this.quality].maxPixelRatio);
 
     try {
-      this.content = this.buildContent(options.quality);
+      this.content = timed('build', () => this.buildContent(this.quality, options.prepared ?? null, false));
       this.world = createCollisionWorld(layout);
       const { interior } = layout;
       this.rig = new CameraRig(config.camera, this.host.canvas, {
@@ -219,6 +363,7 @@ export class CinemaView {
     } catch (error) {
       // Nothing else holds the renderer yet; release it so a failed mount leaves no canvas or context.
       this.host.dispose();
+      options.prepared?.dispose();
       throw error;
     }
     this.input = new ExploreInput(this.host.canvas, container, {
@@ -250,9 +395,10 @@ export class CinemaView {
     this.unsubscribeSelection = this.selection.subscribe((change) => {
       if (this.content.highlighter.apply(this.selection, change.seats)) this.host.requestRender();
     });
-    // The film: a render per presented frame while it plays, one after any other change.
+    // The film: a render per presented frame while it plays (when the picture is in view), one
+    // after any other change.
     const media = this.media;
-    this.frameClock = media ? new VideoFrameClock(media.controller.video, this.host.requestRender) : null;
+    this.frameClock = media ? new VideoFrameClock(media.controller.video, this.handleVideoFrame) : null;
     this.unsubscribeMedia = media ? media.controller.subscribe(this.handleMedia) : () => {};
     // Every time the poster (re)loads — the first time, or another film chosen — its picture goes up.
     if (media?.poster) {
@@ -267,7 +413,49 @@ export class CinemaView {
       );
     }
     renderer.shadowMap.needsUpdate = true;
-    this.host.start();
+    if (options.autoQuality) this.setAutoQuality(true);
+    void this.compileThenStart();
+  }
+
+  /**
+   * Compiles every material's shader program before the first frame, in the background where the
+   * browser can (KHR_parallel_shader_compile): on a first visit, compiling them inside the first
+   * render blocked the page for seconds (no shader cache yet). Until the first frame the page keeps
+   * showing "Đang dựng…" with the room's skeleton, and its own controls stay usable.
+   */
+  private async compileThenStart(): Promise<void> {
+    const content = this.content;
+    if (!content.environment) {
+      // The reflections first (the room's materials are compiled for them), their shaders also in
+      // the background.
+      const start = performance.now();
+      let environment: InteriorEnvironment;
+      try {
+        environment = await createInteriorEnvironmentAsync(this.host.renderer);
+      } catch {
+        environment = createInteriorEnvironment(this.host.renderer);
+      }
+      measure('environment', start);
+      if (this.disposed || this.content !== content || this.contextLost) {
+        // Lost meanwhile: the restored context rebuilds everything, the environment with it.
+        environment.dispose();
+        if (!this.disposed && this.contextLost) this.startPending = true;
+        return;
+      }
+      content.environment = environment;
+      this.scene.environment = environment.texture;
+    }
+    const start = performance.now();
+    try {
+      await this.host.renderer.compileAsync(this.scene, this.rig.camera);
+    } catch {
+      // Compiled during the first render instead.
+    }
+    measure('compile', start);
+    if (this.disposed) return;
+    // Lost meanwhile: the restored context starts it (handleContextRestored).
+    if (this.contextLost) this.startPending = true;
+    else this.host.start();
   }
 
   // ---------------------------------------------------------------- commands
@@ -392,7 +580,7 @@ export class CinemaView {
 
   /** Reduced motion turned on or off while running: a playing tour switches to steps at its current stop. */
   setReducedMotion(reduced: boolean): void {
-    this.reducedMotion = reduced;
+    this.reducedMotion = reduced || this.gpu === 'software';
     if (reduced && this.tour && !this.tour.steps) {
       this.tour.steps = true;
       this.showTourStop(this.tour.stopIndex);
@@ -409,26 +597,111 @@ export class CinemaView {
   }
 
   /**
-   * Switches quality: rebuilds the seats at that level of detail and changes the pixel-ratio cap
-   * and shadow map size. Camera, tour, exploring, visibility and everything else stay as they are.
+   * Draws at `level` from now on ("Ưu tiên đẹp", "Tiết kiệm"): "Tự động" stops. Camera, tour,
+   * exploring, visibility and everything else stay as they are.
    */
   setQuality(level: QualityLevel): void {
-    if (level === this.quality || this.disposed) return;
-    this.quality = level;
+    if (this.disposed) return;
+    this.setAutoQuality(false);
+    this.applyLevel(level, false);
+  }
+
+  /** "Tự động" on (from the level drawn now) or off (the level stays until another is set). */
+  setAutoQuality(on: boolean): void {
+    if (this.disposed || on === (this.governor !== null)) return;
+    clearTimeout(this.restTimer);
+    if (!on) {
+      this.governor = null;
+      return;
+    }
+    const { quality } = this.layout.config;
+    const fine = quality.high.seat;
+    // What a level costs relative to the others, as measured (docs/performance.md): mostly its
+    // pixels on the screen it is on now; the coarser seats and the lighter glass save a few percent.
+    const glass: Record<QualityLevel, number> = { high: 1, balanced: 1, economy: 0.98, minimal: 0.95 };
+    const cost = (index: number) => {
+      const level = QUALITY_LEVELS[index];
+      const settings = quality[level];
+      return Math.min(window.devicePixelRatio || 1, settings.maxPixelRatio) ** 2 * (settings.seat === fine ? 1 : 0.95) * glass[level];
+    };
+    this.governor = new QualityGovernor(QUALITY_LEVELS.length, QUALITY_LEVELS.indexOf(this.quality), cost);
+    // Nothing measured while the room comes up: the cooldown starts now.
+    this.governor.reset(performance.now());
+    this.callbacks.onQualityLevel?.(this.quality, this.gpu === 'software' ? 'software rendering' : 'start');
+  }
+
+  /** The level drawn now (with "Tự động", the one it is on). */
+  get qualityLevel(): QualityLevel {
+    return this.quality;
+  }
+
+  /**
+   * Changes the pixel-ratio cap and shadow map size at once, and the seat model (a rebuild) only
+   * when the level's seat detail differs: at once, or with `deferSeats` at the next rest.
+   */
+  private applyLevel(level: QualityLevel, deferSeats: boolean): void {
+    if (level === this.quality) {
+      if (!deferSeats && this.seatsPending) this.rebuildSeats();
+      return;
+    }
+    const before = this.layout.config.quality[this.quality];
     const settings = this.layout.config.quality[level];
+    this.quality = level;
     const content = this.content;
+    if (settings.seat !== content.seatDetail) {
+      if (deferSeats) this.seatsPending = true;
+      else this.rebuildSeats();
+    } else {
+      this.seatsPending = false;
+    }
+    if (settings.shadowMapSize !== before.shadowMapSize || settings.shadowRadius !== before.shadowRadius) {
+      content.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
+      this.invalidateShadows();
+    }
+    this.host.setMaxPixelRatio(settings.maxPixelRatio);
+  }
+
+  /** Builds the seats at the current level's detail; the same seats, states and picking. */
+  private rebuildSeats(): void {
+    const content = this.content;
+    this.seatsPending = false;
     this.scene.remove(content.seatInstances.group);
     content.seatInstances.dispose();
     content.seatModel.dispose();
-    [content.seatModel, content.seatInstances] = this.buildSeats(content.seatMaterials, level);
+    [content.seatModel, content.seatInstances] = buildSeatInstances(this.layout, content.seatMaterials, this.quality);
+    content.seatDetail = this.layout.config.quality[this.quality].seat;
     this.scene.add(content.seatInstances.group);
     // Same seats, same state: repaint the new instances from the selection, new proxies for picking.
     content.highlighter.attach(content.seatInstances, content.seatModel);
     content.highlighter.apply(this.selection);
     content.picker = new SeatPicker(this.layout.seats, content.seatModel);
-    content.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
-    this.host.setMaxPixelRatio(settings.maxPixelRatio);
     this.invalidateShadows();
+  }
+
+  /**
+   * "Tự động" decides: a step down may come during movement (the seat model then waits for the next
+   * rest), a step up only at rest.
+   */
+  private considerQuality(atRest: boolean): void {
+    const governor = this.governor;
+    if (!governor || this.contextLost) return;
+    const decision = governor.decide(performance.now(), atRest);
+    if (decision) {
+      const level = QUALITY_LEVELS[decision.level];
+      this.applyLevel(level, !atRest);
+      this.callbacks.onQualityLevel?.(level, decision.reason);
+    }
+    if (atRest && this.seatsPending) this.rebuildSeats();
+  }
+
+  /** After the loop goes idle: once nothing has been drawn for a while and no press is held, it is at rest. */
+  private scheduleRestCheck(): void {
+    clearTimeout(this.restTimer);
+    this.restTimer = setTimeout(() => {
+      if (this.disposed || this.contextLost || document.hidden) return;
+      if (performance.now() - this.lastFrameAt < REST_MS || this.taps.pressing) return;
+      this.considerQuality(true);
+    }, REST_MS);
   }
 
   // ---------------------------------------------------------------- development hooks
@@ -469,6 +742,23 @@ export class CinemaView {
       if (this.pickAt(point.x, point.y)?.seat.id === seatId) return { ...point, visible: true };
     }
     return { ...(first ?? { x: 0, y: 0 }), visible: false };
+  }
+
+  /**
+   * Development: the part of the canvas a film frame redraws while nothing else changes, in canvas
+   * pixels from the top left (null: the whole canvas).
+   */
+  debugScreenRegion() {
+    const region = this.screenRegion();
+    if (!region) return null;
+    const ratio = this.host.renderer.getPixelRatio();
+    const height = this.host.canvas.height;
+    return {
+      x: Math.round(region.x * ratio),
+      y: Math.round(height - (region.y + region.height) * ratio),
+      width: Math.round(region.width * ratio),
+      height: Math.round(region.height * ratio),
+    };
   }
 
   /** Development: the colour factor and tag drawn on a seat. */
@@ -620,6 +910,8 @@ export class CinemaView {
     const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     return {
       quality: this.quality,
+      autoQuality: this.governor !== null,
+      gpu: this.gpu,
       state: this.cameraState(),
       owner: this.rig.owner,
       controlsEnabled: controls.enabled,
@@ -649,7 +941,7 @@ export class CinemaView {
       film: this.frameClock
         ? {
             screen: this.content.screenVideo?.describe() ?? null,
-            clock: { supported: this.frameClock.supported, frames: this.frameClock.frames, pending: this.frameClock.pending },
+            clock: { supported: this.frameClock.supported, frames: this.frameClock.frames, pending: this.frameClock.pending, skippedOutOfView: this.videoFramesSkipped, partialRenders: this.partialRenders },
           }
         : null,
       ...this.host.getDebugInfo(),
@@ -703,6 +995,7 @@ export class CinemaView {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    clearTimeout(this.restTimer);
     this.listeners.abort();
     this.unsubscribeSelection();
     this.unsubscribeMedia();
@@ -974,6 +1267,7 @@ export class CinemaView {
 
   /** A hidden tab ends the tour (it would otherwise finish unseen) and drops held input. */
   private readonly handleVisibility = (): void => {
+    this.governor?.reset(performance.now());
     if (!document.hidden) return;
     if (this.tour && !this.tour.steps) this.stopTour('hidden');
     this.input.clear();
@@ -982,12 +1276,36 @@ export class CinemaView {
 
   private handleResize(aspect: number): void {
     this.rig.setAspect(aspect);
+    // Another size draws another number of pixels: what was measured no longer holds.
+    this.governor?.reset(performance.now());
     // A preset the user has not moved away from is framed again for the new shape; a free,
     // touring or walking camera keeps its position and direction.
     if (this.preset && this.pristine && this.rig.owner === 'controls') {
       this.rig.moveTo(computePresetPose(this.preset, this.layout, aspect), false);
     }
   }
+
+  /** Where the screen is drawn in the canvas (CSS px from the bottom left), or null to draw it all. */
+  private screenRegion() {
+    const screen = this.content.screenVideo;
+    if (!screen) return null;
+    const size = this.host.renderer.getSize(this.regionSize);
+    return screen.screenRegion(this.rig.camera, size.x, size.y);
+  }
+
+  /**
+   * A new film frame while it plays: drawn only if the picture is in view. Looking away (walking,
+   * "Nhìn về ghế"), the room is not redrawn 24 times a second for a picture nobody sees; the next
+   * frame drawn for any reason (the camera turning back) shows the film's current frame.
+   */
+  private readonly handleVideoFrame = (): void => {
+    const screen = this.content?.screenVideo;
+    if (screen && !screen.inView(this.rig.camera)) {
+      this.videoFramesSkipped++;
+      return;
+    }
+    this.host.requestPartialRender();
+  };
 
   /**
    * Media events: poster or video, the picture's shape, a new frame while paused (seek, load), and
@@ -1004,12 +1322,33 @@ export class CinemaView {
     if (changed) this.host.requestRender();
   };
 
-  private renderFrame(dt: number): boolean {
+  private renderFrame(dt: number, interval: number | null, partial: boolean): boolean {
     const needsAnotherFrame = this.rig.update(dt);
     const { renderer } = this.host;
-    if (renderer.shadowMap.needsUpdate) this.shadowRenders++;
-    renderer.render(this.scene, this.rig.camera);
+    const shadowUpdate = renderer.shadowMap.needsUpdate;
+    if (shadowUpdate) this.shadowRenders++;
+    // Only a new film frame while nothing else moved: the rest of the canvas still holds the room
+    // as it is, so only the screen's part is drawn again (same scene, same shaders, clipped).
+    const region = partial && !needsAnotherFrame && !shadowUpdate ? this.screenRegion() : null;
+    if (region) {
+      if (region.width > 0 && region.height > 0) {
+        renderer.setScissor(region.x, region.y, region.width, region.height);
+        renderer.setScissorTest(true);
+        renderer.render(this.scene, this.rig.camera);
+        renderer.setScissorTest(false);
+        this.partialRenders++;
+      }
+    } else {
+      renderer.render(this.scene, this.rig.camera);
+    }
     this.reportState();
+    this.lastFrameAt = performance.now();
+    if (this.governor) {
+      // Frames drawn back to back are the measure (a shadow redraw is a one-off, not a rate).
+      if (interval !== null && !shadowUpdate) this.governor.frame(interval, null);
+      this.considerQuality(false);
+      if (!needsAnotherFrame) this.scheduleRestCheck();
+    }
     return needsAnotherFrame;
   }
 
@@ -1022,6 +1361,8 @@ export class CinemaView {
    */
   private handleContextLost(): void {
     this.contextLost = true;
+    clearTimeout(this.restTimer);
+    this.governor?.reset(performance.now());
     if (this.tour && !this.tour.steps) this.stopTour('context-lost');
     this.input.clear();
     this.dropPointers();
@@ -1042,36 +1383,50 @@ export class CinemaView {
     this.scene.remove(old.architecture.group, old.seatInstances.group, old.lighting.group, old.highlighter.markers);
     if (old.screenVideo) this.scene.remove(old.screenVideo.group);
     this.contextLost = false;
-    this.content = this.buildContent(this.quality);
+    this.content = this.buildContent(this.quality, null, true);
     for (const part of this.hiddenParts) {
       this.content.architecture.toggleable[part].visible = false;
       this.content.lighting.setPartVisible(part, false);
     }
     this.invalidateShadows();
+    if (this.startPending) {
+      this.startPending = false;
+      void this.compileThenStart();
+    }
   }
 
   // ---------------------------------------------------------------- scene content
 
-  private buildContent(quality: QualityLevel): SceneContent {
+  private buildContent(quality: QualityLevel, prepared: PreparedScene | null, environmentNow = true): SceneContent {
     const { renderer } = this.host;
     const settings = this.layout.config.quality[quality];
-    const materials = createBlockoutMaterials();
+    let parts: RoomParts;
+    if (prepared) {
+      parts = prepared;
+      const built = this.layout.config.quality[prepared.level];
+      // Prepared at another level (a software renderer starts lower): the seats and shadows follow.
+      if (built.seat !== settings.seat) {
+        parts.seatInstances.dispose();
+        parts.seatModel.dispose();
+        [parts.seatModel, parts.seatInstances] = buildSeatInstances(this.layout, parts.seatMaterials, quality);
+      }
+      parts.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
+    } else {
+      const built: Partial<RoomParts> = {};
+      for (const step of roomSteps(this.layout, quality, built)) step();
+      parts = built as RoomParts;
+    }
+    const { materials, seatMaterials, architecture, lighting, seatModel, seatInstances } = parts;
     const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     // Read at an angle from most seats.
     for (const texture of [materials.exitSign.map, materials.carpet.map]) if (texture) texture.anisotropy = anisotropy;
-    const seatMaterials = createSeatMaterials();
-    const architecture = buildArchitecture(this.layout, materials);
-    configureShadows(architecture);
-    const lighting = createRoomLighting(this.layout);
-    lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
-    const environment = createInteriorEnvironment(renderer);
-    const [seatModel, seatInstances] = this.buildSeats(seatMaterials, quality);
+    const environment = environmentNow ? timed('environment', () => createInteriorEnvironment(renderer)) : null;
     // Seat states come from the selection, which outlives every rebuild: paint them straight away.
     const highlighter = new SeatHighlighter(this.layout.config.selection.maxSeats, this.layout.config.selection.highlight);
     highlighter.attach(seatInstances, seatModel);
     highlighter.apply(this.selection);
     const picker = new SeatPicker(this.layout.seats, seatModel);
-    this.scene.environment = environment.texture;
+    this.scene.environment = environment?.texture ?? null;
     this.scene.add(architecture.group, seatInstances.group, lighting.group, highlighter.markers);
     // The current frame (or the poster) straight away, also after a restore.
     let screenVideo: ScreenVideo | null = null;
@@ -1080,7 +1435,7 @@ export class CinemaView {
       screenVideo.update(this.media.controller.snapshot);
       this.scene.add(screenVideo.group);
     }
-    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances, highlighter, picker, screenVideo };
+    return { materials, seatMaterials, architecture, lighting, environment, seatModel, seatInstances, seatDetail: settings.seat, highlighter, picker, screenVideo };
   }
 
   private disposeContent(content: SceneContent): void {
@@ -1089,21 +1444,11 @@ export class CinemaView {
     content.seatModel.dispose();
     content.architecture.dispose();
     content.lighting.dispose();
-    content.environment.dispose();
+    content.environment?.dispose();
     content.highlighter.dispose();
     content.screenVideo?.dispose();
     disposeMaterials(content.materials);
     disposeMaterials(content.seatMaterials);
-  }
-
-  private buildSeats(materials: SeatMaterials, level: QualityLevel): [SeatModel, SeatInstances] {
-    const model = createCinemaSeatModel(this.layout.config, materials, this.layout.config.quality[level].seat);
-    const instances = createSeatInstances(model, this.layout.seats);
-    for (const mesh of instances.meshes) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    }
-    return [model, instances];
   }
 
   private invalidateShadows(): void {
@@ -1138,6 +1483,30 @@ function configureShadows(architecture: Architecture): void {
       mesh.castShadow = !off && SHADOW_CASTING_MATERIALS.has(mesh.userData.material);
     }
   }
+}
+
+/** The seat model at a level's detail and its 110 instances, casting and receiving shadows. */
+function buildSeatInstances(layout: AuditoriumLayout, materials: SeatMaterials, level: QualityLevel): [SeatModel, SeatInstances] {
+  const model = createCinemaSeatModel(layout.config, materials, layout.config.quality[level].seat);
+  const instances = createSeatInstances(model, layout.seats);
+  for (const mesh of instances.meshes) {
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+  }
+  return [model, instances];
+}
+
+/**
+ * The GPU's name as the browser reports it, or null. Firefox gives it as RENDERER; Chrome and Safari
+ * hide it there ("WebKit WebGL") and, where allowed, give it through WEBGL_debug_renderer_info.
+ */
+function rendererName(renderer: { getContext(): WebGLRenderingContext | WebGL2RenderingContext }): string | null {
+  const gl = renderer.getContext();
+  const plain = gl.getParameter(gl.RENDERER) as unknown;
+  if (typeof plain === 'string' && plain && !/^webkit webgl$/i.test(plain)) return plain;
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = info ? (gl.getParameter(info.UNMASKED_RENDERER_WEBGL) as unknown) : null;
+  return typeof name === 'string' ? name : null;
 }
 
 function clamp(value: number, min: number, max: number): number {

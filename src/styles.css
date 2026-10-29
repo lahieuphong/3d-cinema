@@ -145,6 +145,18 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   --glass-sheen: none;
 }
 
+/* The cheapest level ("Tự động" on a software renderer or a GPU that cannot keep up): no blur at
+   all, the panes as solid as with "Giảm hiệu ứng kính" (same edges, so nothing moves). */
+.cinema-app--room[data-quality='minimal'] {
+  --glass-clear-tint: rgb(26 26 30 / 0.95);
+  --glass-regular-tint: rgb(24 24 28 / 0.97);
+  --surface-dense-tint: rgb(20 20 23 / 0.98);
+  --glass-clear-filter: none;
+  --glass-regular-filter: none;
+  --surface-dense-filter: none;
+  --glass-sheen: none;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .cinema-app--room[data-quality] {
     --glass-clear-filter: none;
@@ -925,6 +937,13 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-status--waiting {
   padding: 0;
   background: var(--canvas);
+}
+
+/* The first frame is drawn: the skeleton fades out over it (at once with reduced motion). */
+.cinema-status--leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-medium) var(--ease-out);
 }
 
 .cinema-status__caption {
@@ -2940,10 +2959,20 @@ button.cinema-hub__row:disabled {
   font-weight: var(--weight-semibold);
 }
 
-/* Chất lượng: the two choices to the right, under the label when the row is too narrow. */
+/* Chất lượng: the three choices to the right, under the label when the row is too narrow. */
 .cinema-hub__row--quality .cinema-segmented {
   max-width: 100%;
   margin-left: auto;
+}
+
+/* Three choices side by side, sharing the row: no minimum width and less padding, so they fit a
+   phone's panel; with large text a label wraps inside its button instead of pushing the panel wider. */
+.cinema-hub__row--quality .cinema-segmented .cinema-segmented__button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 10px;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .cinema-hub .cinema-segmented__button,
@@ -3288,7 +3317,8 @@ button.cinema-hub__row:disabled {
   .cinema-hub__row,
   .cinema-films__toggle,
   .cinema-films__toggle .cinema-icon,
-  .cinema-film {
+  .cinema-film,
+  .cinema-status--leaving {
     transition: none;
   }
 
