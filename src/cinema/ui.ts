@@ -4,6 +4,7 @@ import { isPlainClick } from '../router.ts';
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
 import { createControlHub } from './controlHub.ts';
+import type { FilmSource } from './media.ts';
 import { QUALITY_LABELS, QUALITY_LEVELS, type QualityLevel } from './quality.ts';
 import { CINEMA_TASKS, type CinemaTask, type PanelState } from './taskLayout.ts';
 
@@ -42,6 +43,8 @@ export interface CinemaUiHandlers {
 export interface CinemaUiOptions {
   /** A touch screen: the help speaks of fingers rather than a mouse. */
   touch: boolean;
+  /** The film's title and attribution, for Cài đặt › Thông tin (the player keeps its own credit). */
+  film: Pick<FilmSource, 'title' | 'credit' | 'creditUrl' | 'license' | 'licenseUrl'>;
 }
 
 /**
@@ -140,6 +143,8 @@ const ICONS = {
   tour: 'M12 3.2a6.3 6.3 0 0 1 6.3 6.3c0 4.4-5 9.9-5.7 10.6a.8.8 0 0 1-1.2 0C10.7 19.4 5.7 13.9 5.7 9.5A6.3 6.3 0 0 1 12 3.2zm0 3.9a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z',
   walk: 'M13.5 2.8a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8zM10 8.2l2.6-.9a1.6 1.6 0 0 1 1.9.8l1.2 2.4 2.5 1-.7 1.7-3-1.2-.6-1.2-.9 3.6 2.2 2.4.9 4.5h-1.9l-.8-3.8-2.3-2.2-.9 3.1-2.8 2.9-1.3-1.3 2.5-2.6 1.4-5.9-.9.4-1.2 2.6-1.7-.8 1.5-3.2z',
   map: 'M4 5h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 11h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 17h4v2H4zm6 0h4v2h-4zm6 0h4v2h-4z',
+  chevron: 'M9.2 5.6 7.8 7l5 5-5 5 1.4 1.4 6.4-6.4z',
+  fullscreen: 'M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z',
 };
 
 /** An inline icon (decorative: the control around it carries the name). */
@@ -163,7 +168,8 @@ const REST_MS = 3500;
  * glass, grouped by task.
  *
  * - The header: two small clusters along the top edge, the brand (home) on the left, the film's
- *   mini control and "Cài đặt" (display, help, the way home) on the right.
+ *   mini control and "Cài đặt" (Hiển thị; Hướng dẫn nhanh, Thông tin, Công cụ nâng cao; the way
+ *   home) on the right.
  * - The task bar, bottom centre: the task switch (Khám phá, Chọn ghế, Xem phim) and, above it, only
  *   the current task's controls: camera views, tour and walking; the chosen seats and the map; the
  *   player. The film's problems head that stack.
@@ -261,19 +267,15 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const headerEnd = el('div', 'cinema-header__end');
   const miniSlot = el('div', 'cinema-header__mini');
 
-  // Opens the settings (the hub's panel, dropped down under it).
+  // Opens Cài đặt (the hub's panel, dropped down under it).
   const settingsButton = button('', 'cinema-button cinema-menu__toggle');
   settingsButton.dataset.action = 'settings';
   settingsButton.setAttribute('aria-label', 'Cài đặt');
   settingsButton.append(icon(ICONS.settings), el('span', 'cinema-menu__label', 'Cài đặt'));
-  const settingsPanel = el('div', 'cinema-settings');
-  settingsPanel.id = 'cinema-settings';
-  settingsPanel.setAttribute('role', 'group');
-  settingsPanel.setAttribute('aria-label', 'Hiển thị');
 
-  // Chất lượng: one segmented control.
-  const qualityRow = el('div', 'cinema-settings__item');
-  const qualityHeading = el('span', 'cinema-settings__heading', 'Chất lượng hiển thị');
+  // Cài đặt › Hiển thị: one row each, the label on the left and its control on the right.
+  const qualityRow = el('div', 'cinema-hub__row cinema-hub__row--quality');
+  const qualityHeading = el('span', 'cinema-hub__label', 'Chất lượng');
   qualityHeading.id = 'cinema-quality-heading';
   const qualityGroup = el('div', 'cinema-segmented');
   qualityGroup.setAttribute('role', 'group');
@@ -288,51 +290,29 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     qualityButtons.set(level, element);
     qualityGroup.append(element);
   }
-  const qualityHint = el('p', 'cinema-settings__hint', 'Tiết kiệm: ghế ít chi tiết hơn, bóng và độ nét thấp hơn, kính nhẹ hơn, đỡ tốn pin.');
-  qualityRow.append(qualityHeading, qualityGroup, qualityHint);
+  qualityRow.append(qualityHeading, qualityGroup);
 
   // Giảm hiệu ứng kính: solid panes (also follows the system's "reduce transparency").
-  const glassRow = el('div', 'cinema-settings__item');
   const glass = switchControl('Giảm hiệu ứng kính', 'glass', loadReducedGlass(), (on) => setReducedGlass(on), signal);
-  glass.wrapper.classList.add('cinema-switch--row');
-  const glassHint = el('p', 'cinema-settings__hint', 'Nền đặc thay cho kính trong: chữ rõ hơn trên phim sáng, nhẹ máy hơn.');
-  glassRow.append(glass.wrapper, glassHint);
+  glass.wrapper.classList.add('cinema-hub__row');
 
-  // Inspection tools, folded inside the settings: technical views, cut-away switches, seat inspector.
-  const inspectToggle = button('Công cụ kiểm tra', 'cinema-button cinema-settings__disclosure');
-  inspectToggle.dataset.action = 'inspect-tools';
-  const inspectPanel = el('div', 'cinema-settings__tools');
-  inspectPanel.id = 'cinema-inspect-tools';
-  inspectPanel.hidden = true;
-  inspectToggle.setAttribute('aria-expanded', 'false');
-  inspectToggle.setAttribute('aria-controls', inspectPanel.id);
-  inspectToggle.addEventListener(
-    'click',
-    () => {
-      inspectPanel.hidden = !inspectPanel.hidden;
-      inspectToggle.setAttribute('aria-expanded', String(!inspectPanel.hidden));
-    },
-    { signal },
-  );
-  const inspectViews = group('Góc kiểm tra');
-  inspectViews.classList.add('cinema-settings__row');
+  // Công cụ nâng cao: technical views, cut-away switches, the seat inspector.
+  const inspectViews = el('div', 'cinema-hub__rows');
   for (const preset of CAMERA_PRESETS.filter((p) => p.space === 'inspection')) {
-    inspectViews.append(presetButton(preset.id, 'cinema-button cinema-button--compact'));
+    inspectViews.append(presetButton(preset.id, 'cinema-hub__row cinema-hub__row--button'));
   }
-  const visibilityGroup = group('Hiện thành phần');
-  visibilityGroup.classList.add('cinema-settings__row');
+  const visibilityRows = el('div', 'cinema-hub__rows');
   const toggles = new Map<ToggleablePart, HTMLInputElement>();
   for (const { part, label } of TOGGLEABLE_PARTS) {
     const { wrapper, input } = switchControl(label, part, true, (checked) => handlers.onToggle(part, checked), signal);
+    wrapper.classList.add('cinema-hub__row');
     toggles.set(part, input);
-    visibilityGroup.append(wrapper);
+    visibilityRows.append(wrapper);
   }
-  const inspectorButton = button('Kiểm tra ghế', 'cinema-button cinema-button--compact');
+  const inspectorButton = button('', 'cinema-hub__row cinema-hub__row--button cinema-hub__row--nav');
   inspectorButton.dataset.action = 'open-inspector';
+  inspectorButton.append(el('span', 'cinema-hub__label', 'Kiểm tra ghế'), icon(ICONS.chevron));
   inspectorButton.addEventListener('click', () => handlers.onOpenInspector(), { signal });
-  inspectViews.append(inspectorButton);
-  inspectPanel.append(inspectViews, visibilityGroup);
-  settingsPanel.append(qualityRow, glassRow, inspectToggle, inspectPanel);
 
   headerEnd.append(miniSlot, settingsButton);
   header.append(title, home, headerEnd);
@@ -533,7 +513,6 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       '[data-action="watch-seat"]',
       '[data-action="open-inspector"]',
       '[data-action="hub-home"]',
-      '[data-action="hub-guide"]',
     ].join(', '),
     // A modal panel: the room and its overlays are out of reach (and of screen readers) meanwhile.
     onOpenChange: (open) => {
@@ -553,22 +532,42 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   });
   overlayResize.observe(overlay);
   overlayResize.observe(taskBar);
-  hub.section('display').append(settingsPanel);
+  // ------------------------------------------------------------------ Cài đặt and its screens
+  /** Rows one under the other, light separators between them (no card per row). */
+  const rows = (...items: HTMLElement[]) => {
+    const list = el('div', 'cinema-hub__rows');
+    list.append(...items);
+    return list;
+  };
+  /** A titled group of rows. */
+  let groupCount = 0;
+  const rowGroup = (label: string, list: HTMLElement) => {
+    const section = el('section', 'cinema-hub__group');
+    const heading = el('h3', 'cinema-hub__group-title', label);
+    heading.id = `cinema-hub-group-${++groupCount}`;
+    section.setAttribute('aria-labelledby', heading.id);
+    section.append(heading, list);
+    return section;
+  };
+  // Why the display and inspection controls are off, while there is no scene (else empty, unseen).
+  const settingsNote = el('p', 'cinema-hub__note cinema-hub__note--scene');
+  const advancedNote = el('p', 'cinema-hub__note cinema-hub__note--scene');
+  settingsNote.hidden = advancedNote.hidden = true;
 
-  // Hiển thị: the browser's full screen, where it can (never on iPhone Safari); the page works without it.
-  const fullscreenRow = el('div', 'cinema-settings__item');
-  const fullscreenButton = button('Toàn màn hình', 'cinema-button cinema-hub__fullscreen');
+  // Hiển thị › Toàn màn hình: the browser's full screen, where it can (never on iPhone Safari); the
+  // page works without it. Its words follow the state; a refusal is said under it.
+  const fullscreenLabel = el('span', 'cinema-hub__label', 'Toàn màn hình');
+  const fullscreenButton = button('', 'cinema-hub__row cinema-hub__row--button cinema-hub__fullscreen');
   fullscreenButton.dataset.action = 'fullscreen';
   fullscreenButton.setAttribute('aria-pressed', 'false');
+  fullscreenButton.append(fullscreenLabel, icon(ICONS.fullscreen));
   const fullscreenNote = el('p', 'cinema-hub__note');
-  fullscreenRow.append(fullscreenButton, fullscreenNote);
   const fullscreenSupported = typeof document.documentElement.requestFullscreen === 'function' && document.fullscreenEnabled;
-  fullscreenRow.hidden = !fullscreenSupported;
-  settingsPanel.insertBefore(fullscreenRow, inspectToggle);
+  fullscreenButton.hidden = fullscreenNote.hidden = !fullscreenSupported;
   const paintFullscreen = () => {
     const on = document.fullscreenElement !== null;
     fullscreenButton.setAttribute('aria-pressed', String(on));
-    fullscreenButton.textContent = on ? 'Thoát toàn màn hình' : 'Toàn màn hình';
+    fullscreenLabel.textContent = on ? 'Thoát toàn màn hình' : 'Toàn màn hình';
   };
   fullscreenButton.addEventListener(
     'click',
@@ -581,29 +580,8 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   );
   document.addEventListener('fullscreenchange', paintFullscreen, { signal });
 
-  // Trợ giúp: how the room works (also the first-visit hint, again on request).
-  const hintLines = options.touch
-    ? ['Kéo một ngón để nhìn quanh, chụm hai ngón để phóng to hay thu nhỏ.', 'Chạm một ghế trong phòng để chọn, rồi “Xem từ ghế này”.', 'Khám phá, chọn ghế, xem phim và cài đặt: ở nút tròn này.']
-    : ['Kéo chuột để nhìn quanh, cuộn để phóng to hay thu nhỏ.', 'Bấm một ghế trong phòng để chọn, rồi “Xem từ ghế này”.', 'Khám phá, chọn ghế, xem phim và cài đặt: ở nút tròn này.'];
-  const help = el('ul', 'cinema-hub__help');
-  for (const line of [
-    ...hintLines.slice(0, 2),
-    options.touch
-      ? 'Đi bộ: kéo cần điều khiển ở góc dưới bên trái để đi, kéo phần còn lại để nhìn quanh.'
-      : 'Đi bộ: W A S D hoặc các phím mũi tên để đi, kéo chuột để nhìn quanh.',
-    'Phim không tự phát: chọn Xem phim, rồi bấm Phát.',
-  ]) {
-    help.append(el('li', '', line));
-  }
-  // The round button only exists on phones.
-  help.append(el('li', 'cinema-hub__floating-only', 'Nút tròn kéo được sang chỗ khác; thả ra, nó nằm sát cạnh gần nhất.'));
-  const guideButton = button('Xem lại hướng dẫn nhanh', 'cinema-button cinema-button--compact cinema-hub__floating-only');
-  guideButton.dataset.action = 'hub-guide';
-  const demoNote = el('p', 'cinema-hub__note', `${BRAND.name} · ${BRAND.demoNote}. Ghế là dữ liệu minh họa.`);
-  hub.section('help').append(help, guideButton, demoNote);
-
-  // Điều hướng.
-  const homeLink = el('a', 'cinema-button cinema-hub__home', 'Về trang chủ');
+  // Về trang chủ: a plain link at the foot of Cài đặt.
+  const homeLink = el('a', 'cinema-hub__home', 'Về trang chủ');
   homeLink.href = '/';
   homeLink.dataset.action = 'hub-home';
   homeLink.addEventListener(
@@ -615,7 +593,77 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     },
     { signal },
   );
-  hub.section('nav').append(homeLink);
+  const homeRow = el('div', 'cinema-hub__foot');
+  homeRow.append(homeLink);
+
+  hub.content('settings').append(
+    settingsNote,
+    rowGroup('Hiển thị', rows(qualityRow, glass.wrapper, fullscreenButton, fullscreenNote)),
+    rowGroup(
+      'Khác',
+      rows(
+        hub.link('help', 'Hướng dẫn nhanh', 'hub-help'),
+        hub.link('about', 'Thông tin', 'hub-about'),
+        // The action of the folded "Công cụ kiểm tra" it replaces (checks and scripts look for it).
+        hub.link('advanced', 'Công cụ nâng cao', 'inspect-tools'),
+      ),
+    ),
+    homeRow,
+  );
+
+  // Hướng dẫn nhanh: four lines, for the mouse or for a finger.
+  const facts = (lines: ReadonlyArray<readonly [string, string | Node]>) => {
+    const list = el('dl', 'cinema-hub__rows cinema-hub__facts');
+    for (const [term, value] of lines) {
+      const row = el('div', 'cinema-hub__row cinema-hub__fact');
+      const definition = el('dd', 'cinema-hub__value');
+      definition.append(value);
+      row.append(el('dt', 'cinema-hub__label', term), definition);
+      list.append(row);
+    }
+    return list;
+  };
+  hub.content('help').append(
+    facts([
+      ['Nhìn quanh', options.touch ? 'Kéo một ngón' : 'Kéo chuột'],
+      ['Chọn ghế', options.touch ? 'Chạm ghế hoặc mở sơ đồ' : 'Bấm ghế hoặc mở sơ đồ'],
+      ['Đi bộ', options.touch ? 'Cần điều khiển' : 'WASD, phím mũi tên'],
+      ['Phát phim', 'Xem phim → Phát'],
+    ]),
+  );
+
+  // Thông tin: what this is, and the film's attribution (the player shows it too, as the licence asks).
+  const outLink = (label: string, href: string) => {
+    const a = el('a', '', label);
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    return a;
+  };
+  const about = el('div', 'cinema-hub__about');
+  about.append(el('p', 'cinema-hub__about-name', BRAND.name), el('p', 'cinema-hub__about-note', 'Bản demo — không bán vé hoặc giữ chỗ.'));
+  hub.content('about').append(
+    about,
+    rowGroup(
+      'Phim trên màn chiếu',
+      facts([
+        ['Phim', options.film.title],
+        ['Ghi công', outLink(options.film.credit, options.film.creditUrl)],
+        ['Giấy phép', outLink(options.film.license, options.film.licenseUrl)],
+      ]),
+    ),
+  );
+
+  // Công cụ nâng cao.
+  // Kiểm tra ghế opens another page: an action of its own, under the two groups.
+  const inspectorRow = el('div', 'cinema-hub__group');
+  inspectorRow.append(rows(inspectorButton));
+  hub.content('advanced').append(advancedNote, rowGroup('Góc kiểm tra', inspectViews), rowGroup('Thành phần phòng', visibilityRows), inspectorRow);
+
+  // The first-visit hint on phones: how the room works and where its controls are.
+  const hintLines = options.touch
+    ? ['Kéo một ngón để nhìn quanh, chụm hai ngón để phóng to hay thu nhỏ.', 'Chạm một ghế trong phòng để chọn, rồi “Xem từ ghế này”.', 'Khám phá, chọn ghế, xem phim và cài đặt: ở nút tròn này.']
+    : ['Kéo chuột để nhìn quanh, cuộn để phóng to hay thu nhỏ.', 'Bấm một ghế trong phòng để chọn, rồi “Xem từ ghế này”.', 'Khám phá, chọn ghế, xem phim và cài đặt: ở nút tròn này.'];
 
   const HINT_KEY = 'tp-cinema-hub-hint';
   const showHint = () => hub.showHint(hintLines, () => {
@@ -625,8 +673,6 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       // Not remembered: it may show once more on the next visit.
     }
   });
-  // After the panel has closed (the button is the hint's anchor).
-  guideButton.addEventListener('click', () => setTimeout(showHint, 0), { signal });
 
   // Menus close on a press anywhere else. On the 3D view that press is used up, so dismissing a
   // menu never selects a seat or turns the camera.
@@ -782,8 +828,11 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     },
     setSceneControls(available, reason) {
       for (const control of sceneControls) control.disabled = !available;
-      sceneNote.hidden = available || !reason;
-      sceneNote.textContent = available ? '' : (reason ?? '');
+      // The reason where the controls are: Khám phá, Cài đặt (quality) and Công cụ nâng cao.
+      for (const note of [sceneNote, settingsNote, advancedNote]) {
+        note.hidden = available || !reason;
+        note.textContent = available ? '' : (reason ?? '');
+      }
       root.dataset.scene = String(available);
     },
     setWatchView(text, action) {
@@ -810,7 +859,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       // over the room.
       if (next) {
         hub.tasks.append(tasks);
-        hub.section('task').append(dock.explore, dock.seats, dock.watch);
+        hub.content('task').append(dock.explore, dock.seats, dock.watch);
       } else {
         taskBar.append(tasks);
         taskTools.append(dock.explore, dock.seats, dock.watch);

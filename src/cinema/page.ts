@@ -283,7 +283,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       dispatch({ type: 'view-from-seat' });
       viewFromSeat(id);
     },
-  }, { touch });
+  }, { touch, film });
   ui.setLayout(isImmersive());
 
   const viewFromSeat = (id: string) => {

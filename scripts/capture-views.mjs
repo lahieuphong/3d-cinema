@@ -129,7 +129,10 @@ async function ensureTask(page, task) {
   if ((await currentTask(page)) === task) return;
   const phone = await isImmersive(page);
   const wasOpen = phone && (await page.getAttribute('.cinema-hub__toggle', 'aria-expanded')) === 'true';
-  if (phone) await openHubPanel(page);
+  if (phone) {
+    await openHubPanel(page);
+    await hubView(page, 'task');
+  }
   await page.click(`button[data-task="${task}"]`);
   await page.waitForFunction((t) => document.querySelector('.cinema-app').dataset.task === t, task);
   if (phone && !wasOpen) await closeMenus(page);
@@ -154,9 +157,9 @@ async function closeMenus(page) {
 
 /**
  * Makes a control reachable the way a visitor would: its task (the task bar, or on a phone the task
- * switch inside the round button's panel), "Cài đặt" (and the inspection tools inside it; on a phone
- * the folded "Cài đặt và trợ giúp"), or the seat panel. Returns what had to be opened ('' if nothing;
- * 'hub' or 'hub-inspect' when the control panel was opened for it).
+ * switch inside the round button's panel), "Cài đặt" and the screen it is on (Công cụ nâng cao…; on
+ * a phone through the panel's "Cài đặt" row), or the seat panel. Returns what had to be opened (''
+ * if nothing; 'hub' when the control panel was opened for it).
  */
 async function reveal(page, selector) {
   const where = await page.evaluate((sel) => {
@@ -166,7 +169,7 @@ async function reveal(page, selector) {
     const dock = element.closest('[data-dock]')?.dataset.dock;
     if (element.closest('.cinema-hub')) {
       if (dock) return `hub-task:${dock}`;
-      return element.closest('#cinema-inspect-tools') ? 'hub-inspect' : 'hub';
+      return `hub-view:${element.closest('.cinema-hub__view')?.dataset.view ?? 'settings'}`;
     }
     if (element.closest('#cinema-more-views')) return dock && document.querySelector('.cinema-app').dataset.task !== dock ? dock : 'more';
     if (element.closest('#cinema-seat-panel')) return 'panel';
@@ -176,21 +179,17 @@ async function reveal(page, selector) {
     await openHubPanel(page);
     if (where.startsWith('hub-task:')) {
       const task = where.slice('hub-task:'.length);
+      // Back from Cài đặt (or one of its screens) to the task screen first.
+      await hubView(page, 'task');
       if ((await currentTask(page)) !== task) {
         await page.click(`button[data-task="${task}"]`);
         await page.waitForFunction((t) => document.querySelector('.cinema-app').dataset.task === t, task);
       }
     } else {
-      // On a phone the settings are folded under "Cài đặt và trợ giúp".
-      if ((await page.isVisible('button[data-action="hub-more"]')) && (await page.getAttribute('button[data-action="hub-more"]', 'aria-expanded')) !== 'true') {
-        await page.click('button[data-action="hub-more"]');
-      }
-      if (where === 'hub-inspect' && (await page.getAttribute('button[data-action="inspect-tools"]', 'aria-expanded')) !== 'true') {
-        await page.click('button[data-action="inspect-tools"]');
-      }
+      await hubView(page, where.slice('hub-view:'.length));
     }
     await page.locator(selector).scrollIntoViewIfNeeded();
-    return where === 'hub-inspect' ? where : 'hub';
+    return 'hub';
   } else if (where === 'more') {
     await ensureTask(page, 'explore');
     if (!(await page.isVisible(selector))) await page.click('button[data-action="more-views"]');
@@ -202,16 +201,34 @@ async function reveal(page, selector) {
   return where;
 }
 
+/** The rows of Cài đặt that open its sub-screens. */
+const HUB_LINKS = { help: 'hub-help', about: 'hub-about', advanced: 'inspect-tools' };
+
+/**
+ * The open control panel moved to one of its screens the way a visitor gets there: from the task
+ * screen (phones) the "Cài đặt" row, from Cài đặt a row of Khác, from a sub-screen "Quay lại".
+ */
+async function hubView(page, view) {
+  for (let step = 0; step < 4; step++) {
+    const current = await page.getAttribute('#cinema-hub-panel', 'data-view');
+    if (current === view) return;
+    if (current === 'task') await page.click('[data-action="hub-settings"]');
+    else if (current === 'settings' && HUB_LINKS[view]) await page.click(`[data-action="${HUB_LINKS[view]}"]`);
+    else await page.click('[data-action="hub-back"]');
+  }
+  throw new Error(`hub: could not reach the "${view}" screen`);
+}
+
 /** Clicks a control after revealing it; a settings menu (or the phone's hub) opened for it is closed again. */
 async function clickUi(page, selector, options) {
   const opened = await reveal(page, selector);
   await page.click(selector, options);
-  if (opened === 'hub' || opened === 'hub-inspect') await closeMenus(page);
+  if (opened === 'hub') await closeMenus(page);
 }
 
 /**
  * Phones: a control of the round button's panel, the way a visitor reaches it: the panel opened, its
- * task chosen at the top (or "Cài đặt và trợ giúp" unfolded), then a tap.
+ * task chosen at the top (or its screen of Cài đặt reached), then a tap.
  */
 async function hubTap(page, selector) {
   await reveal(page, selector);
@@ -221,7 +238,7 @@ async function hubTap(page, selector) {
 async function tapUi(page, selector) {
   const opened = await reveal(page, selector);
   await page.tap(selector);
-  if (opened === 'hub' || opened === 'hub-inspect') await closeMenus(page);
+  if (opened === 'hub') await closeMenus(page);
 }
 
 async function focusUi(page, selector) {
@@ -504,6 +521,7 @@ async function main() {
       ['ui-states', () => uiStates(browser, base)],
       ['ui-flows', () => uiFlows(browser, base)],
       ['mobile-hub', () => mobileHub(browser, base)],
+      ['ui-settings', () => uiSettings(browser, base)],
       ['ui-zoom', () => uiZoom(browser, base)],
       ['landing-layouts', () => landingLayouts(browser, base)],
       ['landing-network', () => landingNetwork(browser, base)],
@@ -2465,7 +2483,7 @@ async function webglFailure(browser, base) {
   const message = await page.textContent('.cinema-status').catch(() => '');
   // Camera and display controls go (with the reason); seat selection becomes the task, its map stays.
   const disabled = await page.$$eval(
-    '[data-dock="explore"] button, #cinema-settings button[data-preset], #cinema-settings button[data-quality], #cinema-settings input[data-toggle]:not([data-toggle="glass"]), button[data-action="open-inspector"]',
+    '[data-dock="explore"] button, #cinema-hub-panel button[data-preset], #cinema-hub-panel button[data-quality], #cinema-hub-panel input[data-toggle]:not([data-toggle="glass"]), button[data-action="open-inspector"]',
     (controls) => controls.length > 8 && controls.every((b) => b.disabled),
   );
   const reason = await page.textContent('[data-dock="explore"] .cinema-dock__note');
@@ -4104,9 +4122,9 @@ async function mobileHub(browser, base) {
     await page.waitForTimeout(200);
     const open = await geometry(page);
     await screenshot(page, `hub-${name}-2-open`);
-    // The last control is reachable inside the panel (it scrolls, never past the screen), once the
-    // settings are unfolded.
-    await page.tap('[data-action="hub-more"]');
+    // The last control is reachable inside the panel (it scrolls, never past the screen), on its
+    // Cài đặt screen.
+    await page.tap('[data-action="hub-settings"]');
     const last = await page.evaluate(() => {
       const panel = document.querySelector('.cinema-hub__panel');
       const link = panel.querySelector('[data-action="hub-home"]');
@@ -4519,9 +4537,9 @@ async function mobileHub(browser, base) {
     );
 
     // Full screen: offered as the API allows; on, then off; refused, it says so and the page carries on.
-    // It is with the settings, folded under "Cài đặt và trợ giúp" on a phone.
+    // It is in Cài đặt › Hiển thị (on a phone through the panel's "Cài đặt" row).
     await openHub(page);
-    await page.tap('[data-action="hub-more"]');
+    await page.tap('[data-action="hub-settings"]');
     const fullscreen = {
       api: await page.evaluate(() => document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function'),
       shown: await page.isVisible('.cinema-hub [data-action="fullscreen"]'),
@@ -4562,9 +4580,331 @@ async function mobileHub(browser, base) {
     await waitForStatus(page);
     await dismissHint(page);
     await openHub(page);
-    await page.tap('[data-action="hub-more"]');
+    await page.tap('[data-action="hub-settings"]');
     const offered = await page.isVisible('.cinema-hub [data-action="fullscreen"]');
     check('hub: without the Fullscreen API the "Toàn màn hình" button is not offered (the rest of Hiển thị is)', !offered && (await page.isVisible('.cinema-hub button[data-quality="economy"]')), { offered });
+    await context.close();
+  }
+}
+
+// Cài đặt: one panel, one screen at a time (Cài đặt, Hướng dẫn nhanh, Thông tin, Công cụ nâng cao;
+// on a phone the task screen first). Short rows, no help text on the main screen; the way back,
+// Escape and × at every level; focus where it belongs; nothing of the room changes on the way.
+async function uiSettings(browser, base) {
+  report.ui.settings = {};
+  /** What the panel shows now: its screen, title, accessible name, focus, and what can be reached. */
+  const panelState = (page) =>
+    page.evaluate(() => {
+      const panel = document.querySelector('#cinema-hub-panel');
+      const shown = (e) => Boolean(e) && e.getClientRects().length > 0 && !e.closest('[hidden]');
+      const name = (e) => e?.dataset.action ?? e?.dataset.task ?? e?.dataset.quality ?? e?.dataset.preset ?? e?.dataset.toggle ?? (e?.id || e?.tagName.toLowerCase());
+      const view = panel.querySelector(`.cinema-hub__view[data-view="${panel.dataset.view}"]`);
+      const r = panel.getBoundingClientRect();
+      const close = panel.querySelector('[data-action="hub-close"]').getBoundingClientRect();
+      const body = panel.querySelector('.cinema-hub__body');
+      return {
+        open: !panel.hidden,
+        view: panel.dataset.view,
+        title: panel.querySelector('#cinema-hub-title').textContent,
+        label: document.getElementById(panel.getAttribute('aria-labelledby'))?.textContent ?? null,
+        focus: panel.contains(document.activeElement) ? name(document.activeElement) : document.activeElement?.dataset.action ?? null,
+        back: shown(panel.querySelector('[data-action="hub-back"]')) ? panel.querySelector('[data-action="hub-back"]').getAttribute('aria-label') : null,
+        now: shown(panel.querySelector('.cinema-hub__now')),
+        tasks: shown(panel.querySelector('.cinema-hub__tasks .cinema-tasks')),
+        groups: view ? [...view.querySelectorAll('.cinema-hub__group-title')].filter(shown).map((e) => e.textContent) : [],
+        rows: view ? [...view.querySelectorAll('.cinema-hub__row .cinema-hub__label, .cinema-hub__row.cinema-switch .cinema-switch__label, .cinema-hub__row[data-preset]')].filter(shown).map((e) => e.textContent.trim()) : [],
+        text: view?.innerText ?? '',
+        // Focusable things outside the screen shown (must be none: hidden screens are out of reach).
+        hiddenFocusable: [...panel.querySelectorAll('a[href], button, input')].filter((e) => !shown(e) && e.closest('.cinema-hub__view') && !e.closest('.cinema-hub__view[hidden]') && e.closest('[hidden]') === null).length,
+        box: { x: r.x, y: r.y, w: r.width, h: r.height, bottom: r.bottom, right: r.right },
+        closeShown: close.width > 0 && close.top >= -0.5 && close.bottom <= innerHeight + 0.5,
+        scrolls: body.scrollHeight > body.clientHeight + 1,
+        overflowX: body.scrollWidth - body.clientWidth,
+        viewport: { w: innerWidth, h: innerHeight },
+      };
+    });
+  /** The room's state that no screen change may touch. */
+  const roomState = async (page) => {
+    const s = await state(page);
+    return { task: s.task, panel: s.panel, preset: s.preset, seats: s.seats.selected, camera: s.view?.camera.position.map((v) => +v.toFixed(3)), film: await page.getAttribute('.cinema-player', 'data-state'), canvases: s.canvasCount };
+  };
+  const tabStops = async (page, presses = 16) => {
+    const stops = [];
+    for (let i = 0; i < presses; i++) {
+      await page.keyboard.press('Tab');
+      stops.push(await page.evaluate(() => {
+        const e = document.activeElement;
+        return document.querySelector('#cinema-hub-panel').contains(e) && !e.closest('[hidden]') ? (e.dataset.action ?? e.dataset.quality ?? e.dataset.toggle ?? e.dataset.preset ?? e.id ?? e.tagName) : `outside:${e?.tagName}`;
+      }));
+    }
+    return stops;
+  };
+
+  // A. Desktop, by keyboard: "Cài đặt" opens on its main screen; each sub-screen and back.
+  {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    attachConsole(page, 'settings-desktop');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await waitForCameraToSettle(page);
+    // Chọn ghế with a seat chosen and the sidebar open: a press that went through would change them.
+    await page.click('button[data-task="seats"]');
+    await page.waitForSelector('#cinema-seat-panel:not([hidden])');
+    await page.click('button[data-seat="F05"]');
+    const before = await roomState(page);
+    await page.focus('button[data-action="settings"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+    const main = await panelState(page);
+    await screenshot(page, 'settings-desktop-1-main');
+    const mainStops = await tabStops(page);
+    check(
+      'settings (desktop): "Cài đặt" opens its main screen — title and dialog name "Cài đặt", focus on the title; Hiển thị (Chất lượng, Giảm hiệu ứng kính, Toàn màn hình) and Khác (Hướng dẫn nhanh, Thông tin, Công cụ nâng cao), "Về trang chủ" at the foot; no camera line, task switch, help text or explanations',
+      main.view === 'settings' && main.title === 'Cài đặt' && main.label === 'Cài đặt' && main.focus === 'cinema-hub-title' && main.back === null && !main.now && !main.tasks &&
+        JSON.stringify(main.groups) === JSON.stringify(['Hiển thị', 'Khác']) &&
+        JSON.stringify(main.rows) === JSON.stringify(['Chất lượng', 'Giảm hiệu ứng kính', 'Toàn màn hình', 'Hướng dẫn nhanh', 'Thông tin', 'Công cụ nâng cao']) &&
+        /Về trang chủ\s*$/.test(main.text) && !/Điều hướng|Tổng quan|Kéo|WASD|Tiết kiệm:|Nền đặc/.test(main.text),
+      { ...main, text: main.text.split('\n') },
+    );
+    check('settings (desktop): Tab stays inside the panel and only reaches the screen shown', mainStops.every((s) => !s.startsWith('outside')) && mainStops.includes('hub-help') && mainStops.includes('hub-home') && !mainStops.includes('hub-back') && main.hiddenFocusable === 0, mainStops);
+
+    // Hướng dẫn nhanh: four lines; Escape goes back to Cài đặt, focus on its row.
+    await page.focus('[data-action="hub-help"]');
+    await page.keyboard.press('Enter');
+    const help = await panelState(page);
+    await screenshot(page, 'settings-desktop-2-help');
+    const helpStops = await tabStops(page, 6);
+    await page.keyboard.press('Escape');
+    const helpBack = await panelState(page);
+    check(
+      'settings (desktop): "Hướng dẫn nhanh" replaces the screen in the same panel — title and dialog name follow, focus on the title, "Quay lại Cài đặt"; four lines for the mouse; Tab reaches only back and ×; Escape returns to Cài đặt with focus on its row',
+      help.open && help.view === 'help' && help.title === 'Hướng dẫn nhanh' && help.label === 'Hướng dẫn nhanh' && help.focus === 'cinema-hub-title' && help.back === 'Quay lại Cài đặt' &&
+        JSON.stringify(help.rows) === JSON.stringify(['Nhìn quanh', 'Chọn ghế', 'Đi bộ', 'Phát phim']) && /Kéo chuột/.test(help.text) && /WASD, phím mũi tên/.test(help.text) &&
+        helpStops.every((s) => ['hub-back', 'hub-close'].includes(s)) &&
+        helpBack.open && helpBack.view === 'settings' && helpBack.focus === 'hub-help',
+      { help: { ...help, text: help.text.split('\n') }, helpStops, helpBack: { view: helpBack.view, focus: helpBack.focus } },
+    );
+
+    // Thông tin: the brand, the demo note, the film's credit with its links; "Quay lại" returns to its row.
+    await page.click('[data-action="hub-about"]');
+    const about = await panelState(page);
+    const links = await page.$$eval('#cinema-hub-about a[href]', (list) => list.map((a) => ({ text: a.textContent, href: a.href, target: a.target })));
+    const credit = await page.isVisible('.cinema-player__credit');
+    await screenshot(page, 'settings-desktop-3-about');
+    await page.click('[data-action="hub-back"]');
+    const aboutBack = await panelState(page);
+    check(
+      'settings (desktop): "Thông tin" shows Tân Phong Cinema, "Bản demo — không bán vé hoặc giữ chỗ." and the film\'s credit and licence links; "Quay lại" returns focus to its row (the player keeps its own credit)',
+      about.view === 'about' && about.title === 'Thông tin' && /Tân Phong Cinema/.test(about.text) && about.text.includes('Bản demo — không bán vé hoặc giữ chỗ.') &&
+        links.some((l) => /Blender Foundation/.test(l.text) && l.href.startsWith('https://')) && links.some((l) => l.text === 'CC BY 3.0' && /creativecommons/.test(l.href)) && links.every((l) => l.target === '_blank') &&
+        aboutBack.view === 'settings' && aboutBack.focus === 'hub-about' && (await page.$$('.cinema-player__credit a[href]')).length === 2,
+      { about: about.text.split('\n'), links, credit, back: aboutBack.focus },
+    );
+
+    // Công cụ nâng cao: its two groups and the seat inspector; a switch keeps the screen; × closes all.
+    await page.click('[data-action="inspect-tools"]');
+    const advanced = await panelState(page);
+    await screenshot(page, 'settings-desktop-4-advanced');
+    await page.click('label:has(input[data-toggle="ceiling"])');
+    const ceilingOff = { visible: (await state(page)).visibility.ceiling, checked: await page.isChecked('input[data-toggle="ceiling"]'), view: (await panelState(page)).view };
+    await page.click('label:has(input[data-toggle="ceiling"])');
+    const ceilingOn = (await state(page)).visibility.ceiling;
+    await page.click('[data-action="hub-close"]');
+    const closed = await panelState(page);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+    const reopened = await panelState(page);
+    check(
+      'settings (desktop): "Công cụ nâng cao" has Góc kiểm tra (Mặt cắt bên, Mặt bằng), Thành phần phòng (Trần, Vách sau, Vách phải) and "Kiểm tra ghế"; a part switch works and keeps the screen; × closes the whole panel (focus on "Cài đặt") and it opens again on Cài đặt',
+      advanced.view === 'advanced' && advanced.title === 'Công cụ nâng cao' && JSON.stringify(advanced.groups) === JSON.stringify(['Góc kiểm tra', 'Thành phần phòng']) &&
+        JSON.stringify(advanced.rows) === JSON.stringify(['Mặt cắt bên', 'Mặt bằng', 'Trần', 'Vách sau', 'Vách phải', 'Kiểm tra ghế']) &&
+        ceilingOff.visible === false && !ceilingOff.checked && ceilingOff.view === 'advanced' && ceilingOn === true &&
+        !closed.open && closed.focus === 'settings' && reopened.view === 'settings' && reopened.title === 'Cài đặt',
+      { advanced: advanced.rows, groups: advanced.groups, ceilingOff, ceilingOn, closedFocus: closed.focus, reopened: reopened.view },
+    );
+
+    // Hiển thị: quality, less glass and full screen do what they say (and the labels follow).
+    await page.click('button[data-quality="economy"]');
+    const economy = await page.getAttribute('.cinema-app', 'data-quality');
+    await page.click('button[data-quality="high"]');
+    await page.click('label:has(input[data-toggle="glass"])');
+    const glassOn = await page.evaluate(() => document.documentElement.dataset.glass ?? null);
+    await page.click('label:has(input[data-toggle="glass"])');
+    const glassOff = await page.evaluate(() => document.documentElement.dataset.glass ?? null);
+    const fullscreen = { offered: await page.isVisible('[data-action="fullscreen"]') };
+    await page.click('[data-action="fullscreen"]');
+    await page.waitForTimeout(400);
+    fullscreen.on = await page.evaluate(() => ({ element: document.fullscreenElement !== null, label: document.querySelector('[data-action="fullscreen"]').textContent, pressed: document.querySelector('[data-action="fullscreen"]').getAttribute('aria-pressed') }));
+    if (fullscreen.on.element) {
+      await page.click('[data-action="fullscreen"]');
+      await page.waitForTimeout(400);
+    }
+    fullscreen.off = await page.evaluate(() => ({ element: document.fullscreenElement !== null, label: document.querySelector('[data-action="fullscreen"]').textContent }));
+    check(
+      'settings (desktop): Chất lượng switches the level, "Giảm hiệu ứng kính" turns solid panes on and off, "Toàn màn hình" turns full screen on (the row then reads "Thoát toàn màn hình") and off',
+      economy === 'economy' && (await page.getAttribute('.cinema-app', 'data-quality')) === 'high' && glassOn === 'reduced' && glassOff === null &&
+        fullscreen.offered && fullscreen.on.element && fullscreen.on.label === 'Thoát toàn màn hình' && fullscreen.on.pressed === 'true' && !fullscreen.off.element && fullscreen.off.label === 'Toàn màn hình',
+      { economy, glassOn, glassOff, fullscreen },
+    );
+
+    // A press beside the panel only closes it: no seat, no camera move; nothing of the room changed.
+    await page.mouse.click(300, 560);
+    await page.waitForTimeout(400);
+    const after = await roomState(page);
+    const outside = await panelState(page);
+    check('settings (desktop): a press on the room beside the panel only closes it; after every screen and setting, the task, seats, camera, film and canvas are as they were', !outside.open && JSON.stringify(after) === JSON.stringify(before), { before, after });
+
+    // Escape on the main screen closes the panel and focus returns to "Cài đặt".
+    await page.focus('button[data-action="settings"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+    await page.keyboard.press('Escape');
+    const escaped = await panelState(page);
+    check('settings (desktop): Escape on Cài đặt closes the panel; focus returns to "Cài đặt"', !escaped.open && escaped.focus === 'settings', escaped.focus);
+
+    // Desktop → phone → desktop with a sub-screen open: the panel closes and opens again on the
+    // first screen of each layout; the room keeps its task, seats and film. (Khám phá first: with
+    // the seat sidebar open, a phone would show the full-screen map instead.)
+    await page.click('button[data-task="explore"]');
+    await page.click('button[data-action="settings"]');
+    await page.click('[data-action="inspect-tools"]');
+    const wideState = await roomState(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.layout === 'immersive');
+    await page.waitForTimeout(300);
+    const narrow = await panelState(page);
+    await page.click('.cinema-hub__toggle');
+    const narrowOpen = await panelState(page);
+    await page.click('[data-action="hub-close"]');
+    const phoneState = await roomState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.layout === 'standard');
+    await page.click('button[data-action="settings"]');
+    const wideAgain = await panelState(page);
+    await page.click('[data-action="hub-close"]');
+    const keep = (s) => JSON.stringify([s.task, s.seats, s.film, s.canvases]);
+    check(
+      'settings (resize): a sub-screen open while the window turns into a phone closes the panel; the round button opens it on the task screen, "Cài đặt" (wide again) on Cài đặt; task, seats, film and canvas kept',
+      !narrow.open && narrowOpen.view === 'task' && narrowOpen.title === 'Điều khiển rạp' && wideAgain.view === 'settings' && keep(wideState) === keep(phoneState) && keep(phoneState) === keep(await roomState(page)),
+      { narrow: narrow.open, narrowOpen: narrowOpen.view, wideAgain: wideAgain.view, wideState, phoneState },
+    );
+    report.ui.settings.desktop = { main: main.rows, groups: main.groups, help: help.rows, advanced: advanced.rows, links };
+    await context.close();
+  }
+
+  // B. Phone: the task screen first, then "Cài đặt"; back, Escape and × at every level; the task and
+  // the room stay as they were.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    await context.addInitScript(() => localStorage.setItem('tp-cinema-hub-hint', 'seen'));
+    const page = await context.newPage();
+    attachConsole(page, 'settings-phone');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await waitForCameraToSettle(page);
+    await page.tap('.cinema-hub__toggle');
+    await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+    await page.tap('.cinema-hub button[data-task="watch"]');
+    await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.task === 'watch');
+    const task = await panelState(page);
+    const before = await roomState(page);
+    await screenshot(page, 'settings-phone-1-task');
+    await page.tap('[data-action="hub-settings"]');
+    const settings = await panelState(page);
+    await screenshot(page, 'settings-phone-2-settings');
+    await page.tap('[data-action="hub-back"]');
+    const backToTask = await panelState(page);
+    check(
+      'settings (phone): the panel opens on the task screen ("Điều khiển rạp", camera line, the three tasks, the task\'s controls, a "Cài đặt" row); "Cài đặt" changes the same panel to Cài đặt (no camera line or task switch, "Quay lại Điều khiển rạp"); back returns to the task in use, focus on the row',
+      task.view === 'task' && task.title === 'Điều khiển rạp' && task.now && task.tasks && JSON.stringify(task.rows) === JSON.stringify(['Cài đặt']) &&
+        settings.view === 'settings' && settings.title === 'Cài đặt' && settings.label === 'Cài đặt' && !settings.now && !settings.tasks && settings.back === 'Quay lại Điều khiển rạp' &&
+        JSON.stringify(settings.groups) === JSON.stringify(['Hiển thị', 'Khác']) && settings.closeShown && settings.box.bottom <= settings.viewport.h + 0.5 &&
+        backToTask.view === 'task' && backToTask.focus === 'hub-settings' && (await state(page)).task === 'watch',
+      { task: { rows: task.rows, now: task.now }, settings: { rows: settings.rows, back: settings.back, box: settings.box }, backFocus: backToTask.focus },
+    );
+
+    // Sub-screens, then Escape step by step: help → Cài đặt → task → closed.
+    await page.tap('[data-action="hub-settings"]');
+    await page.tap('[data-action="hub-help"]');
+    const help = await panelState(page);
+    await screenshot(page, 'settings-phone-3-help');
+    await page.keyboard.press('Escape');
+    const esc1 = await panelState(page);
+    await page.keyboard.press('Escape');
+    const esc2 = await panelState(page);
+    await page.keyboard.press('Escape');
+    const esc3 = await panelState(page);
+    check(
+      'settings (phone): "Hướng dẫn nhanh" speaks of fingers (Kéo một ngón, Chạm ghế, Cần điều khiển); Escape goes back one screen at a time (Cài đặt, then the task), then closes with focus on the round button',
+      help.view === 'help' && JSON.stringify(help.rows) === JSON.stringify(['Nhìn quanh', 'Chọn ghế', 'Đi bộ', 'Phát phim']) && /Kéo một ngón/.test(help.text) && /Chạm ghế hoặc mở sơ đồ/.test(help.text) && /Cần điều khiển/.test(help.text) &&
+        esc1.open && esc1.view === 'settings' && esc1.focus === 'hub-help' && esc2.open && esc2.view === 'task' && esc2.focus === 'hub-settings' && !esc3.open && esc3.focus === 'hub',
+      { help: help.text.split('\n'), steps: [esc1.view, esc2.view, esc3.open] },
+    );
+
+    // × from a sub-screen closes it all; the next opening is the task screen again, the task unchanged.
+    await page.tap('.cinema-hub__toggle');
+    await page.tap('[data-action="hub-settings"]');
+    await page.tap('[data-action="inspect-tools"]');
+    await screenshot(page, 'settings-phone-4-advanced');
+    await page.tap('[data-action="hub-close"]');
+    const closed = await panelState(page);
+    await page.tap('.cinema-hub__toggle');
+    const reopened = await panelState(page);
+    await page.tap('[data-action="hub-settings"]');
+    await page.tap('[data-action="hub-about"]');
+    await screenshot(page, 'settings-phone-5-about');
+    await page.tap('[data-action="hub-close"]');
+    const after = await roomState(page);
+    check(
+      'settings (phone): × on a sub-screen closes the whole panel; it opens again on the task screen with the same task; task, seats, camera, film and canvas never changed',
+      !closed.open && reopened.view === 'task' && reopened.title === 'Điều khiển rạp' && JSON.stringify(after) === JSON.stringify(before),
+      { reopened: reopened.view, before, after },
+    );
+    report.ui.settings.phone = { task: task.rows, settings: settings.rows, help: help.rows };
+    await context.close();
+  }
+
+  // C. Low screens and large text: the panel stays on screen, its head (×) in view, the rest scrolls.
+  for (const { name, options, zoom } of [
+    { name: 'landscape-844x390', options: { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true } },
+    { name: 'desktop-1280x600-text-200', options: { viewport: { width: 1280, height: 600 } }, zoom: true },
+  ]) {
+    const context = await browser.newContext(options);
+    await context.addInitScript(() => localStorage.setItem('tp-cinema-hub-hint', 'seen'));
+    const page = await context.newPage();
+    attachConsole(page, `settings-${name}`);
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    // Large text: the page's text size doubled (every size is in rem).
+    if (zoom) await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    await openHubPanel(page);
+    await hubView(page, 'settings');
+    const settings = await panelState(page);
+    const wrap = await page.evaluate(() => {
+      const label = document.querySelector('#cinema-quality-heading').getBoundingClientRect();
+      const group = document.querySelector('.cinema-hub__row--quality .cinema-segmented').getBoundingClientRect();
+      return { below: group.top >= label.bottom - 1, inside: group.right <= document.querySelector('.cinema-hub__body').getBoundingClientRect().right + 0.5 };
+    });
+    const last = await page.evaluate(() => {
+      const panel = document.querySelector('#cinema-hub-panel');
+      const link = panel.querySelector('[data-action="hub-home"]');
+      link.scrollIntoView({ block: 'nearest' });
+      const p = panel.getBoundingClientRect();
+      const l = link.getBoundingClientRect();
+      return l.top >= p.top - 0.5 && l.bottom <= p.bottom + 0.5;
+    });
+    const stillShown = (await panelState(page)).closeShown;
+    await screenshot(page, `settings-${name}`);
+    await hubView(page, 'advanced');
+    const advanced = await panelState(page);
+    report.ui.settings[name] = { box: settings.box, scrolls: settings.scrolls, wrap, last };
+    check(
+      `settings (${name}): Cài đặt fits the screen (× in view while the body scrolls to "Về trang chủ"), no sideways scroll${zoom ? '; with text at 200 % Chất lượng goes under its label and stays inside' : ''}; Công cụ nâng cao fits too`,
+      settings.box.y >= -0.5 && settings.box.bottom <= settings.viewport.h + 0.5 && settings.closeShown && stillShown && last && settings.overflowX <= 1 &&
+        (!zoom || (wrap.below && wrap.inside)) && advanced.box.bottom <= advanced.viewport.h + 0.5 && advanced.closeShown && advanced.overflowX <= 1,
+      { settings: settings.box, scrolls: settings.scrolls, wrap, last, overflowX: settings.overflowX, advanced: advanced.box },
+    );
     await context.close();
   }
 }
@@ -4831,7 +5171,7 @@ async function uiZoom(browser, base) {
     shares.watch = await canvasShare(page);
     await screenshot(page, `zoom200-${name}-3-watch`);
     await clickUi(page, PRIMARY);
-    // The settings (folded under "Cài đặt và trợ giúp" in the round button's panel at this size).
+    // Cài đặt › Công cụ nâng cao (through the round button's panel at this size).
     await reveal(page, 'button[data-action="inspect-tools"]');
     await page.click('button[data-action="inspect-tools"]');
     const menu = await page.evaluate(() => {

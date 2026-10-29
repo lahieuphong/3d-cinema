@@ -311,12 +311,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   touch-action: manipulation;
 }
 
-.cinema-switch--row {
-  display: flex;
-  justify-content: space-between;
-  padding-right: 8px;
-}
-
 .cinema-switch__input {
   position: absolute;
   opacity: 0;
@@ -1356,71 +1350,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
-/* ================================================================ Hiển thị (in "Cài đặt") */
-
-.cinema-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.cinema-settings__item {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.cinema-settings__item .cinema-segmented {
-  display: flex;
-}
-
-.cinema-settings__heading {
-  color: var(--ink);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-}
-
-.cinema-settings__hint {
-  margin: 0;
-  color: var(--ink-secondary);
-  font-size: var(--text-xs);
-}
-
-.cinema-settings__disclosure {
-  justify-content: space-between;
-  width: 100%;
-  border-color: transparent;
-  background: var(--fill-subtle);
-}
-
-.cinema-settings__disclosure::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  margin-right: 4px;
-  border-right: 1.75px solid currentColor;
-  border-bottom: 1.75px solid currentColor;
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform var(--duration-fast) var(--ease-out);
-  pointer-events: none;
-}
-
-.cinema-settings__disclosure[aria-expanded='true']::after {
-  transform: translateY(2px) rotate(-135deg);
-}
-
-.cinema-settings__tools {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 0 0;
-}
-
-.cinema-settings__row .cinema-button {
-  flex: 1 1 auto;
-}
-
 /* ================================================================ Seat panel
 
    A glass sidebar over the room (its header, a scrolling body with the map on a steadier pane, a
@@ -2116,8 +2045,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-.cinema-app:not([data-layout='immersive']) .cinema-hub__toggle,
-.cinema-app:not([data-layout='immersive']) .cinema-hub__floating-only {
+.cinema-app:not([data-layout='immersive']) .cinema-hub__toggle {
   display: none;
 }
 
@@ -2421,16 +2349,22 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
+/* The head: the way back (on a sub-screen), the screen's title, close. */
 .cinema-hub__head {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 10px 2px 20px;
+  gap: 6px;
+  padding: 10px 10px 10px 20px;
+}
+
+.cinema-hub__head:has(.cinema-hub__back:not([hidden])) {
+  padding-left: 8px;
 }
 
 .cinema-hub__title {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
@@ -2442,14 +2376,18 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   outline: none;
 }
 
+.cinema-hub__back,
 .cinema-hub__close {
-  width: var(--tap);
+  flex: none;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-color: transparent;
   border-radius: 50%;
   background: var(--fill-hover);
 }
 
+.cinema-hub__back svg,
 .cinema-hub__close svg {
   width: 20px;
   height: 20px;
@@ -2505,30 +2443,13 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   padding: 0 16px 16px;
 }
 
-.cinema-hub__section {
-  padding: 14px 0;
-  border-top: 1px solid var(--separator);
-}
 
-.cinema-hub__section:first-child {
-  border-top: 0;
-}
-
-/* The task's section only exists on phones (its controls live over the room elsewhere). */
-.cinema-hub[data-floating='false'] .cinema-hub__section[data-section='task'],
-.cinema-hub[data-floating='false'] .cinema-hub__more-toggle {
-  display: none;
-}
-
-.cinema-hub[data-floating='false'] .cinema-hub__more-body > .cinema-hub__section:first-child {
-  padding-top: 8px;
-}
-
-.cinema-hub__heading {
-  margin: 0 0 10px;
-  color: var(--ink);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+/* One screen at a time; the panel takes the height of what it shows (up to its maximum, then the
+   body scrolls under the head). */
+.cinema-hub__view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .cinema-hub__content {
@@ -2537,49 +2458,171 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   gap: 10px;
 }
 
-/* "Cài đặt và trợ giúp": a row that unfolds the settings under the task's controls. */
-.cinema-hub__more {
+/* Groups of rows: a small title, light separators, no card per row. */
+.cinema-hub__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cinema-hub__group-title {
+  margin: 0;
+  padding: 0 8px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.cinema-hub__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.cinema-hub__rows > :not(:first-child, .cinema-hub__note) {
   border-top: 1px solid var(--separator);
 }
 
-.cinema-hub__more-toggle {
-  justify-content: space-between;
-  width: 100%;
-  margin-top: 12px;
-  border-color: transparent;
-  background: var(--fill-subtle);
-  font-size: var(--text-md);
+/* After the task's controls on a phone: the way into Cài đặt. */
+.cinema-hub__rows--end {
+  border-top: 1px solid var(--separator);
+  padding-top: 4px;
 }
 
-.cinema-hub__more-toggle::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  margin-right: 4px;
-  border-right: 1.75px solid currentColor;
-  border-bottom: 1.75px solid currentColor;
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform var(--duration-fast) var(--ease-out);
-  pointer-events: none;
-}
-
-.cinema-hub__more-toggle[aria-expanded='true']::after {
-  transform: translateY(2px) rotate(-135deg);
-}
-
-.cinema-hub[data-floating='false'] .cinema-hub__more {
-  border-top: 0;
-}
-
+/* A row: its label on the left, its control, value or chevron on the right. */
 .cinema-hub__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-height: 48px;
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--ink);
+  font-size: var(--text-md);
+  line-height: var(--leading-title);
+  text-align: left;
 }
 
+.cinema-hub__label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+button.cinema-hub__row {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+button.cinema-hub__row:hover:not(:disabled) {
+  background-color: var(--fill-hover);
+}
+
+button.cinema-hub__row:active:not(:disabled) {
+  background-color: var(--fill-pressed);
+}
+
+button.cinema-hub__row:disabled {
+  color: var(--ink-tertiary);
+  cursor: not-allowed;
+}
+
+.cinema-hub__chevron,
+.cinema-hub__row--nav .cinema-icon,
+.cinema-hub__fullscreen .cinema-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  color: var(--ink-tertiary);
+}
+
+/* A technical view that is on (the camera is there). */
+.cinema-hub__row[data-preset][aria-pressed='true']::after {
+  content: '✓';
+  color: var(--accent-strong);
+  font-weight: var(--weight-semibold);
+}
+
+/* Chất lượng: the two choices to the right, under the label when the row is too narrow. */
+.cinema-hub__row--quality .cinema-segmented {
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.cinema-hub .cinema-segmented__button {
+  flex: 1 0 auto;
+  min-width: 5em;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+/* Switches as rows: the whole row is the switch's label. */
+.cinema-hub__row.cinema-switch {
+  display: flex;
+  flex-wrap: nowrap;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--text-md);
+}
+
+.cinema-hub__row.cinema-switch .cinema-switch__label {
+  flex: 1 1 auto;
+}
+
+/* Facts (Hướng dẫn nhanh, Thông tin): the term, then its value on the right. */
+.cinema-hub__fact .cinema-hub__label {
+  flex: 0 1 auto;
+}
+
+.cinema-hub__value {
+  flex: 1 1 10em;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-secondary);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.cinema-hub__value a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 0.4);
+  text-underline-offset: 3px;
+}
+
+.cinema-hub__about {
+  padding: 0 8px;
+}
+
+.cinema-hub__about-name {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.cinema-hub__about-note {
+  margin: 4px 0 0;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+}
+
+/* Only when something needs saying: a refusal, why controls are off. */
 .cinema-hub__note {
   margin: 0;
+  padding: 0 8px 8px;
   color: var(--ink-secondary);
   font-size: var(--text-xs);
 }
@@ -2588,18 +2631,34 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-.cinema-hub__help {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding-left: 18px;
-  color: var(--ink-secondary);
-  font-size: var(--text-sm);
+.cinema-hub__note--scene {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--fill-subtle);
+}
+
+/* Về trang chủ: a plain link at the foot of Cài đặt. */
+.cinema-hub__foot {
+  display: flex;
+  padding: 0 0 2px;
 }
 
 .cinema-hub__home {
-  align-self: flex-start;
-  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 0.4);
+  text-underline-offset: 3px;
+}
+
+.cinema-hub__home:hover {
+  background-color: var(--fill-hover);
 }
 
 /* The first-visit hint next to the button. */
@@ -2769,8 +2828,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   .cinema-hub__panel,
   .cinema-seat,
   .cinema-brand,
-  .cinema-settings__disclosure::after,
-  .cinema-hub__more-toggle::after {
+  .cinema-hub__row {
     transition: none;
   }
 

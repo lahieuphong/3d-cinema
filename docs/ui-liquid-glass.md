@@ -89,18 +89,44 @@ Nguyên tắc chung:
     - Xem phim: trình phát kèm dòng ghi công.
   - “Chọn ghế” mở sidebar kính đè lên bên phải khán phòng; canvas không đổi kích thước, thanh tác
     vụ dời sang khoảng còn lại.
-  - “Cài đặt” chỉ còn Hiển thị (chất lượng, giảm hiệu ứng kính, toàn màn hình, công cụ kiểm tra gập
-    lại), Trợ giúp và Về trang chủ.
+  - “Cài đặt” mở thẳng màn Cài đặt chính (xem “Cài đặt” bên dưới).
 - **Tablet dọc.** Sơ đồ là sheet kính nổi phía dưới, đè lên khán phòng (cao 52dvh, cách mép 12 px);
   canvas không đổi kích thước, thanh chọn tác vụ nằm ngay trên sheet. Mở rộng được thành toàn màn
   hình.
 - **Điện thoại (`data-layout="immersive"`).**
   - Khán phòng tràn màn hình, chỉ có nút tròn kính (kéo, bám cạnh, nhớ vị trí như trước).
-  - Hub có ba tác vụ ở đầu, bên dưới chỉ là nội dung của tác vụ đang chọn. “Cài đặt và trợ giúp”
-    gập lại và lần mở sau gập lại như cũ.
+  - Hub có ba tác vụ ở đầu, bên dưới là nội dung của tác vụ đang chọn, cuối cùng một hàng
+    “Cài đặt” chuyển chính panel đó sang màn Cài đặt. Đóng rồi mở lại luôn về màn tác vụ.
   - Khi phim đã phát, mini player “Đang phát / Tạm dừng” ở góc dưới.
   - Sơ đồ ghế vẫn toàn màn hình, giờ là một tấm kính đè lên khán phòng: phòng vẫn hiện mờ phía
     sau (inert, không đổi kích thước), thay cho nền đen.
+
+### Cài đặt
+
+Một panel, mỗi lúc một màn (state nội bộ của `controlHub.ts`: `task` / `settings` / `help` /
+`about` / `advanced`, chỉ chọn nội dung panel, không đụng tới tác vụ). Đổi màn là thay nội dung tại
+chỗ, không mở thêm modal và không bung accordion.
+
+- **Màn chính “Cài đặt”** (header: tiêu đề, ×; trên điện thoại thêm nút Quay lại về màn tác vụ):
+  - Hiển thị: Chất lượng (Cao / Tiết kiệm, xuống dưới nhãn khi không đủ rộng), Giảm hiệu ứng kính
+    (switch, giữ tên và giá trị lưu `tp-glass`), Toàn màn hình (thành “Thoát toàn màn hình” khi đang
+    bật; ẩn nếu trình duyệt không hỗ trợ).
+  - Khác: Hướng dẫn nhanh ›, Thông tin ›, Công cụ nâng cao ›.
+  - Cuối: link “Về trang chủ”.
+  - Không có mô tả camera, danh sách hướng dẫn hay chú thích thường trực. Chỉ hiện chữ khi cần:
+    trình duyệt từ chối toàn màn hình, hoặc lý do các nút bị tắt khi không có cảnh 3D.
+- **Hướng dẫn nhanh:** bốn dòng theo chuột hoặc cảm ứng (Nhìn quanh, Chọn ghế, Đi bộ, Phát phim).
+- **Thông tin:** Tân Phong Cinema, “Bản demo — không bán vé hoặc giữ chỗ.”, ghi công phim và hai
+  liên kết. Dòng ghi công trong trình phát vẫn giữ nguyên.
+- **Công cụ nâng cao:** Góc kiểm tra (Mặt cắt bên, Mặt bằng), Thành phần phòng (Trần, Vách sau,
+  Vách phải), hành động riêng “Kiểm tra ghế”.
+- **Điều hướng:** màn con có nút Quay lại (tên đọc: “Quay lại Cài đặt”); quay lại trả focus về hàng
+  đã mở. Escape lùi một màn, ở màn đầu thì đóng. × luôn đóng cả panel. Mỗi lần đổi màn: tiêu đề và
+  tên dialog đổi theo, focus vào tiêu đề; màn ẩn dùng `hidden` nên không focus và không bị đọc.
+  Đổi bố cục desktop ↔ điện thoại đóng panel; mở lại thì về màn đầu của bố cục đó.
+- **Trình bày:** mỗi hàng nhãn trái, điều khiển / giá trị / chevron phải; nhóm có tiêu đề nhỏ và
+  separator mảnh, không có card riêng cho từng hàng; hàng cao ≥ 48 px, nút ≥ 44 px. Panel cao theo
+  nội dung, tối đa bằng khoảng trống trên màn hình, phần thân cuộn dưới header cố định.
 
 Tác vụ vẫn chỉ do `taskLayout.ts` quyết định. Các nút tác vụ gọi `onTask`, trang `dispatch`. Đổi
 bố cục chỉ di chuyển chính các phần tử DOM, không tạo bản sao, không gắn listener mới.
