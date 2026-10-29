@@ -31,6 +31,12 @@ body {
   background: var(--site-bg);
 }
 
+/* Every page: a link with no shape of its own (words in a sentence) still gets a rounded focus ring
+   and highlight. No specificity, so any link styled as a button or pill keeps its own shape. */
+:where(a) {
+  border-radius: var(--radius-xs);
+}
+
 /* The auditorium's own dark (its styles arrive with it; this keeps the opening screen the same colour). */
 html:is([data-route='cinema'], [data-route='inspector']) body {
   background: var(--canvas);

@@ -68,6 +68,9 @@ Nguyên tắc chung:
     (`--shadow-round`). Nút tròn luôn cao bằng rộng, kể cả trong panel 44 px trên điện thoại.
 - **Hình khối.**
   - Nút 14 px; pill 999 px; panel 26 px.
+  - Không có vùng sáng nào góc vuông: hover, nhấn và vòng focus luôn theo góc bo của phần tử;
+    link chữ không có hình riêng được bo `--radius-xs` (`:where(a)` trong `src/site.css`, không
+    tăng specificity); ghế trên sơ đồ bo `36% 36% 26% 26%`.
   - Khoảng cách 4/8/12/16/24/32.
   - Vùng bấm tối thiểu 40 px (chuột), 44 px (cảm ứng).
 - **Chữ.**
@@ -130,7 +133,9 @@ chỗ, không mở thêm modal và không bung accordion.
   tên dialog đổi theo, focus vào tiêu đề; màn ẩn dùng `hidden` nên không focus và không bị đọc.
   Đổi bố cục desktop ↔ điện thoại đóng panel; mở lại thì về màn đầu của bố cục đó.
 - **Trình bày:** mỗi hàng nhãn trái, điều khiển / giá trị / chevron phải; nhóm có tiêu đề nhỏ và
-  separator mảnh, không có card riêng cho từng hàng; hàng cao ≥ 48 px, nút ≥ 44 px. Panel cao theo
+  separator mảnh thụt vào 12 px hai đầu, không có card riêng cho từng hàng; hàng cao ≥ 48 px, nút
+  ≥ 44 px. Hàng bấm được khi hover / nhấn / focus sáng lên thành khối kính bo 14 px
+  (`--radius-md`), separator ngay trên và dưới nó ẩn đi để không cắt góc. Panel cao theo
   nội dung, tối đa bằng khoảng trống trên màn hình, phần thân cuộn dưới header cố định.
 
 Tác vụ vẫn chỉ do `taskLayout.ts` quyết định. Các nút tác vụ gọi `onTask`, trang `dispatch`. Đổi
