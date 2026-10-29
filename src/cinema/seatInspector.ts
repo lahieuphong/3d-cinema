@@ -3,9 +3,10 @@ import { PAGE_TITLES } from '../brand.ts';
 import {
   Box3,
   BufferGeometry,
+  CanvasTexture,
   CircleGeometry,
+  Color,
   Float32BufferAttribute,
-  GridHelper,
   LineBasicMaterial,
   LineSegments,
   Mesh,
@@ -14,6 +15,7 @@ import {
   PCFShadowMap,
   Scene,
   Sphere,
+  SRGBColorSpace,
   Vector3,
 } from 'three';
 import { CameraRig } from './cameraRig.ts';
@@ -82,8 +84,9 @@ interface InspectorContent {
   modelBounds: Box3;
   lighting: StudioLighting;
   environment: InteriorEnvironment;
+  backdrop: CanvasTexture;
   floor: Mesh<CircleGeometry, MeshStandardMaterial>;
-  grid: GridHelper;
+  grid: LineSegments<BufferGeometry, LineBasicMaterial>;
   footprint: LineSegments<BufferGeometry, LineBasicMaterial>;
   boundsBox: LineSegments<BufferGeometry, LineBasicMaterial>;
 }
@@ -236,17 +239,20 @@ class SeatInspectorView {
     this.rig.dispose();
     this.scene.clear();
     this.scene.environment = null;
-    const { instances, model, materials, lighting, environment, floor, footprint, boundsBox, grid } = this.content;
+    this.scene.background = null;
+    const { instances, model, materials, lighting, environment, backdrop, floor, footprint, boundsBox, grid } = this.content;
+    backdrop.dispose();
     instances.dispose();
     model.dispose();
     disposeMaterials(materials);
     lighting.dispose();
     environment.dispose();
-    for (const object of [floor, footprint, boundsBox]) {
+    floor.material.map?.dispose();
+    floor.material.alphaMap?.dispose();
+    for (const object of [floor, grid, footprint, boundsBox]) {
       object.geometry.dispose();
       object.material.dispose();
     }
-    grid.dispose();
     this.host.dispose();
   }
 
@@ -273,20 +279,41 @@ class SeatInspectorView {
     const environment = createInteriorEnvironment(this.host.renderer);
     this.scene.environment = environment.texture;
 
+    // Behind everything, a soft warm glow (an sRGB picture: drawn as is, not tone mapped), so the
+    // seat's dark frame stands out from the stage.
+    const [glow, edge] = inspector.backdropColours;
+    const backdrop = radialTexture([[0, glow], [1, edge]]);
+    backdrop.colorSpace = SRGBColorSpace;
+    this.scene.background = backdrop;
+
+    // The stage: a warm pool of light under the seat that fades into the background (it still takes
+    // the seat's shadow). Pushed back in depth so lines drawn at floor level stay on top.
+    const [centre, middle, outer] = inspector.floorColours;
+    const floorColour = radialTexture([[0, centre], [0.3, middle], [1, outer]]);
+    floorColour.colorSpace = SRGBColorSpace;
     const floor = new Mesh(
-      new CircleGeometry(inspector.floorRadius, 64),
-      // Pushed back in depth so the grid and footprint lines drawn at floor level stay on top.
-      new MeshStandardMaterial({ color: 0x8b8e94, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+      new CircleGeometry(inspector.floorRadius, 96),
+      new MeshStandardMaterial({
+        map: floorColour,
+        alphaMap: radialTexture([[0, '#fff'], [0.3, '#fff'], [0.85, '#000']]),
+        transparent: true,
+        roughness: 0.92,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
-    const grid = new GridHelper(inspector.gridSize, inspector.gridDivisions, 0x5b5f66, 0x71757c);
-    const footprint = new LineSegments(footprintGeometry(this.seats), new LineBasicMaterial({ color: 0xd8b65a }));
-    const boundsBox = new LineSegments(boxEdgesGeometry(modelBounds), new LineBasicMaterial({ color: 0x5ec8e5 }));
+    const grid = fadingGrid();
+    grid.renderOrder = 1;
+    // Overlays in the site's accents: the footprint in champagne, the bounds in warm white.
+    const footprint = new LineSegments(footprintGeometry(this.seats), new LineBasicMaterial({ color: 0xd9b46a }));
+    const boundsBox = new LineSegments(boxEdgesGeometry(modelBounds), new LineBasicMaterial({ color: 0xf1e4c8 }));
     footprint.visible = false;
     boundsBox.visible = false;
     this.scene.add(floor, grid, footprint, boundsBox, instances.group, lighting.group);
-    return { materials, model, instances, modelBounds, lighting, environment, floor, grid, footprint, boundsBox };
+    return { materials, model, instances, modelBounds, lighting, environment, backdrop, floor, grid, footprint, boundsBox };
   }
 
   private buildSeats(materials: SeatMaterials, level: QualityLevel): [SeatModel, SeatInstances] {
@@ -330,6 +357,51 @@ class SeatInspectorView {
     this.reportedTransition = active;
     this.callbacks.onTransitionChange(active);
   }
+}
+
+/** A radial gradient from the centre to the rim on a small canvas (the floor's colour and its fade). */
+function radialTexture(stops: ReadonlyArray<readonly [number, string]>): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const g = canvas.getContext('2d')!;
+  const gradient = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  for (const [at, colour] of stops) gradient.addColorStop(at, colour);
+  g.fillStyle = gradient;
+  g.fillRect(0, 0, 256, 256);
+  return new CanvasTexture(canvas);
+}
+
+/**
+ * The 10 cm grid, just above the floor, fading out with the distance from the seat: each line is cut
+ * into short pieces so its alpha (per vertex) can follow that distance.
+ */
+function fadingGrid(): LineSegments<BufferGeometry, LineBasicMaterial> {
+  const { gridSize: size, gridDivisions: divisions, grid } = inspector;
+  const half = size / 2;
+  const pieces = 32;
+  const y = 0.001;
+  const [r, g, b] = new Color(grid.colour).toArray();
+  const alpha = (x: number, z: number) => {
+    const t = Math.min(Math.max((Math.hypot(x, z) - grid.fadeFrom) / (grid.fadeTo - grid.fadeFrom), 0), 1);
+    return grid.opacity * (1 - t * t * (3 - 2 * t));
+  };
+  const positions: number[] = [];
+  const colours: number[] = [];
+  for (let i = 0; i <= divisions; i++) {
+    const c = -half + (size * i) / divisions;
+    for (let k = 0; k < pieces; k++) {
+      const a = -half + (size * k) / pieces;
+      const e = -half + (size * (k + 1)) / pieces;
+      for (const [x1, z1, x2, z2] of [[a, c, e, c], [c, a, c, e]]) {
+        positions.push(x1, y, z1, x2, y, z2);
+        colours.push(r, g, b, alpha(x1, z1), r, g, b, alpha(x2, z2));
+      }
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new Float32BufferAttribute(colours, 4));
+  return new LineSegments(geometry, new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }));
 }
 
 /** One footprint rectangle per seat, just above the floor. */

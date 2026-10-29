@@ -183,11 +183,14 @@ export interface StudioLighting {
   dispose(): void;
 }
 
-/** Neutral three-point lighting for the seat inspector, with the key casting onto the floor. */
+/**
+ * Three-point lighting for the seat inspector, with the key casting onto the floor: a near-white key
+ * (the upholstery reads true), a warm fill from the dark stage and a champagne rim, as in the room.
+ */
 export function createStudioLighting(): StudioLighting {
   const group = new Group();
   group.name = 'studio-lighting';
-  const base = new HemisphereLight(0xb8bcc4, 0x1a1a1c, 1.3);
+  const base = new HemisphereLight(0xcfc2b4, 0x1c1511, 1.3);
   const key = new DirectionalLight(0xfff1e2, 2.2);
   key.position.set(-2.5, 4, -2.8);
   key.castShadow = true;
@@ -201,7 +204,7 @@ export function createStudioLighting(): StudioLighting {
   camera.near = 0.5;
   camera.far = 12;
   camera.updateProjectionMatrix();
-  const rim = new DirectionalLight(0xdfe6ff, 1.1);
+  const rim = new DirectionalLight(0xffd9a6, 1.1);
   rim.position.set(2.5, 2.5, 3);
   group.add(base, key, key.target, rim);
   return {

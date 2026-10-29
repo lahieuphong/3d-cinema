@@ -457,10 +457,19 @@ export const AUDITORIUM_CONFIG = {
   inspector: {
     /** Seats shown side by side in cluster mode, at the auditorium's seat pitch. */
     clusterSize: 3,
+    /**
+     * The stage, in the site's tone: warm charcoal all round, a pool of warm light under the seat
+     * that fades into it (no edge), and a faint champagne 10 cm grid fading out with it.
+     */
+    background: 0x15110e,
+    /** Behind the seat a soft warm glow, as on the screen's slate (centre, then the edges). */
+    backdropColours: ['#2e2520', '#15110e'],
     floorRadius: 3,
+    /** The floor's colour from the centre out (CSS colours, sRGB); its alpha falls to 0 at the rim. */
+    floorColours: ['#46403b', '#292421', '#191411'],
     gridSize: 4,
     gridDivisions: 40,
-    background: 0x1b1d22,
+    grid: { colour: 0xd9c08c, opacity: 0.09, fadeFrom: 0.35, fadeTo: 1.5 },
     camera: {
       fov: 35,
       maxFov: 60,

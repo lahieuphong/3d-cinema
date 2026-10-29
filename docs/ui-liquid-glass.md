@@ -144,6 +144,10 @@ chỗ, không mở thêm modal và không bung accordion.
   hướng dẫn là một bàn tay đung đưa dưới mũi tên cong giữa khung; nó mờ đi và biến mất ở lần chạm,
   kéo hoặc cuộn đầu tiên (đứng yên khi giảm chuyển động); câu hướng dẫn vẫn có cho trình đọc màn
   hình.
+  - Không gian 3D cùng tông với site: nền than ấm có quầng sáng nhẹ sau ghế (như slate trên màn
+    chiếu), sàn là một vũng sáng ấm dưới ghế mờ dần vào nền (không có mép), lưới 10 cm màu champagne
+    rất nhạt cũng mờ dần; ánh viền champagne, đèn chính gần trắng để màu bọc ghế vẫn đúng. Footprint
+    màu champagne, khung kích thước màu trắng ấm (`inspector` trong `src/cinema/config.ts`).
 - **Điều hướng:** màn con có nút Quay lại (tên đọc: “Quay lại Cài đặt”); quay lại trả focus về hàng
   đã mở. Escape lùi một màn, ở màn đầu thì đóng. × luôn đóng cả panel. Mỗi lần đổi màn: tiêu đề và
   tên dialog đổi theo, focus vào tiêu đề; màn ẩn dùng `hidden` nên không focus và không bị đọc.
