@@ -78,6 +78,10 @@ Nguyên tắc chung:
     link chữ không có hình riêng được bo `--radius-xs` (`:where(a)` trong `src/site.css`, không
     tăng specificity); ghế trên sơ đồ bo `36% 36% 26% 26%`.
   - Khoảng cách 4/8/12/16/24/32.
+  - Kính ôm đều nút bên trong: nút, pill, nút tròn và thanh trượt cách viền bằng nhau ở cả bốn
+    phía (ô của tác vụ trên phòng: 7 px; thẻ tham quan và thẻ ghế: 11 px). Chỉ chữ được thụt vào
+    thêm (dòng ghế đã chọn của Chọn ghế: 10 px, chữ trên thẻ ghế: 6 px), và khoảng thụt đó thuộc
+    về chữ: chữ ẩn đi thì nút vẫn ôm đều. `yarn capture` đo điều này ở mọi bố cục.
   - Vùng bấm tối thiểu 40 px (chuột), 44 px (cảm ứng).
 - **Chữ.**
   - Font: SF Pro ở mọi nơi có thể. `--font-sans`: `-apple-system, BlinkMacSystemFont, "SF Pro

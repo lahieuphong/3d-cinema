@@ -3709,6 +3709,31 @@ const smallTargets = (page, min = 43.5) =>
       .filter((t) => t.w < limit || t.h < limit);
   }, min);
 
+/**
+ * How far the controls in a glass box (`items` inside the visible `selector`) sit from its rim, per
+ * side, in CSS px; `words` says the leftmost of them is the seat summary's line. Null without one.
+ */
+const hugOf = (page, selector, items) =>
+  page.evaluate(([selector, items]) => {
+    const box = [...document.querySelectorAll(selector)].find((e) => e.getClientRects().length > 0);
+    if (!box) return null;
+    const r = box.getBoundingClientRect();
+    const inside = [...box.querySelectorAll(items)]
+      .filter((e) => e.getClientRects().length > 0)
+      .map((e) => ({ e, q: e.getBoundingClientRect() }))
+      .filter(({ q }) => q.width > 0 && q.top >= r.top - 0.5 && q.bottom <= r.bottom + 0.5);
+    if (inside.length === 0) return null;
+    const first = inside.reduce((a, b) => (b.q.left < a.q.left ? b : a));
+    const f = (n) => Math.round(n * 10) / 10;
+    return {
+      left: f(Math.min(...inside.map(({ q }) => q.left)) - r.left),
+      right: f(r.right - Math.max(...inside.map(({ q }) => q.right))),
+      top: f(Math.min(...inside.map(({ q }) => q.top)) - r.top),
+      bottom: f(r.bottom - Math.max(...inside.map(({ q }) => q.bottom))),
+      words: first.e.matches('.cinema-summary__text'),
+    };
+  }, [selector, items]);
+
 /** Presses Tab until `selector` has focus; returns the number of presses, or -1. */
 async function tabTo(page, selector, max = 60, key = 'Tab') {
   for (let i = 1; i <= max; i++) {
@@ -3729,7 +3754,7 @@ const focusedName = (page) =>
 // Every viewport: the room, the seat map (beside it, the sheet, full screen), the film playing —
 // measured canvas share, no overflow, steady chrome sizes, touch targets on touch screens.
 async function uiLayouts(browser, base) {
-  Object.assign(report.ui, { canvas: {}, chrome: {}, smallTargets: {} });
+  Object.assign(report.ui, { canvas: {}, chrome: {}, smallTargets: {}, hug: {} });
   for (const { name, ...options } of UI_VIEWPORTS) {
     const context = await browser.newContext(options);
     const page = await context.newPage();
@@ -3745,10 +3770,12 @@ async function uiLayouts(browser, base) {
     const shares = {};
     const chrome = {};
     const small = {};
+    const hug = {};
     const shot = async (stateName) => {
       shares[stateName] = await canvasShare(page);
       chrome[stateName] = await chromeBox(page);
       if (touchScreen) small[stateName] = await smallTargets(page);
+      hug[stateName] = await hugOf(page, '.cinema-taskbar__tools > .cinema-dock__panel', 'button, input, .cinema-summary__text');
       await screenshot(page, `ui-${name}-${stateName}`);
     };
 
@@ -3757,6 +3784,7 @@ async function uiLayouts(browser, base) {
     await clickUi(page, 'button[data-action="tour"]');
     await page.waitForTimeout(800);
     const touring = await chromeBox(page);
+    const tourHug = await hugOf(page, '.cinema-tourbar', '.cinema-tourbar__icon, button');
     await clickUi(page, 'button[data-action="tour"]');
     await page.waitForTimeout(300);
     const stopped = await chromeBox(page);
@@ -3852,6 +3880,10 @@ async function uiLayouts(browser, base) {
       exploreWithMini,
       explore: chrome['1-explore'],
     });
+    // Even rims (the seat summary's words alone sit 10 px further in than the buttons).
+    report.ui.hug[name] = { panes: hug, tour: tourHug };
+    const even = (h) => !h || (Math.abs(h.top - h.bottom) <= 0.5 && Math.abs(h.right - h.top) <= 0.5 && Math.abs(h.left - (h.words ? h.top + 10 : h.top)) <= 0.5);
+    check(`ui ${name}: each task's pane holds its controls as far from the rim on every side, and so does the tour card (its icon and "Dừng")`, Object.values(hug).every(even) && Boolean(tourHug) && Math.abs(tourHug.left - tourHug.right) <= 0.5 && Math.abs(tourHug.top - tourHug.bottom) <= 0.5, report.ui.hug[name]);
     if (touchScreen) {
       report.ui.smallTargets[name] = small;
       check(`ui ${name}: main touch controls are at least 44 × 44 CSS px`, Object.values(small).every((list) => list.length === 0), small);
@@ -4343,6 +4375,8 @@ async function mobileHub(browser, base) {
   await page.touchscreen.tap(point.x, point.y);
   await page.waitForSelector('.cinema-seatcard:not([hidden])', { timeout: 3000 });
   const card = { seat: point.id, text: await page.textContent('.cinema-seatcard__text'), view: await page.isVisible('[data-action="card-view-seat"]'), selected: (await state(page)).seats.selected };
+  const cardHug = await hugOf(page, '.cinema-seatcard', 'button');
+  check('hub: the seat card holds its buttons as far from the rim on the left, the right and below', Boolean(cardHug) && Math.abs(cardHug.left - cardHug.right) <= 0.5 && Math.abs(cardHug.left - cardHug.bottom) <= 0.5, cardHug);
   await screenshot(page, 'hub-4-seat-card');
   await page.tap('[data-action="card-view-seat"]');
   await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 8000 });

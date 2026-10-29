@@ -745,7 +745,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   align-items: center;
   column-gap: 12px;
   width: min(440px, calc(100% - 2 * var(--edge)));
-  padding: 10px 10px 10px 12px;
+  padding: 10px;
   border-radius: var(--radius-xl);
 }
 
@@ -1222,13 +1222,15 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 /* Over the room, one row: the selection, the map, the view from the seat (the sidebar has the rest). */
 .cinema-taskbar .cinema-summary {
   flex-wrap: nowrap;
-  padding-left: 10px;
 }
 
-/* A fixed width: picking seats never resizes the bar (a long list ends in "…", the sidebar has it all). */
+/* A fixed width: picking seats never resizes the bar (a long list ends in "…", the sidebar has it all).
+   The words sit 10 px further in than the buttons; the inset is theirs, so with the sidebar open
+   (no words) the buttons are 7 px from the rim on every side. */
 .cinema-taskbar .cinema-summary__text {
   flex: 0 1 30ch;
   max-width: none;
+  margin-left: 10px;
 }
 
 /* With the sidebar open it says it all: over the room only its two actions remain. */
@@ -1333,7 +1335,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-taskbar .cinema-player {
   width: min(720px, calc(100vw - 48px));
-  padding: 4px 6px 0 10px;
 }
 
 .cinema-player__controls {
@@ -1405,8 +1406,14 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-player__info {
   grid-area: info;
   min-width: 0;
-  padding-left: 2px;
   line-height: 1.4;
+}
+
+/* Over the room the pane hugs the player 7 px all round, like every task: the film's pill on top
+   and the play button under it share that left edge. A bare title (one film) sits in like the
+   seat summary's words. */
+.cinema-taskbar .cinema-player__info > .cinema-player__title {
+  margin-left: 10px;
 }
 
 .cinema-player__title {
@@ -2467,14 +2474,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   align-items: center;
   gap: 8px;
   width: min(320px, 100%);
-  padding: 12px 10px 10px 16px;
+  padding: 12px 10px 10px;
   border-radius: var(--radius-lg);
   pointer-events: auto;
 }
 
+/* The buttons sit as far from the rim on every side; the words 6 px further in. */
 .cinema-seatcard__text {
   grid-area: text;
   margin: 0;
+  padding-left: 6px;
   font-size: var(--text-sm);
 }
 
