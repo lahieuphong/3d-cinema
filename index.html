@@ -20,12 +20,13 @@
   </head>
   <body>
     <noscript><p class="noscript-note">Phòng chiếu 3D cần JavaScript và WebGL. Phần giới thiệu bên dưới vẫn đọc được.</p></noscript>
-    <div id="app"><!--landing--><p data-boot role="status">Đang tải trang…</p></div>
+    <div id="app"><!--landing--><p data-boot role="status" class="shimmer-text">Đang tải trang…</p></div>
     <script>
       // If the app has not taken over an unknown path after a while, say so.
       setTimeout(function () {
         var boot = document.querySelector('#app > [data-boot]');
         if (!boot || document.documentElement.dataset.route !== 'other') return;
+        boot.classList.remove('shimmer-text');
         boot.textContent = 'Trang đang tải lâu hơn bình thường. Hãy kiểm tra kết nối mạng.';
         var reload = document.createElement('button');
         reload.type = 'button';

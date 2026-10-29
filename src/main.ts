@@ -6,6 +6,7 @@ import { applyStoredGlass } from './glass.ts';
 import { mountLandingPage } from './landing/landing.ts';
 import { createLoader, savesData } from './landing/loader.ts';
 import { CINEMA_PATH, isPlainClick, matchRoute, type RouteKind } from './router.ts';
+import { cinemaPageSkeleton } from './skeleton.ts';
 
 const host = document.querySelector<HTMLElement>('#app');
 if (!host) throw new Error('Missing #app element.');
@@ -105,7 +106,10 @@ function navigate(url: string): void {
   void render({ moveFocus: true });
 }
 
-/** While the auditorium's code downloads (or after it failed): what is happening, and a way back. */
+/**
+ * While the auditorium's code downloads: the page that is coming as a skeleton, with what is
+ * happening and a way back on its screen. After a failure: what went wrong, "Thử lại" and the way back.
+ */
 function showOpening(current: number, failed = false): void {
   const page = document.createElement('main');
   page.className = 'route-status';
@@ -115,7 +119,7 @@ function showOpening(current: number, failed = false): void {
   text.setAttribute('role', failed ? 'alert' : 'status');
   text.innerHTML = failed
     ? '<h1 tabindex="-1">Không mở được phòng chiếu</h1><p class="route-status__message">Phần mã của phòng chiếu chưa tải được. Kiểm tra kết nối mạng rồi thử lại.</p>'
-    : '<span class="route-status__spinner" aria-hidden="true"></span><h1 tabindex="-1">Đang mở phòng chiếu…</h1>';
+    : '<h1 tabindex="-1" class="shimmer-text">Đang mở phòng chiếu…</h1>';
   const actions = document.createElement('div');
   actions.className = 'route-status__actions';
   if (failed) {
@@ -137,8 +141,13 @@ function showOpening(current: number, failed = false): void {
     navigate('/');
   });
   actions.append(home);
-  page.insertAdjacentHTML('afterbegin', markImg(56));
-  page.append(text, actions);
+  if (failed) {
+    page.insertAdjacentHTML('afterbegin', markImg(56));
+    page.append(text, actions);
+  } else {
+    page.innerHTML = cinemaPageSkeleton();
+    page.querySelector('.room-skeleton__screen')!.append(text, actions);
+  }
   app.replaceChildren(page);
   if (failed) page.querySelector<HTMLElement>('h1')?.focus();
 }

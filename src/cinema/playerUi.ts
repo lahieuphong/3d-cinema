@@ -293,7 +293,10 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     const message = unavailable ?? (snapshot.error ? snapshot.error.message : snapshot.notice ? NOTICES[snapshot.notice] : (STATUS[snapshot.state] ?? ''));
     text(status, message);
     status.classList.toggle('cinema-player__status--error', snapshot.state === 'error');
-    status.classList.toggle('cinema-player__status--busy', !unavailable && !snapshot.error && !snapshot.notice && (snapshot.state === 'loading' || snapshot.state === 'buffering'));
+    // Waiting for data: the words shimmer (site.css) instead of a spinner beside them.
+    const busy = !unavailable && !snapshot.error && !snapshot.notice && (snapshot.state === 'loading' || snapshot.state === 'buffering');
+    status.classList.toggle('cinema-player__status--busy', busy);
+    status.classList.toggle('shimmer-text', busy);
     retry.hidden = unavailable !== null || !(snapshot.state === 'error' || snapshot.notice === 'slow');
     retry.textContent = snapshot.state === 'error' ? 'Thử lại' : 'Tải lại';
     chip.hidden = message === '';

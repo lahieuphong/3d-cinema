@@ -1,6 +1,7 @@
 import { BRAND, markImg } from '../brand.ts';
 import { loadReducedGlass, setReducedGlass } from '../glass.ts';
 import { isPlainClick } from '../router.ts';
+import { roomSkeleton, seatSkeleton } from '../skeleton.ts';
 import type { ToggleablePart } from './architecture.ts';
 import { CAMERA_PRESETS, type CameraPresetId } from './cameraPresets.ts';
 import { createControlHub } from './controlHub.ts';
@@ -1003,8 +1004,10 @@ const LOADING_TEXT = {
 
 /**
  * Shows `next` in a status overlay and mirrors it on `root.dataset.status`. Shared by the
- * auditorium and the seat inspector. A retry button appears when `next` offers one and `onRetry`
- * is given; a failure never keeps a spinner.
+ * auditorium and the seat inspector. While waiting (loading, a lost context coming back) it shows a
+ * skeleton of what is coming — the room, or in the seat inspector the seat — with the words on it;
+ * a failure is a card with what went wrong, and a retry button when `next` offers one and `onRetry`
+ * is given (never a skeleton).
  */
 export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiStatus, onRetry?: () => void): void {
   root.dataset.status = next.kind;
@@ -1012,6 +1015,16 @@ export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiSta
   status.hidden = next.kind === 'ready';
   status.setAttribute('role', next.kind === 'error' ? 'alert' : 'status');
   status.classList.toggle('cinema-status--error', next.kind === 'error');
+  const waiting = next.kind === 'loading' || (next.kind === 'context-lost' && !(next.stuck && onRetry));
+  status.classList.toggle('cinema-status--waiting', waiting);
+  if (waiting) {
+    const words = next.kind === 'loading' ? LOADING_TEXT[next.step ?? 'scene'] : 'Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…';
+    const caption = `<span class="shimmer-text cinema-status__caption">${words}</span>`;
+    status.innerHTML = root.classList.contains('cinema-app--inspector')
+      ? `<div class="cinema-status__seat">${seatSkeleton()}${caption}</div>`
+      : roomSkeleton(caption);
+    return;
+  }
   const card = el('div', 'cinema-status__card');
   status.append(card);
   const retry = (label: string) => {
@@ -1021,18 +1034,12 @@ export function renderStatus(root: HTMLElement, status: HTMLElement, next: UiSta
     element.addEventListener('click', () => onRetry?.(), { once: true });
     return element;
   };
-  if (next.kind === 'loading') {
-    card.append(el('span', 'cinema-status__spinner'), el('span', '', LOADING_TEXT[next.step ?? 'scene']));
-  } else if (next.kind === 'context-lost') {
-    if (next.stuck && onRetry) {
-      card.append(
-        el('strong', '', 'Cảnh 3D chưa được khôi phục'),
-        el('span', 'cinema-status__hint', 'Trình duyệt chưa trả lại ngữ cảnh WebGL. Dựng lại cảnh sẽ giữ nguyên ghế đã chọn và vị trí phim.'),
-        retry('Dựng lại cảnh 3D'),
-      );
-    } else {
-      card.append(el('span', 'cinema-status__spinner'), el('span', '', 'Mất ngữ cảnh WebGL. Đang chờ trình duyệt khôi phục…'));
-    }
+  if (next.kind === 'context-lost') {
+    card.append(
+      el('strong', '', 'Cảnh 3D chưa được khôi phục'),
+      el('span', 'cinema-status__hint', 'Trình duyệt chưa trả lại ngữ cảnh WebGL. Dựng lại cảnh sẽ giữ nguyên ghế đã chọn và vị trí phim.'),
+      retry('Dựng lại cảnh 3D'),
+    );
   } else if (next.kind === 'error') {
     card.append(el('strong', '', 'Không thể hiển thị cảnh 3D'), el('span', '', next.message));
     if (next.retry && onRetry) card.append(retry('Thử lại'));

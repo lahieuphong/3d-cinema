@@ -38,6 +38,16 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
     );
   }
 
+  // Pictures still on their way shimmer in their place and the hero fades in over it (site.css);
+  // the ones already here are left alone. Without this script they simply appear.
+  for (const image of root.querySelectorAll<HTMLImageElement>('.hero__image, .step__image')) {
+    if (image.complete) continue;
+    image.dataset.loading = '';
+    const arrived = () => delete image.dataset.loading;
+    image.addEventListener('load', arrived, { once: true, signal });
+    image.addEventListener('error', arrived, { once: true, signal });
+  }
+
   const hero = root.querySelector<HTMLElement>('.hero');
   const layer = root.querySelector<HTMLElement>('.hero__media');
   const stopMotion = hero && layer ? startHeroMotion(hero, layer) : () => {};

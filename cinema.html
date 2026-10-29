@@ -4,10 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <style>
-      /* Before the app's code and styles arrive: what is happening, no fake progress. */
+      /* Before the app's code arrives: a skeleton of the page (src/skeleton.ts, styled by site.css,
+         which the built page links in its head) with what is happening on its screen. */
       html, body { margin: 0; height: 100%; background: #0f1013; color: #e9eaee; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
       #app { height: 100%; }
       .boot { display: grid; place-content: center; justify-items: center; gap: 14px; height: 100%; padding: 16px; box-sizing: border-box; text-align: center; color: #a3a7b1; font-size: 0.95rem; }
+      .boot[data-boot] { display: block; position: relative; padding: 0; overflow: hidden; }
       .boot a { color: #d9c08c; }
       .boot button { min-height: 44px; padding: 8px 16px; border: 1px solid #2a2d34; border-radius: 8px; background: #17191e; color: #e9eaee; font: inherit; cursor: pointer; }
     </style>
@@ -17,19 +19,21 @@
       // "Giảm hiệu ứng kính" (src/glass.ts), before the first paint.
       try { if (localStorage.getItem('tp-glass') === 'reduced') document.documentElement.dataset.glass = 'reduced'; } catch (e) {}
     </script>
-    <div id="app"><div class="boot" role="status" data-boot><!--mark--><span>Đang mở phòng chiếu…</span></div></div>
+    <div id="app"><div class="boot" role="status" data-boot><!--cinema-skeleton--></div></div>
     <noscript><div class="boot"><!--mark--><span>Phòng chiếu 3D cần JavaScript và WebGL.</span><a href="/">Về trang giới thiệu</a></div></noscript>
     <script>
       // If the app has not taken over after a while, say so (it replaces #app when it starts).
       setTimeout(function () {
         var boot = document.querySelector('#app > [data-boot]');
-        if (!boot) return;
-        boot.lastChild.textContent = 'Trang đang tải lâu hơn bình thường. Hãy kiểm tra kết nối mạng.';
+        var words = boot && boot.querySelector('[data-boot-text]');
+        if (!words) return;
+        words.classList.remove('shimmer-text');
+        words.textContent = 'Trang đang tải lâu hơn bình thường. Hãy kiểm tra kết nối mạng.';
         var reload = document.createElement('button');
         reload.type = 'button';
         reload.textContent = 'Tải lại trang';
         reload.onclick = function () { location.reload(); };
-        boot.appendChild(reload);
+        words.parentNode.appendChild(reload);
       }, 15000);
     </script>
     <script type="module" src="/src/main.ts"></script>

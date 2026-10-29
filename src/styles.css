@@ -922,19 +922,25 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-size: var(--text-sm);
 }
 
-.cinema-status__spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid rgb(255 255 255 / 0.16);
-  border-top-color: var(--ink);
-  border-radius: 50%;
-  animation: cinema-spin 0.9s linear infinite;
+/* Waiting (loading, a lost context coming back): no card; a skeleton of the room fills the view
+   (site.css), its words on the screen; in the seat inspector, a seat with the words under it. */
+.cinema-status--waiting {
+  padding: 0;
+  background: var(--canvas);
 }
 
-@keyframes cinema-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.cinema-status__caption {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.cinema-status__seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  max-width: 34ch;
+  padding: 24px;
 }
 
 /* The film's loading, waiting, notices and errors: a note at the head of the task bar (on phones,
@@ -963,19 +969,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-player__status {
   padding-block: 6px;
-}
-
-.cinema-player__status--busy::before {
-  content: '';
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 8px;
-  border: 2px solid rgb(255 255 255 / 0.2);
-  border-top-color: var(--ink);
-  border-radius: 50%;
-  vertical-align: -2px;
-  animation: cinema-spin 0.9s linear infinite;
 }
 
 .cinema-player__status--error {
@@ -3056,9 +3049,7 @@ button.cinema-hub__row:disabled {
 /* ================================================================ Reduced motion: nothing slides or spins */
 
 @media (prefers-reduced-motion: reduce) {
-  /* The turn hint stands still (its arc still says "turn"). */
-  .cinema-status__spinner,
-  .cinema-player__status--busy::before,
+  /* The turn hint stands still (its arc still says "turn"); skeletons stand still in site.css. */
   .cinema-gesture__hand {
     animation: none;
   }

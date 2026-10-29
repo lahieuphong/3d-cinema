@@ -1,6 +1,7 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite';
 import { BRAND, markImg, PAGE_TITLES } from './src/brand.ts';
 import { landingHtml } from './src/landing/content.ts';
+import { cinemaPageSkeleton } from './src/skeleton.ts';
 
 /**
  * Two HTML documents, one app: `/` is index.html (the landing page, written in at build time, so it
@@ -56,7 +57,10 @@ function sitePages(): Plugin {
           meta({ property: 'og:image:alt', content: 'Khán phòng 3D với các hàng ghế đỏ hướng về màn chiếu.' }),
           meta({ name: 'twitter:card', content: 'summary_large_image' }),
         ];
-        const body = (cinema ? html : html.replace('<!--landing-->', landingHtml())).replaceAll('<!--mark-->', markImg(56));
+        // /cinema opens on a skeleton of itself (the words on its screen; the timer in cinema.html
+        // finds them by data-boot-text).
+        const opening = cinemaPageSkeleton('<span class="shimmer-text" data-boot-text>Đang mở phòng chiếu…</span>');
+        const body = (cinema ? html.replace('<!--cinema-skeleton-->', opening) : html.replace('<!--landing-->', landingHtml())).replaceAll('<!--mark-->', markImg(56));
         return { html: body, tags };
       },
     },

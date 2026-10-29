@@ -3328,7 +3328,7 @@ async function filmFixtures(browser, base) {
     await context.close();
   }
 
-  // Broken sources: a readable error, retry by hand only, no endless spinner.
+  // Broken sources: a readable error, retry by hand only, never left "loading" (no shimmer).
   for (const [file, shot, play] of [
     ['not-a-video.mp4', 'film-10-error-not-a-video', false],
     ['missing-file.mp4', null, false],
@@ -3350,7 +3350,7 @@ async function filmFixtures(browser, base) {
       playDisabled: document.querySelector('button[data-action="media-primary"]').disabled,
     }));
     const requestsBeforeRetry = requests.length;
-    check(`film error (${file}): "${f.snapshot.error?.code}" with a message and a retry button, no spinner, play disabled, no automatic retries`, ui.retry && !ui.busy && ui.playDisabled && ui.status.length > 10 && f.view.screen.content !== 'video', {
+    check(`film error (${file}): "${f.snapshot.error?.code}" with a message and a retry button, not shown as loading, play disabled, no automatic retries`, ui.retry && !ui.busy && ui.playDisabled && ui.status.length > 10 && f.view.screen.content !== 'video', {
       error: f.snapshot.error,
       ui,
       requests: requestsBeforeRetry,
@@ -3939,7 +3939,7 @@ async function uiStates(browser, base) {
     check('loading: once the room is built the seat picked meanwhile is shown in 3D', look.tag && ready > 2500, { readyMs: ready, shellMs: shell });
     await context.close();
   }
-  // Reduced motion: the loading indicator does not spin.
+  // Reduced motion: the loading skeleton (the room, its words on the screen) does not shimmer.
   {
     const context = await browser.newContext({ viewport: { width: 960, height: 600 }, reducedMotion: 'reduce' });
     await context.route(/\/src\/cinema\/view\.ts/, async (route) => {
@@ -3949,10 +3949,14 @@ async function uiStates(browser, base) {
     const page = await context.newPage();
     attachConsole(page, 'ui-reduced-motion-loading');
     await page.goto(`${base}cinema`);
-    await page.waitForSelector('.cinema-status__spinner');
-    const animation = await page.evaluate(() => getComputedStyle(document.querySelector('.cinema-status__spinner')).animationName);
+    await page.waitForSelector('.cinema-status .room-skeleton');
+    const loading = await page.evaluate(() => ({
+      skeleton: getComputedStyle(document.querySelector('.cinema-status .skeleton')).animationName,
+      words: getComputedStyle(document.querySelector('.cinema-status .shimmer-text')).animationName,
+      text: document.querySelector('.cinema-status').textContent,
+    }));
     await waitForStatus(page);
-    check('reduced motion: the loading indicator stands still', animation === 'none', animation);
+    check('reduced motion: the loading skeleton (room, words on its screen) stands still', loading.skeleton === 'none' && loading.words === 'none' && /Đang/.test(loading.text), loading);
     await context.close();
   }
   // The 3D part fails to download: the page says so, keeps the map and the flat film, offers "Thử lại".
@@ -3972,22 +3976,22 @@ async function uiStates(browser, base) {
     const error = await page.evaluate(() => ({
       text: document.querySelector('.cinema-status').textContent,
       retry: Boolean(document.querySelector('button[data-action="retry-scene"]')),
-      spinner: Boolean(document.querySelector('.cinema-status__spinner')),
+      skeleton: Boolean(document.querySelector('.cinema-status .skeleton')),
       video2d: Boolean(document.querySelector('.cinema-video2d video')),
       task: document.querySelector('.cinema-app').dataset.task,
     }));
     await page.click('button[data-seat="C05"]');
     await screenshot(page, 'ui-state-2-3d-download-failed');
-    check('3D download fails: an error (no spinner) with "Thử lại", the map and the 2D film stay usable', status === 'error' && /Không tải được phần 3D/.test(error.text) && error.retry && !error.spinner && error.video2d && (await seatsState(page)).selected.includes('C05'), error);
+    check('3D download fails: an error (no skeleton) with "Thử lại", the map and the 2D film stay usable', status === 'error' && /Không tải được phần 3D/.test(error.text) && error.retry && !error.skeleton && error.video2d && (await seatsState(page)).selected.includes('C05'), error);
     await page.click('button[data-action="retry-scene"]');
     const after = await page
-      .waitForFunction(() => ['ready', 'error'].includes(document.querySelector('.cinema-app').dataset.status) && !document.querySelector('.cinema-status__spinner'), null, { timeout: 15_000 })
+      .waitForFunction(() => ['ready', 'error'].includes(document.querySelector('.cinema-app').dataset.status) && !document.querySelector('.cinema-status .skeleton'), null, { timeout: 15_000 })
       .then(() => page.evaluate(() => document.querySelector('.cinema-app').dataset.status))
       .catch(() => 'timeout');
     const kept = (await seatsState(page)).selected;
     report.ui.states.downloadRetry = { after, requests: failed };
     // Browsers may remember a failed module for the page's life: then the retry fails again, honestly.
-    check('3D download fails: "Thử lại" ends in a definite state (room built, or the error again — never a spinner), seats kept', ['ready', 'error'].includes(after) && kept.includes('C05'), { after, requests: failed });
+    check('3D download fails: "Thử lại" ends in a definite state (room built, or the error again — never a skeleton), seats kept', ['ready', 'error'].includes(after) && kept.includes('C05'), { after, requests: failed });
     if (after === 'ready') {
       const room = await page.evaluate(() => ({ canvases: document.querySelectorAll('canvas').length, video2d: Boolean(document.querySelector('.cinema-video2d')), videos: document.querySelectorAll('video').length }));
       check('3D download fails: after a successful retry the room replaces the 2D film (one canvas, no video left in the page)', room.canvases === 1 && !room.video2d && room.videos === 0, room);
@@ -5575,10 +5579,10 @@ async function landingFlows(browser, base) {
     await waitForLanding(page);
     await page.click('.hero a[data-cta]');
     await page.waitForTimeout(400);
-    const opening = await page.evaluate(() => ({ text: document.querySelector('.route-status')?.textContent ?? '', home: Boolean(document.querySelector('.route-status a[href="/"]')), role: document.querySelector('.route-status [role]')?.getAttribute('role') }));
+    const opening = await page.evaluate(() => ({ text: document.querySelector('.route-status')?.textContent ?? '', home: Boolean(document.querySelector('.route-status a[href="/"]')), role: document.querySelector('.route-status [role]')?.getAttribute('role'), skeleton: Boolean(document.querySelector('.route-status .page-skeleton .room-skeleton__screen [role="status"]')) }));
     await screenshot(page, 'landing-way-in-1-opening');
     await waitForCinema(page);
-    check('slow network: the opening screen says what is happening at once ("Đang mở phòng chiếu…", a way home), then the room', /Đang mở phòng chiếu/.test(opening.text) && opening.home && opening.role === 'status', opening);
+    check('slow network: the opening screen is a skeleton of the room that says what is happening at once ("Đang mở phòng chiếu…", a way home, on its screen), then the room', /Đang mở phòng chiếu/.test(opening.text) && opening.home && opening.role === 'status' && opening.skeleton, opening);
     await context.close();
   }
   {
@@ -5592,12 +5596,12 @@ async function landingFlows(browser, base) {
     await waitForLanding(page);
     await page.click('.hero a[data-cta]');
     await page.waitForSelector('button[data-action="retry-page"]', { timeout: 10_000 });
-    const error = await page.evaluate(() => ({ text: document.querySelector('.route-status')?.textContent ?? '', spinner: Boolean(document.querySelector('.route-status__spinner')), focus: document.activeElement?.tagName }));
+    const error = await page.evaluate(() => ({ text: document.querySelector('.route-status')?.textContent ?? '', skeleton: Boolean(document.querySelector('.route-status .skeleton')), focus: document.activeElement?.tagName }));
     await screenshot(page, 'landing-way-in-2-failed');
     await page.click('button[data-action="retry-page"]');
     await waitForCinema(page);
     const after = await landingState(page);
-    check('code fails to download: an error (no spinner) with "Thử lại" and "Về trang chủ"; "Thử lại" fetches it again and the room opens', /Không mở được phòng chiếu/.test(error.text) && !error.spinner && error.focus === 'H1' && after.cinema === 'ready' && after.canvases === 1, { error, after });
+    check('code fails to download: an error (no skeleton) with "Thử lại" and "Về trang chủ"; "Thử lại" fetches it again and the room opens', /Không mở được phòng chiếu/.test(error.text) && !error.skeleton && error.focus === 'H1' && after.cinema === 'ready' && after.canvases === 1, { error, after });
     await context.close();
   }
   {

@@ -305,6 +305,7 @@ html[data-route='landing'] {
   transform: scale(1.02);
   transform-origin: 58% 45%;
   animation: hero-settle 1.6s var(--ease-out) both;
+  transition: opacity 0.5s var(--ease-out);
 }
 
 .hero__shade {
@@ -683,8 +684,7 @@ html[data-route='landing'] {
 
 @media (prefers-reduced-motion: reduce) {
   .hero__image,
-  .hero .eyebrow,
-  .route-status__spinner {
+  .hero .eyebrow {
     animation: none;
   }
 
@@ -744,18 +744,266 @@ html[data-route='landing'] {
   gap: 12px;
 }
 
-.route-status__spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid rgb(255 255 255 / 0.14);
-  border-top-color: var(--ink);
-  border-radius: 50%;
-  animation: route-spin 0.9s linear infinite;
+/* Opening: the page that is coming, as a skeleton (src/skeleton.ts); what is happening and the way
+   home sit on its screen. */
+.route-status[data-state='loading'] {
+  display: block;
+  position: relative;
+  padding: 0;
+  overflow: hidden;
 }
 
-@keyframes route-spin {
+.route-status[data-state='loading'] h1 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+/* ---------- Skeletons (loading) ----------
+
+   While something loads, placeholders in its shape (src/skeleton.ts) with a soft sheen sweeping
+   across them, left to right; words that wait (a film, a page) get the same sheen through their
+   letters. Pictures still on their way shimmer in place (landing.ts marks them). All of it stands
+   still under reduced motion. */
+
+:root {
+  --skeleton-fill: rgb(255 255 255 / 0.055);
+  --skeleton-sheen: rgb(255 255 255 / 0.1);
+}
+
+.skeleton,
+.hero__media:has(img[data-loading]),
+.step__image[data-loading] {
+  background-color: var(--skeleton-fill);
+  background-image: linear-gradient(100deg, rgb(255 255 255 / 0) 40%, var(--skeleton-sheen) 50%, rgb(255 255 255 / 0) 60%);
+  background-repeat: no-repeat;
+  background-size: 300% 100%;
+  animation: skeleton-sheen 1.8s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background-image: linear-gradient(100deg, var(--ink-secondary) 40%, var(--ink) 50%, var(--ink-secondary) 60%);
+  background-repeat: no-repeat;
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  animation: skeleton-sheen 1.8s ease-in-out infinite;
+}
+
+/* With the image three times as wide as the block, the bright band crosses from just outside the
+   left edge to just outside the right. */
+@keyframes skeleton-sheen {
+  from {
+    background-position: 100% 0;
+  }
+
   to {
-    transform: rotate(360deg);
+    background-position: 0 0;
+  }
+}
+
+/* The hero picture fades in over its shimmer once it has arrived. */
+.hero__image[data-loading] {
+  opacity: 0;
+}
+
+/* The room: the screen, then rows of seats widening towards the viewer. Fills its box. */
+.room-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(20px, 6vh, 56px);
+  padding: 76px 6% 132px;
+  box-sizing: border-box;
+}
+
+.room-skeleton__screen {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  width: min(62%, 760px);
+  aspect-ratio: 16 / 7;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.room-skeleton__rows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 980px);
+}
+
+.room-skeleton__rows .skeleton {
+  display: block;
+  border-radius: var(--radius-pill);
+}
+
+.room-skeleton__rows .skeleton:nth-child(1) {
+  width: 52%;
+  height: 14px;
+}
+
+.room-skeleton__rows .skeleton:nth-child(2) {
+  width: 64%;
+  height: 16px;
+}
+
+.room-skeleton__rows .skeleton:nth-child(3) {
+  width: 76%;
+  height: 18px;
+}
+
+.room-skeleton__rows .skeleton:nth-child(4) {
+  width: 88%;
+  height: 20px;
+}
+
+/* One seat (the seat inspector): the backrest, the arms either side, the cushion between them. */
+.seat-skeleton {
+  position: relative;
+  display: block;
+  width: 168px;
+  height: 196px;
+}
+
+.seat-skeleton > * {
+  position: absolute;
+}
+
+.seat-skeleton__back {
+  top: 0;
+  left: 26px;
+  width: 116px;
+  height: 120px;
+  border-radius: 30px 30px 12px 12px;
+}
+
+.seat-skeleton__arm {
+  top: 92px;
+  left: 0;
+  width: 22px;
+  height: 104px;
+  border-radius: 10px;
+}
+
+.seat-skeleton__arm:last-child {
+  right: 0;
+  left: auto;
+}
+
+.seat-skeleton__cushion {
+  top: 128px;
+  left: 26px;
+  width: 116px;
+  height: 46px;
+  border-radius: 16px;
+}
+
+/* The /cinema page before its code: the header's two clusters, the room, the task bar; on phones
+   (the same rule as taskLayout's IMMERSIVE_LAYOUT_QUERY) only the room and the round button. */
+.page-skeleton {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.page-skeleton__head {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  display: flex;
+  justify-content: space-between;
+}
+
+.page-skeleton__brand,
+.page-skeleton__menu,
+.page-skeleton__dock,
+.page-skeleton__tasks {
+  display: block;
+  height: 48px;
+  border-radius: var(--radius-pill);
+}
+
+.page-skeleton__brand {
+  display: flex;
+  align-items: center;
+  width: 210px;
+  padding-left: 12px;
+  box-sizing: border-box;
+}
+
+.page-skeleton__brand .brand-mark {
+  opacity: 0.85;
+}
+
+.page-skeleton__menu {
+  width: 116px;
+}
+
+.page-skeleton__foot {
+  position: absolute;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-skeleton__dock {
+  width: min(560px, 82%);
+}
+
+.page-skeleton__tasks {
+  width: min(380px, 70%);
+}
+
+.page-skeleton__hub {
+  position: absolute;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  display: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+
+@media (max-width: 599px), (orientation: landscape) and (max-height: 500px) {
+  .page-skeleton__head,
+  .page-skeleton__foot {
+    display: none;
+  }
+
+  .page-skeleton__hub {
+    display: block;
+  }
+
+  .room-skeleton {
+    padding: 24px 5%;
+  }
+
+  .room-skeleton__screen {
+    width: 88%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .shimmer-text,
+  .hero__media:has(img[data-loading]),
+  .step__image[data-loading] {
+    animation: none;
   }
 }
 

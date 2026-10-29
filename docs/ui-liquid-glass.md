@@ -19,7 +19,8 @@ Nguyên tắc chung:
 | `src/tokens.css` | Token dùng chung (màu, vật liệu, viền, bóng, radius, spacing, chữ, motion, z-index); chế độ giảm kính, fallback không có `backdrop-filter`, giảm blur trên điện thoại. Nạp đầu tiên ở `src/main.ts`. |
 | `src/glass.ts` | Lựa chọn “Giảm hiệu ứng kính” (`html[data-glass="reduced"]`, lưu `localStorage` khoá `tp-glass`). Hai HTML shell đặt thuộc tính này trước lần vẽ đầu. |
 | `src/styles.css` | Khán phòng: vật liệu theo thành phần, header, thanh tác vụ, dock, sidebar ghế, hub điện thoại, trạng thái, seat inspector. |
-| `src/site.css` | Landing, màn tải, lỗi, 404 trên cùng token. |
+| `src/site.css` | Landing, màn tải, lỗi, 404 trên cùng token; skeleton (khối, chữ shimmer, phòng chiếu, ghế, trang /cinema). |
+| `src/skeleton.ts` | HTML của các skeleton: `roomSkeleton`, `seatSkeleton`, `cinemaPageSkeleton` (dùng ở `cinema.html`, màn mở phòng chiếu và lớp trạng thái 3D). |
 
 ## Token chính
 
@@ -83,6 +84,21 @@ Nguyên tắc chung:
   - 160 ms cho phản hồi, 220–280 ms cho panel.
   - Chỉ animate opacity/transform (panel hiện ra bằng `@starting-style`).
   - Không animate blur, bóng hay kích thước.
+- **Đang tải: skeleton, không spinner.** Thứ gì đang tới thì hiện khung đúng hình dạng của nó,
+  một vệt sáng mềm lướt qua từ trái sang phải (`.skeleton`, 1.8 s; nền `--skeleton-fill`, vệt
+  `--skeleton-sheen`); chữ đang chờ có cùng vệt sáng chạy trong chữ (`.shimmer-text`). Giảm chuyển
+  động: đứng yên. Khung chỉ để nhìn (`aria-hidden`); câu nói điều đang xảy ra vẫn có cho mọi người.
+  - `/cinema` trước khi có code (`cinema.html`) và lúc tải code từ landing: skeleton của chính
+    trang — hai cụm header, màn chiếu, các hàng ghế, thanh tác vụ (điện thoại: nút tròn) — chữ
+    “Đang mở phòng chiếu…” và “Về trang chủ” nằm trên màn chiếu. Chờ quá 15 s: câu báo và “Tải lại
+    trang” thay chỗ đó.
+  - Phần 3D đang tải / đang dựng, hay mất ngữ cảnh WebGL đang chờ: lớp trạng thái là skeleton phòng
+    chiếu (trang ghế: một chiếc ghế) với chữ trên đó. Lỗi luôn là thẻ có lý do và “Thử lại”, không
+    bao giờ là skeleton.
+  - Landing: ảnh chưa tới thì chỗ của nó shimmer (`landing.ts` đánh dấu `data-loading`), ảnh hero
+    hiện dần khi tới; không có script thì ảnh cứ thế hiện.
+  - Phim đang tải / chờ dữ liệu: chữ trạng thái shimmer thay cho vòng xoay. Trang lạ trước khi app
+    chạy: “Đang tải trang…” shimmer.
 
 ## Bố cục theo màn hình
 
