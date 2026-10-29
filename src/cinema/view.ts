@@ -20,6 +20,7 @@ import {
   WebGLRenderTarget,
 } from 'three';
 import { architectureSteps, INTERIOR_MATERIALS, type Architecture, type ToggleablePart } from './architecture.ts';
+import { applyBakedOcclusion, createFloorOcclusion } from './bakedOcclusion.ts';
 import { planCameraPath } from './cameraPath.ts';
 import { CameraRig, type CameraDriver } from './cameraRig.ts';
 import { computePresetPose, presetInfo, resolveEyeSeat, type CameraMode, type CameraPose, type CameraPresetId } from './cameraPresets.ts';
@@ -160,6 +161,9 @@ function roomSteps(layout: AuditoriumLayout, level: QualityLevel, parts: Partial
       const settings = layout.config.quality[level];
       parts.lighting = timed('lighting', () => createRoomLighting(layout));
       parts.lighting.setShadowQuality(settings.shadowMapSize, settings.shadowRadius);
+    },
+    () => {
+      timed('occlusion', () => applyBakedOcclusion(layout, parts.architecture!, parts.materials!, createFloorOcclusion(layout)));
     },
     () => {
       [parts.seatModel, parts.seatInstances] = timed('seats', () => buildSeatInstances(layout, parts.seatMaterials!, level));

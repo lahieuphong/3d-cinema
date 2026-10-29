@@ -51,8 +51,13 @@ const WARM = 0xffc98f;
  * "Explore the cinema" lighting, by role:
  * - base: a warm hemisphere standing in for indirect light: "sky" is the light coming down from the
  *   lit coves and slots, "ground" the warm light bounced off carpet and seats, which is all that
- *   reaches the ceiling; it keeps charcoal surfaces readable without lifting the exposure;
+ *   reaches the ceiling; it keeps charcoal surfaces readable without lifting the exposure. The sky
+ *   side stays well under the downlight, so floors and seat tops are modelled by the downlight and
+ *   its shadows rather than lit flat; where the floor is hidden (under seats, in corners) the baked
+ *   occlusion (bakedOcclusion.ts) takes it and the environment's share down further;
  * - ceiling downlight: one directional light standing in for the beam slots; the only shadow caster;
+ *   normal bias 1.2 cm (a shadow texel is about 1 cm at 2048 px, 2 cm at 1024), enough against acne
+ *   and small enough that shadows stay attached to the seat feet;
  * - screen: an area light over the picture, cool-neutral, lighting the stage and front rows
  *   (the screen's own unlit material does not light anything);
  * - architectural: one long area light per soffit cove washing the side walls, and one per aisle
@@ -77,18 +82,18 @@ export function createRoomLighting(layout: AuditoriumLayout): RoomLighting {
     return light;
   };
 
-  add('base', new HemisphereLight(0x857565, 0x7a5a4a, 2.0), 'room');
+  add('base', new HemisphereLight(0x6c5f52, 0x7a5a4a, 2.0), 'room');
 
   // Ceiling downlight: from above, a little from the back and right, so seat shadows fall just
   // under and in front of each seat.
-  const key = add('ceiling-downlight', new DirectionalLight(0xffe2c4, 1.5), 'ceiling');
+  const key = add('ceiling-downlight', new DirectionalLight(0xffe2c4, 1.85), 'ceiling');
   const centre = new Vector3(0, interior.y.max / 2, 0);
   key.position.copy(centre).addScaledVector(new Vector3(0.12, 1, 0.3).normalize(), 20);
   key.target.position.copy(centre);
   group.add(key.target);
   key.castShadow = true;
   key.shadow.bias = -0.0004;
-  key.shadow.normalBias = 0.025;
+  key.shadow.normalBias = 0.012;
   fitShadowCamera(key, structure);
 
   const screenLight = add('screen', new RectAreaLight(0xdde7f5, 1.6, screen.width, screen.height), 'room');

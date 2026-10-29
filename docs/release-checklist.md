@@ -126,6 +126,20 @@ Bằng chứng:
   Không WebGL: sơ đồ ghế và video 2D.
 - [ ] Chưa đo trên thiết bị thật, Safari, Firefox hay GPU AMD/Apple/Adreno/Mali (xem performance.md).
 
+**Hình ảnh: ánh sáng, bóng, che khuất (vòng hoàn thiện cuối, 30/10/2026)**
+
+Chi tiết, bảng theo nhóm vật thể, ảnh và số đo trước/sau: [visual-lighting.md](visual-lighting.md).
+
+- [x] 35 góc ở Ưu tiên đẹp và Tiết kiệm, cả tour và các phần ẩn/hiện: không thấy lỗi hình học.
+- [x] Tiếp xúc ở chân ghế, chân bậc, chân tường, chân bệ (che khuất nướng sẵn, chỉ trên ánh sáng gián
+  tiếp); khe nếp rèm tối hơn đỉnh nếp.
+- [x] Đèn trần (đèn duy nhất có bóng) dẫn trên sàn và ghế; nền hemisphere phía trời nhẹ hơn; không thêm
+  đèn hay bloom.
+- [x] Bóng không acne, không tách khỏi chân ghế ở 2048 và 1024; vẽ lại khi ẩn/hiện phần, đổi bậc, dựng
+  lại ghế, khôi phục context.
+- [x] Màn chiếu giữ đúng màu video; không có điểm cháy trắng ở góc nào.
+- [ ] Chưa xem trên màn hình thật ngoài máy đo (độ sáng/gamma màn hình khác có thể làm vùng tối khác đi).
+
 ## 2. Chưa kiểm chứng
 
 - [ ] **Âm thanh bằng tai** — chưa nghe; chỉ biết track tiếng được giải mã và mute/volume đúng.
