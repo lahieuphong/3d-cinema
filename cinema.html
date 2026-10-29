@@ -13,6 +13,10 @@
     </style>
   </head>
   <body>
+    <script>
+      // "Giảm hiệu ứng kính" (src/glass.ts), before the first paint.
+      try { if (localStorage.getItem('tp-glass') === 'reduced') document.documentElement.dataset.glass = 'reduced'; } catch (e) {}
+    </script>
     <div id="app"><div class="boot" role="status" data-boot><!--mark--><span>Đang mở phòng chiếu…</span></div></div>
     <noscript><div class="boot"><!--mark--><span>Phòng chiếu 3D cần JavaScript và WebGL.</span><a href="/">Về trang giới thiệu</a></div></noscript>
     <script>

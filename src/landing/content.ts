@@ -25,18 +25,18 @@ const srcset = (name: string, widths: readonly number[], ext: string) => widths.
 const STEPS = [
   {
     title: 'Khám phá khán phòng',
-    text: 'Chọn một góc nhìn có sẵn, để chuyến tham quan đưa bạn đi một vòng, hoặc tự đi bộ giữa các lối đi bằng phím W A S D hay cần điều khiển trên màn hình cảm ứng.',
+    text: 'Ở “Khám phá”, chọn một góc nhìn có sẵn, để chuyến tham quan đưa bạn đi một vòng, hoặc tự đi bộ giữa các lối đi bằng phím W A S D hay cần điều khiển trên màn hình cảm ứng.',
     alt: 'Lối đi bên phải của khán phòng, nhìn từ tầm mắt người đứng.',
   },
   {
     title: 'Chọn ghế và xem góc nhìn',
-    text: 'Chạm một ghế trong phòng hoặc trên sơ đồ, rồi bấm “Xem từ ghế này” để thấy màn chiếu từ đúng chỗ ngồi đó.',
-    alt: 'Sơ đồ ghế cạnh khán phòng, hai ghế đang được chọn.',
+    text: 'Ở “Chọn ghế”, chạm một ghế trong phòng hoặc trên sơ đồ, rồi bấm “Xem từ ghế này” để thấy màn chiếu từ đúng chỗ ngồi đó.',
+    alt: 'Sơ đồ ghế trong bảng kính bên phải khán phòng, hai ghế đang được chọn.',
   },
   {
     title: 'Phát video trên màn chiếu',
-    text: 'Mở “Cài đặt” (trên điện thoại là nút tròn) và bấm Phát ở mục Phim và âm thanh. Video không tự chạy; bạn tạm dừng, tua và tắt tiếng lúc nào cũng được.',
-    alt: 'Màn chiếu nhìn từ một ghế giữa phòng, bảng Cài đặt mở ở mục Phim và âm thanh.',
+    text: 'Chọn “Xem phim” ở thanh tác vụ phía dưới (trên điện thoại: trong nút tròn) rồi bấm Phát. Video không tự chạy; bạn tạm dừng, tua và tắt tiếng lúc nào cũng được.',
+    alt: 'Màn chiếu nhìn từ một ghế giữa phòng, trình phát phim nằm trên thanh kính ở phía dưới.',
   },
 ];
 

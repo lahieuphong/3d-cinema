@@ -1,6 +1,8 @@
+import './tokens.css';
 import './site.css';
 import { BRAND, markSvg, PAGE_TITLES } from './brand.ts';
 import type { CinemaSession } from './cinema/page.ts';
+import { applyStoredGlass } from './glass.ts';
 import { mountLandingPage } from './landing/landing.ts';
 import { createLoader, savesData } from './landing/loader.ts';
 import { CINEMA_PATH, isPlainClick, matchRoute, type RouteKind } from './router.ts';
@@ -8,6 +10,8 @@ import { CINEMA_PATH, isPlainClick, matchRoute, type RouteKind } from './router.
 const host = document.querySelector<HTMLElement>('#app');
 if (!host) throw new Error('Missing #app element.');
 const app = host;
+// "Giảm hiệu ứng kính", chosen on an earlier visit (the HTML shells already set it before painting).
+applyStoredGlass();
 
 // The auditorium comes in two downloads: its page (tasks, seat map, player) and its 3D part
 // (three.js, the room). Neither is fetched by the landing page on its own: only when the visitor

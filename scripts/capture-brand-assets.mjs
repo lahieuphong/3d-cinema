@@ -38,7 +38,7 @@ const COLORS = { charcoal: '#14110f', wine: '#7d2232', champagne: '#d9c08c' };
 
 /** Only the 3D view, filling the window (development page, styles injected by this script). */
 const VIEW_ONLY =
-  '.cinema-header,.cinema-hub,.cinema-overlay,.cinema-filmstatus,.cinema-notice,.cinema-caption,.cinema-return,.cinema-tourbar{display:none!important}' +
+  '.cinema-header,.cinema-hub,.cinema-taskbar,.cinema-overlay,.cinema-filmstatus,.cinema-notice,.cinema-caption,.cinema-return,.cinema-tourbar{display:none!important}' +
   '.cinema-main{padding:0!important}.cinema-screen{gap:0!important}.cinema-stage{border:0!important;border-radius:0!important}';
 
 // Camera poses (metres, room coordinates; the screen is at z = −8.7): the hero sees the room from the
@@ -201,11 +201,10 @@ async function main() {
     }
 
     if (wanted('step-2') || wanted('step-3')) {
-      // Step 2: the real page — "Mở sơ đồ" from "Cài đặt", the map beside the room, two seats selected (3:2).
+      // Step 2: the real page — Chọn ghế in the task bar, the map beside the room, two seats selected (3:2).
       page = await openRoom(browser, base, { width: 1200, height: 800 }, 1.6);
-      await page.click('button[data-action="settings"]');
-      await page.waitForSelector('#cinema-hub-panel:not([hidden])');
-      await page.click('.cinema-hub button[data-action="seat-panel"]');
+      await page.click('.cinema-taskbar button[data-task="seats"]');
+      if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') await page.click('.cinema-taskbar button[data-action="seat-panel"]');
       await page.waitForSelector('#cinema-seat-panel:not([hidden])');
       for (const id of ['F05', 'F06']) await page.click(`button[data-seat="${id}"]`);
       await page.mouse.move(5, 5);
@@ -216,19 +215,11 @@ async function main() {
         await encode(tool, seats, 'step-2', [640, 960], { jpegWidths: [960] });
       }
 
-      // Step 3: from seat F06 — the screen (slate) and, from "Cài đặt", the film's player (3:2).
+      // Step 3: from seat F06 — the screen (slate) and, in Xem phim, the player over the room (3:2).
       await page.click('button[data-action="view-from-seat"]');
       await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
-      await page.click('button[data-action="seat-panel-close"]');
+      await page.click('.cinema-taskbar button[data-task="watch"]');
       await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });
-      await page.click('button[data-action="settings"]');
-      await page.waitForSelector('#cinema-hub-panel:not([hidden])');
-      // The film's section at the top of the panel.
-      await page.evaluate(() => {
-        const body = document.querySelector('.cinema-hub__body');
-        const film = body.querySelector('[data-section="film"]');
-        body.scrollTop = film.offsetTop - body.offsetTop;
-      });
       await page.mouse.move(5, 5);
       await page.waitForTimeout(900);
       if (wanted('step-3')) {

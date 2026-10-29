@@ -86,12 +86,12 @@ const MINI: Partial<Record<MediaState, string>> = {
 };
 
 /**
- * The film player's controls, under the 3D view (never over the canvas, the explore stick, the way
- * back or the seat sheet). Built once; media events only update text, values and attributes, and
- * never per frame. A small copy of the main button (`mini`) keeps play/pause in reach from the
- * other tasks once the film has been started.
+ * The film player's controls: a glass dock over the room in Xem phim (clear of the explore stick,
+ * the way back and the seat panel), or in the phone's control panel. Built once; media events only
+ * update text, values and attributes, and never per frame. A small copy of the main button (`mini`)
+ * keeps play/pause in reach from the other tasks once the film has been started.
  *
- * Input stays here: it is outside the canvas, so presses never pick seats or turn the camera, and
+ * Input stays here: its pane lies over the canvas, so presses never pick seats or turn the camera, and
  * `data-keys="own"` keeps arrow keys and Space on its controls away from the explore walker. No
  * page-wide shortcut exists (Space only activates a focused button, as usual).
  */
@@ -187,7 +187,14 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   resumeButton.addEventListener('click', runPrimary, { signal });
   mute.addEventListener('click', () => handlers.onToggleMute(), { signal });
   retry.addEventListener('click', () => handlers.onRetry(), { signal });
-  volume.addEventListener('input', () => handlers.onVolume(Number(volume.value)), { signal });
+  volume.addEventListener(
+    'input',
+    () => {
+      fill(volume);
+      handlers.onVolume(Number(volume.value));
+    },
+    { signal },
+  );
   seek.addEventListener('pointerdown', () => (seeking = true), { signal });
   for (const type of ['pointerup', 'pointercancel'] as const) {
     window.addEventListener(type, () => (seeking = false), { signal });
@@ -197,6 +204,7 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     () => {
       // Preview while dragging; the media seeks on release (and on each arrow key press).
       current.textContent = formatTime(Number(seek.value));
+      fill(seek);
       seek.setAttribute('aria-valuetext', `${formatTime(Number(seek.value))} trên ${total.textContent}`);
     },
     { signal },
@@ -230,6 +238,12 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   const set = (element: HTMLElement, name: string, value: string) => {
     if (element.getAttribute(name) !== value) element.setAttribute(name, value);
   };
+  /** The slider's played (or loud) part, drawn by the CSS from `--fill`. */
+  const fill = (slider: HTMLInputElement) => {
+    const max = Number(slider.max) || 0;
+    const value = max > 0 ? `${((Number(slider.value) / max) * 100).toFixed(2)}%` : '0%';
+    if (slider.style.getPropertyValue('--fill') !== value) slider.style.setProperty('--fill', value);
+  };
   const text = (element: HTMLElement, value: string) => {
     if (element.textContent !== value) element.textContent = value;
   };
@@ -243,6 +257,7 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     text(current, formatTime(snapshot.currentTime));
     const value = String(Math.round(snapshot.currentTime * 10) / 10);
     if (seek.value !== value) seek.value = value;
+    fill(seek);
     set(seek, 'aria-valuetext', duration === null ? 'Chưa biết thời lượng' : `${formatTime(snapshot.currentTime)} trên ${formatTime(duration)}`);
   };
 
@@ -258,6 +273,7 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     volume.disabled = silent;
     const value = String(snapshot.volume);
     if (volume.value !== value) volume.value = value;
+    fill(volume);
     set(volume, 'aria-valuetext', `${Math.round(snapshot.volume * 100)} %${snapshot.muted ? ' (đang tắt tiếng)' : ''}`);
     root.dataset.muted = String(snapshot.muted);
   };

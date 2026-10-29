@@ -7,6 +7,8 @@
       // Before anything is painted: the landing content below belongs to "/" only (this document
       // also answers unknown paths, where the app shows "not found").
       document.documentElement.dataset.route = location.pathname.replace(/\/+$/, '') === '' ? 'landing' : 'other';
+      // "Giảm hiệu ứng kính" (src/glass.ts), before the first paint.
+      try { if (localStorage.getItem('tp-glass') === 'reduced') document.documentElement.dataset.glass = 'reduced'; } catch (e) {}
     </script>
     <style>
       html { background: #14110f; color: #f3ede5; }

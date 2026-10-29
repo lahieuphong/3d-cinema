@@ -1,12 +1,12 @@
 import { el } from './ui.ts';
 
-export type HubSection = 'seats' | 'film' | 'display' | 'help' | 'nav';
+export type HubSection = 'task' | 'display' | 'help' | 'nav';
 
+/** `task` holds the current task's controls (phones only); the others are the settings. */
 const SECTIONS: ReadonlyArray<{ id: HubSection; title: string }> = [
-  { id: 'seats', title: 'Ghế và góc nhìn' },
-  { id: 'film', title: 'Phim và âm thanh' },
+  { id: 'task', title: 'Tác vụ đang chọn' },
   { id: 'display', title: 'Hiển thị' },
-  { id: 'help', title: 'Trợ giúp và thông tin' },
+  { id: 'help', title: 'Trợ giúp' },
   { id: 'nav', title: 'Điều hướng' },
 ];
 
@@ -26,6 +26,8 @@ export interface ControlHub {
   readonly root: HTMLElement;
   readonly toggle: HTMLButtonElement;
   readonly panel: HTMLElement;
+  /** Under the title on phones: the task switch (Khám phá, Chọn ghế, Xem phim) is moved here. */
+  readonly tasks: HTMLElement;
   readonly isOpen: boolean;
   section(id: HubSection): HTMLElement;
   /** The line under the panel's title: what the camera shows now. */
@@ -71,18 +73,20 @@ interface Position {
 }
 
 /**
- * The phone layout's single floating control, after iOS AssistiveTouch: a round button over the
- * room (bottom right by default; it can be dragged to another spot and snaps to the nearest side),
- * and the panel it opens with every control of the page, grouped. It holds no state of its own
- * beyond its position: the page moves its existing controls into the sections, so the desktop and
- * the phone show the same elements with the same handlers.
+ * The phone layout's single floating control, after iOS AssistiveTouch: a round glass button over
+ * the room (bottom right by default; it can be dragged to another spot and snaps to the nearest
+ * side), and the panel it opens: the task switch on top, the current task's controls, and the
+ * settings folded under "Cài đặt và trợ giúp". It holds no state of its own beyond its position and
+ * that fold: the page moves its existing controls into it, so the desktop and the phone show the
+ * same elements with the same handlers.
  *
  * The panel is a modal dialog over the room: a press outside it (on the scrim) closes it and goes
  * no further, so it never turns the camera or picks a seat; Escape closes it and focus returns to the
  * button; Tab stays inside. The button keeps its place and closes the panel when pressed again.
  *
- * On larger screens the same panel (same sections, same controls) drops down from the header's
- * "Cài đặt" button instead (`setFloating(false)`), so the room is left with nothing over it.
+ * On larger screens the tasks have their own bar over the room, and the same panel holds only the
+ * settings (display, help, the way home), dropped down from the header's "Cài đặt" instead
+ * (`setFloating(false)`).
  */
 export function createControlHub(host: HTMLElement, options: ControlHubOptions): ControlHub {
   const listeners = new AbortController();
@@ -133,20 +137,46 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   close.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg>';
   const now = el('p', 'cinema-hub__now');
   head.append(title, close);
+  const tasks = el('div', 'cinema-hub__tasks');
   const body = el('div', 'cinema-hub__body');
+  // Phones: the settings fold under one button, so the panel opens on the task at hand.
+  const more = el('div', 'cinema-hub__more');
+  const moreToggle = el('button', 'cinema-button cinema-hub__more-toggle', 'Cài đặt và trợ giúp');
+  moreToggle.type = 'button';
+  moreToggle.dataset.action = 'hub-more';
+  moreToggle.setAttribute('aria-expanded', 'false');
+  moreToggle.setAttribute('aria-controls', 'cinema-hub-more');
+  const moreBody = el('div', 'cinema-hub__more-body');
+  moreBody.id = 'cinema-hub-more';
+  more.append(moreToggle, moreBody);
+  let moreOpen = false;
   const sections = new Map<HubSection, HTMLElement>();
   for (const { id, title: label } of SECTIONS) {
     const section = el('section', 'cinema-hub__section');
     section.dataset.section = id;
-    const heading = el('h3', 'cinema-hub__heading', label);
+    const heading = el('h3', `cinema-hub__heading${id === 'task' ? ' visually-hidden' : ''}`, label);
     heading.id = `cinema-hub-${id}`;
     section.setAttribute('aria-labelledby', heading.id);
     const content = el('div', 'cinema-hub__content');
     section.append(heading, content);
-    body.append(section);
+    (id === 'task' ? body : moreBody).append(section);
     sections.set(id, content);
   }
-  panel.append(head, now, body);
+  body.append(more);
+  panel.append(head, now, tasks, body);
+  const paintMore = () => {
+    moreToggle.setAttribute('aria-expanded', String(moreOpen));
+    // From the header ("Cài đặt") the panel is the settings: never folded.
+    moreBody.hidden = floating && !moreOpen;
+  };
+  moreToggle.addEventListener(
+    'click',
+    () => {
+      moreOpen = !moreOpen;
+      paintMore();
+    },
+    { signal },
+  );
 
   const hint = el('div', 'cinema-hub__hint');
   hint.hidden = true;
@@ -419,6 +449,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
     root,
     toggle,
     panel,
+    tasks,
     get isOpen() {
       return open;
     },
@@ -449,6 +480,9 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
       const hadFocus = panel.contains(document.activeElement);
       scrim.hidden = true;
       panel.hidden = true;
+      // Next time it opens on the task at hand again, the settings folded.
+      moreOpen = false;
+      paintMore();
       options.onOpenChange(false);
       if (focusToggle || hadFocus) opener().focus({ preventScroll: true });
       wake();
@@ -479,6 +513,7 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
       root.dataset.floating = String(next);
       title.textContent = next ? 'Điều khiển rạp' : 'Cài đặt';
       close.setAttribute('aria-label', next ? 'Đóng điều khiển rạp' : 'Đóng cài đặt');
+      paintMore();
       place();
       wake();
     },
@@ -503,5 +538,6 @@ export function createControlHub(host: HTMLElement, options: ControlHubOptions):
   root.dataset.rest = 'false';
   root.dataset.active = 'false';
   root.dataset.floating = 'true';
+  paintMore();
   return api;
 }

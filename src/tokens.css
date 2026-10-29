@@ -1,0 +1,154 @@
+/* Design tokens shared by the landing page (src/site.css) and the auditorium (src/styles.css):
+   colour, the three materials, edges and shadows, radius, spacing, type, motion and layers. Loaded
+   first, on every page (src/main.ts).
+
+   Materials, a web reading of Liquid Glass (CSS cannot reproduce the native optics):
+   - clear: small floating controls over the room (the round button, the task switch, the header).
+   - regular: menus and control panels (Cài đặt, the task's controls, the seat sidebar).
+   - dense: long text and the seat map, and the fallback when glass is off.
+   Each material is a tint (alpha only, never `opacity` on text) over one backdrop filter. The
+   filter darkens what is behind a little, so ivory text keeps ≥ 4.5:1 over a bright film frame
+   without a heavy tint. One blurred layer per cluster: controls inside a material never blur again. */
+
+:root {
+  /* ---------- Colour ---------- */
+  --ink: #f5f1ea;
+  --ink-secondary: #d3cdc4;
+  --ink-tertiary: #a59f97;
+  --accent: #d9c08c;
+  --accent-strong: #ecd9ae;
+  --accent-ink: #1b1510;
+  --accent-tint: rgb(217 192 140 / 0.16);
+  --success: #8fd8ae;
+  --warning: #f2c879;
+  --danger: #ff9b91;
+  --danger-tint: rgb(255 120 110 / 0.14);
+  --canvas: #0d0d10;
+
+  /* Fills inside a material (hover, pressed / selected). */
+  --fill-hover: rgb(255 255 255 / 0.08);
+  --fill-pressed: rgb(255 255 255 / 0.14);
+  --fill-subtle: rgb(255 255 255 / 0.05);
+  --separator: rgb(255 255 255 / 0.1);
+
+  /* ---------- Materials ---------- */
+  --glass-clear-tint: rgb(22 22 26 / 0.56);
+  --glass-clear-filter: blur(16px) saturate(160%) brightness(0.72);
+  --glass-regular-tint: rgb(20 20 24 / 0.66);
+  --glass-regular-filter: blur(24px) saturate(150%) brightness(0.72);
+  --surface-dense-tint: rgb(16 16 19 / 0.92);
+  --surface-dense-filter: blur(24px) saturate(130%);
+  /* A soft light falling on the top of the pane. */
+  --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 46%);
+  --glass-border: rgb(255 255 255 / 0.14);
+  --glass-border-strong: rgb(255 255 255 / 0.22);
+  /* The bright edge along the top. */
+  --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.13);
+  --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.26), 0 1px 2px rgb(0 0 0 / 0.22);
+  --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.24);
+
+  /* ---------- Shape and space ---------- */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  /* Smallest pressable size: 40 px with a mouse, 44 px on touch screens (below). */
+  --tap: 40px;
+
+  /* ---------- Type ---------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --text-2xs: 0.75rem;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  /* Vietnamese stacks marks above and below: body text never goes under 1.4, titles under 1.15. */
+  --leading-body: 1.45;
+  --leading-title: 1.2;
+  --tracking-title: -0.012em;
+  --tracking-display: -0.024em;
+
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --duration-fast: 160ms;
+  --duration-medium: 220ms;
+  --duration-panel: 280ms;
+
+  /* ---------- Layers ---------- */
+  --z-overlay: 1;
+  --z-float: 3;
+  --z-status: 4;
+  --z-chrome: 5;
+  --z-header: 6;
+  --z-popover: 30;
+  --z-hint: 59;
+  --z-scrim: 60;
+  --z-panel: 61;
+  --z-hub: 62;
+
+  /* Focus: a light ring with a dark halo, seen on a bright film frame as on the dark room. */
+  --focus-ring: #f3e1b6;
+  --focus-halo: 0 0 0 4px rgb(8 8 10 / 0.72);
+}
+
+@media (pointer: coarse) {
+  :root {
+    --tap: 44px;
+  }
+}
+
+/* Phones: less blur (cheaper to composite, still reads as glass at that size). */
+@media (max-width: 599px), (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --glass-clear-filter: blur(12px) saturate(160%) brightness(0.72);
+    --glass-regular-filter: blur(18px) saturate(150%) brightness(0.72);
+    --surface-dense-filter: blur(18px) saturate(130%);
+  }
+}
+
+/* Less glass: the system setting, or "Giảm hiệu ứng kính" (html[data-glass="reduced"], src/glass.ts).
+   Solid panes, no blur, no sheen; the same edges, so nothing moves. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-clear-tint: rgb(26 26 30 / 0.95);
+    --glass-regular-tint: rgb(24 24 28 / 0.97);
+    --surface-dense-tint: rgb(20 20 23 / 0.98);
+    --glass-clear-filter: none;
+    --glass-regular-filter: none;
+    --surface-dense-filter: none;
+    --glass-sheen: none;
+  }
+}
+
+:root[data-glass='reduced'] {
+  --glass-clear-tint: rgb(26 26 30 / 0.95);
+  --glass-regular-tint: rgb(24 24 28 / 0.97);
+  --surface-dense-tint: rgb(20 20 23 / 0.98);
+  --glass-clear-filter: none;
+  --glass-regular-filter: none;
+  --surface-dense-filter: none;
+  --glass-sheen: none;
+}
+
+/* Browsers without backdrop-filter: the tint alone has to carry the text. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-clear-tint: rgb(24 24 28 / 0.86);
+    --glass-regular-tint: rgb(22 22 26 / 0.92);
+    --surface-dense-tint: rgb(18 18 21 / 0.96);
+  }
+}

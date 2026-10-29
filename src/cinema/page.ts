@@ -154,7 +154,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     onVolume: (volume) => media.setVolume(volume),
     onRetry: () => media.retry(),
   });
-  const unsubscribePlayer = media.subscribe((snapshot, change) => player.update(snapshot, change));
+  const unsubscribePlayer = media.subscribe((snapshot, change) => {
+    player.update(snapshot, change);
+    if (change === 'state') ui.setPlaying(snapshot.state === 'playing');
+  });
   player.update(media.snapshot, 'all');
   // A hidden tab pauses the film; coming back does not resume it.
   const onVisibility = () => {
@@ -223,6 +226,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   };
 
   const ui = createCinemaUi(host, {
+    onTask: (task) => dispatch({ type: 'task', task }),
     onPreset: (id) => applyPreset(id, true),
     onReset: () => {
       autoHidden.clear();
@@ -331,7 +335,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   });
   ui.dock.watch.append(player.root);
   player.root.append(ui.watchView);
-  ui.miniSlot.append(player.mini);
+  ui.attachMini(player.mini);
   ui.attachFilmStatus(player.status);
   ui.root.append(player.live);
 
@@ -349,9 +353,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     const focused = document.activeElement;
     renderLayout();
     if (focused && focused !== document.body && !focusable(focused)) {
-      const target = previous.panel === 'expanded' && tasks.panel === 'open' ? panel.expandButton : summary.toggle;
-      // The button that opens the control panel ("Cài đặt", or the round one on a phone) leads back to everything.
-      (focusable(target) ? target : ui.hubToggle).focus();
+      const target = previous.panel === 'expanded' && tasks.panel === 'open' ? panel.expandButton : tasks.task === 'seats' ? summary.toggle : ui.taskButton(tasks.task);
+      // On a phone the task switch is in the round button's panel: that button leads back to everything.
+      const fallback = isImmersive() ? ui.hubToggle : ui.taskButton(tasks.task);
+      (focusable(target) ? target : fallback).focus();
     }
   }
 
@@ -372,8 +377,10 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
   renderLayout();
 
   const unsubscribeSelection = selection.subscribe((change) => {
+    if (change.selection) ui.setSeatCount(selection.selectedCount);
     if (change.active || change.selection) updateWatchView();
   });
+  ui.setSeatCount(selection.selectedCount);
 
   // The user's stored choice, else a conservative default from device capabilities.
   const quality = loadQuality();

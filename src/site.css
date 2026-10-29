@@ -1,23 +1,23 @@
 /* The site around the auditorium: landing page, page loading/error, not found. (The auditorium's
-   own styles are src/styles.css, loaded with it.) Colours follow src/brand.ts. */
+   own styles are src/styles.css, loaded with it.) Built on the shared tokens of src/tokens.css;
+   brand colours follow src/brand.ts. Glass is kept for the floating navigation and the buttons over
+   the hero picture; the reading parts sit on the page itself. */
 
 :root {
   --site-bg: #14110f;
-  --site-surface: #1c1815;
-  --site-line: #3b312b;
-  --site-text: #f3ede5;
-  --site-muted: #bdb1a3;
-  --site-wine: #8a2636;
-  --site-wine-hover: #a12f42;
-  --site-champagne: #d9c08c;
-  --site-champagne-ink: #1b1510;
+  --site-surface: rgb(255 255 255 / 0.04);
+  --site-line: rgb(255 255 255 / 0.1);
   --site-gutter: clamp(16px, 4vw, 40px);
   --site-width: 1120px;
+  --site-header-height: 56px;
   color-scheme: dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
-  color: var(--site-text);
+  color: var(--ink);
   background: var(--site-bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 *,
@@ -33,20 +33,22 @@ body {
 
 /* The auditorium's own dark (its styles arrive with it; this keeps the opening screen the same colour). */
 html:is([data-route='cinema'], [data-route='inspector']) body {
-  background: #0f1013;
+  background: var(--canvas);
 }
 
 .noscript-note {
   margin: 0;
   padding: 10px var(--site-gutter);
   background: #3a1a20;
-  color: var(--site-text);
-  font-size: 0.9rem;
+  color: var(--ink);
+  font-size: var(--text-sm);
   text-align: center;
 }
 
 html[data-route='landing'] {
   scroll-behavior: smooth;
+  /* In-page links land below the floating navigation. */
+  scroll-padding-top: calc(var(--site-header-height) + 24px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -74,7 +76,9 @@ html[data-route='landing'] {
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  color: var(--site-text);
+  padding-right: 6px;
+  border-radius: var(--radius-pill);
+  color: var(--ink);
   text-decoration: none;
 }
 
@@ -90,16 +94,16 @@ html[data-route='landing'] {
 }
 
 .wordmark__name {
-  font-size: 1.08rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-size: 1.0625rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-title);
 }
 
 .wordmark__suffix {
-  color: var(--site-champagne);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.28em;
+  color: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
@@ -110,48 +114,61 @@ html[data-route='landing'] {
   align-items: center;
   justify-content: center;
   min-height: 48px;
-  padding: 10px 22px;
+  padding: 0 24px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font: inherit;
-  font-weight: 650;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
   line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
-  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
+/* The way in: the brand's champagne, the one strong colour on the page. */
 .button--primary {
-  background: var(--site-wine);
-  border-color: #b04a5b;
-  color: #fff8ee;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), var(--shadow-sm);
 }
 
 .button--primary:hover {
-  background: var(--site-wine-hover);
+  background: var(--accent-strong);
 }
 
+/* Clear glass over the picture, a quiet outline on the page. */
 .button--ghost {
-  border-color: rgb(217 192 140 / 0.55);
-  color: var(--site-text);
-  background: rgb(20 17 15 / 0.35);
+  border-color: var(--glass-border-strong);
+  background-color: var(--glass-clear-tint);
+  background-image: var(--glass-sheen);
+  color: var(--ink);
+  box-shadow: var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-clear-filter);
+  backdrop-filter: var(--glass-clear-filter);
 }
 
 .button--ghost:hover {
-  border-color: var(--site-champagne);
+  background-color: rgb(40 40 46 / 0.62);
 }
 
+/* The way in from the floating navigation: a lit pill inside the glass (the hero keeps the champagne). */
 .button--small {
   min-height: 44px;
-  padding: 8px 18px;
-  border-color: rgb(217 192 140 / 0.6);
-  color: var(--site-text);
-  background: rgb(20 17 15 / 0.45);
+  padding: 0 18px;
+  border-color: var(--glass-border);
+  background-color: rgb(255 255 255 / 0.14);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  box-shadow: var(--glass-highlight);
 }
 
 .button--small:hover {
-  border-color: var(--site-champagne);
+  background-color: rgb(255 255 255 / 0.22);
 }
 
 .button[aria-busy='true'] {
@@ -163,8 +180,9 @@ html[data-route='landing'] {
 .route-status button:focus-visible,
 .not-found a:focus-visible,
 .landing [tabindex='-1']:focus-visible {
-  outline: 3px solid var(--site-champagne);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
+  box-shadow: var(--focus-halo);
 }
 
 .landing [tabindex='-1']:focus:not(:focus-visible) {
@@ -177,10 +195,10 @@ html[data-route='landing'] {
   left: 8px;
   z-index: 10;
   padding: 10px 16px;
-  border-radius: 8px;
-  background: var(--site-champagne);
-  color: var(--site-champagne-ink);
-  font-weight: 650;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
   text-decoration: none;
   transform: translateY(-150%);
 }
@@ -189,28 +207,37 @@ html[data-route='landing'] {
   transform: none;
 }
 
-/* ---------- Header (over the hero) ---------- */
+/* ---------- Floating navigation (glass) ---------- */
 
 .landing {
   position: relative;
 }
 
 .site-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(var(--site-gutter), env(safe-area-inset-left));
+  right: max(var(--site-gutter), env(safe-area-inset-right));
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 8px 28px;
-  padding: max(10px, env(safe-area-inset-top)) max(var(--site-gutter), env(safe-area-inset-right)) 10px max(var(--site-gutter), env(safe-area-inset-left));
-  background: linear-gradient(rgb(20 17 15 / 0.82), rgb(20 17 15 / 0));
+  gap: 8px 20px;
+  max-width: calc(var(--site-width) + 2 * 12px);
+  min-height: var(--site-header-height);
+  margin: 0 auto;
+  padding: 5px 5px 5px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--glass-clear-tint);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-highlight), var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-clear-filter);
+  backdrop-filter: var(--glass-clear-filter);
 }
 
 .site-nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   margin-left: auto;
 }
 
@@ -218,15 +245,17 @@ html[data-route='landing'] {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 12px;
-  border-radius: 8px;
-  color: var(--site-text);
-  font-size: 0.95rem;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
   text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 .site-nav a:hover {
-  color: var(--site-champagne);
+  background-color: var(--fill-hover);
 }
 
 /* ---------- Hero ---------- */
@@ -260,7 +289,7 @@ html[data-route='landing'] {
   object-position: 58% 50%;
   transform: scale(1.02);
   transform-origin: 58% 45%;
-  animation: hero-settle 1.6s ease-out both;
+  animation: hero-settle 1.6s var(--ease-out) both;
 }
 
 .hero__shade {
@@ -273,57 +302,56 @@ html[data-route='landing'] {
 }
 
 .hero__content {
-  padding: 104px var(--site-gutter) 72px;
+  padding: calc(var(--site-header-height) + 72px) var(--site-gutter) 72px;
   padding-left: max(var(--site-gutter), env(safe-area-inset-left));
 }
 
-/* Left-aligned with the brand and kept within the left ~45 % of a wide picture: the screen in the
+/* Left-aligned with the brand and kept within the left ~40 % of a wide picture: the screen in the
    render starts just right of that. */
 .hero__content > * {
-  max-width: min(34rem, 42vw);
+  max-width: min(36rem, 36vw);
 }
 
 /* Only the small line above the heading arrives with a short rise; the heading, text and buttons
    are there from the first paint. */
 .hero .eyebrow {
-  animation: hero-rise 0.5s ease-out both;
+  animation: hero-rise 0.5s var(--ease-out) both;
 }
 
 .eyebrow {
   margin: 0 0 14px;
-  color: var(--site-champagne);
-  font-size: 0.8rem;
-  font-weight: 650;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  color: var(--accent);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
 }
 
 .hero h1 {
   margin: 0;
-  font-size: clamp(2rem, 1.1rem + 3.4vw, 4rem);
-  font-weight: 750;
-  line-height: 1.06;
-  letter-spacing: -0.02em;
+  font-size: clamp(2.5rem, 1.55rem + 3.4vw, 4.5rem);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-display);
   text-wrap: balance;
 }
 
 .hero__lead {
-  margin: 18px 0 0;
-  color: #e6ddd2;
-  font-size: clamp(1rem, 0.94rem + 0.3vw, 1.2rem);
+  margin: 20px 0 0;
+  color: var(--ink-secondary);
+  font-size: clamp(1.0625rem, 1rem + 0.35vw, 1.3125rem);
+  line-height: 1.5;
 }
 
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 28px;
+  margin-top: 32px;
 }
 
 .hero__note {
-  margin: 18px 0 0;
-  color: var(--site-muted);
-  font-size: 0.85rem;
+  margin: 20px 0 0;
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
 }
 
 @keyframes hero-rise {
@@ -342,8 +370,7 @@ html[data-route='landing'] {
 /* ---------- Sections ---------- */
 
 .section {
-  padding: clamp(56px, 8vw, 104px) 0;
-  scroll-margin-top: 8px;
+  padding: clamp(64px, 9vw, 120px) 0;
 }
 
 .section:focus {
@@ -358,44 +385,49 @@ html[data-route='landing'] {
 
 .section h2 {
   margin: 0;
-  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem);
+  font-size: clamp(1.75rem, 1.25rem + 1.8vw, 2.75rem);
+  font-weight: var(--weight-bold);
   line-height: 1.15;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-display);
   text-wrap: balance;
 }
 
 .section__lead {
   max-width: 44rem;
-  margin: 14px 0 0;
-  color: var(--site-muted);
-  font-size: 1.05rem;
+  margin: 16px 0 0;
+  color: var(--ink-secondary);
+  font-size: 1.0625rem;
 }
 
 .facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin: 36px 0 0;
+  margin: 40px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .facts li {
   display: grid;
-  gap: 4px;
-  padding: 20px;
+  align-content: start;
+  gap: 6px;
+  padding: 24px;
   border: 1px solid var(--site-line);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--site-surface);
+  box-shadow: var(--glass-highlight);
 }
 
 .facts strong {
-  color: var(--site-champagne);
-  font-size: 1.15rem;
+  color: var(--ink);
+  font-size: 1.375rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
 }
 
 .facts span {
-  color: var(--site-muted);
+  color: var(--ink-secondary);
 }
 
 .steps {
@@ -405,8 +437,8 @@ html[data-route='landing'] {
 .steps__list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-  margin: 36px 0 0;
+  gap: 28px;
+  margin: 40px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -418,7 +450,7 @@ html[data-route='landing'] {
   aspect-ratio: 3 / 2;
   object-fit: cover;
   border: 1px solid var(--site-line);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--site-surface);
 }
 
@@ -426,31 +458,36 @@ html[data-route='landing'] {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 18px 0 6px;
-  font-size: 1.15rem;
+  margin: 20px 0 8px;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-title);
+  letter-spacing: var(--tracking-title);
 }
 
 .step__number {
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--site-champagne);
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  color: var(--site-champagne);
-  font-size: 0.9rem;
-  font-weight: 700;
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.45);
+  color: var(--accent-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 .step p {
   margin: 0;
-  color: var(--site-muted);
+  color: var(--ink-secondary);
 }
 
 .closing {
   text-align: center;
-  background: radial-gradient(60% 80% at 50% 100%, rgb(138 38 54 / 0.28), rgb(20 17 15 / 0));
+  background: radial-gradient(60% 80% at 50% 100%, rgb(138 38 54 / 0.24), rgb(20 17 15 / 0));
 }
 
 .closing .section__lead {
@@ -458,21 +495,21 @@ html[data-route='landing'] {
 }
 
 .closing .button {
-  margin-top: 28px;
+  margin-top: 32px;
 }
 
 .closing__note {
   max-width: 36rem;
   margin: 20px auto 0;
-  color: var(--site-muted);
-  font-size: 0.85rem;
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
 }
 
 .site-footer {
-  padding: 28px 0 max(28px, env(safe-area-inset-bottom));
+  padding: 32px 0 max(32px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--site-line);
-  color: var(--site-muted);
-  font-size: 0.85rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
 }
 
 .site-footer p {
@@ -480,12 +517,17 @@ html[data-route='landing'] {
 }
 
 .site-footer__brand {
-  color: var(--site-text);
-  font-weight: 600;
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
 }
 
 .site-footer a {
   color: inherit;
+  text-underline-offset: 2px;
+}
+
+.site-footer a:hover {
+  color: var(--ink);
 }
 
 /* ---------- Narrower screens ---------- */
@@ -537,6 +579,7 @@ html[data-route='landing'] {
     position: absolute;
     inset: 0;
     background: linear-gradient(180deg, rgb(20 17 15 / 0.55) 0%, rgb(20 17 15 / 0) 22%, rgb(20 17 15 / 0) 48%, var(--site-bg) 100%);
+    pointer-events: none;
   }
 
   .hero__image {
@@ -546,11 +589,11 @@ html[data-route='landing'] {
   .hero__content {
     position: relative;
     padding-top: 0;
-    padding-bottom: 48px;
+    padding-bottom: 56px;
   }
 
   .hero__content > * {
-    max-width: 34rem;
+    max-width: 36rem;
   }
 }
 
@@ -575,23 +618,29 @@ html[data-route='landing'] {
   }
 
   .button {
-    padding-inline: 18px;
+    padding-inline: 20px;
+  }
+
+  .hero h1 {
+    font-size: 2.25rem;
   }
 }
 
 /* Low landscape screens (phones turned sideways, zoomed windows). */
 @media (orientation: landscape) and (max-height: 500px) {
   .hero__content {
-    padding-top: 72px;
+    padding-top: calc(var(--site-header-height) + 20px);
     padding-bottom: 32px;
   }
 
   .hero h1 {
-    font-size: clamp(1.4rem, 0.9rem + 2vw, 2.2rem);
+    font-size: clamp(1.5rem, 0.9rem + 2vw, 2.2rem);
   }
 
   .hero__lead {
-    margin-top: 10px;
+    margin-top: 8px;
+    font-size: var(--text-md);
+    line-height: 1.45;
   }
 
   .hero__actions {
@@ -610,23 +659,26 @@ html[data-route='landing'] {
     animation: none;
   }
 
-  .button {
+  .button,
+  .site-nav a {
     transition: none;
   }
 }
 
 /* ---------- Opening the auditorium, and pages that are not there ---------- */
 
-.route-status {
+.route-status,
+.not-found {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 14px;
+  gap: 16px;
   min-height: 100vh;
   min-height: 100dvh;
   padding: 24px;
   box-sizing: border-box;
   text-align: center;
+  background: radial-gradient(70% 60% at 50% 40%, rgb(217 192 140 / 0.06), rgb(0 0 0 / 0));
 }
 
 .route-status__text {
@@ -635,23 +687,28 @@ html[data-route='landing'] {
   gap: 12px;
 }
 
-.route-status h1 {
+.route-status h1,
+.not-found h1 {
   margin: 0;
-  font-size: 1.3rem;
-  font-weight: 650;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-title);
+  letter-spacing: var(--tracking-title);
 }
 
-.route-status h1:focus {
+.route-status h1:focus,
+.not-found h1:focus {
   outline: none;
 }
 
 .route-status__message {
   max-width: 36ch;
   margin: 0;
-  color: var(--site-muted);
+  color: var(--ink-secondary);
 }
 
-.route-status__actions {
+.route-status__actions,
+.not-found__links {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -661,8 +718,8 @@ html[data-route='landing'] {
 .route-status__spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid var(--site-line);
-  border-top-color: var(--site-champagne);
+  border: 3px solid rgb(255 255 255 / 0.14);
+  border-top-color: var(--ink);
   border-radius: 50%;
   animation: route-spin 0.9s linear infinite;
 }
@@ -673,26 +730,9 @@ html[data-route='landing'] {
   }
 }
 
-.not-found {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 14px;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 16px;
-  box-sizing: border-box;
-  text-align: center;
-}
-
-.not-found h1 {
-  margin: 0;
-  font-size: 1.6rem;
-}
-
-.not-found__links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
+/* Off the picture, the ghost button is a quiet outline (no glass over a flat page). */
+:is(.route-status, .not-found) .button--ghost {
+  background-color: var(--fill-subtle);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }

@@ -1,33 +1,26 @@
-/* The auditorium's styles (loaded with it). Page-wide rules apply only while it, or the seat
-   inspector, is the page: the landing page scrolls and has its own type (src/site.css). */
+/* The auditorium's styles (loaded with it), on the shared tokens of src/tokens.css. Page-wide rules
+   apply only while it, or the seat inspector, is the page: the landing page scrolls and has its own
+   layout (src/site.css).
+
+   The room is the content: it fills the window, and the controls float over it in glass (see the
+   materials in tokens.css), grouped by task. Long text and the seat map sit on steadier panes. */
+
 :root {
-  --bg: #0f1013;
-  --panel: #17191e;
-  --panel-raised: #1c1f25;
-  --panel-border: #2a2d34;
-  --text: #e9eaee;
-  --text-muted: #a3a7b1;
-  --accent: #d8b65a;
-  --accent-text: #17130a;
-  --danger: #ff8a80;
-  --radius: 8px;
-  --gutter: clamp(10px, 1.6vw, 18px);
-  /* Main touch targets (CSS px). */
-  --tap: 40px;
+  /* Where the header's clusters end: overlays at the top of the view start below this. */
+  --chrome-top: calc(12px + env(safe-area-inset-top, 0px) + var(--tap) + 8px + 12px);
+  --seats-width: 384px;
+  --edge: 12px;
 }
 
 html:is([data-route='cinema'], [data-route='inspector']) {
   color-scheme: dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  line-height: 1.4;
-  color: var(--text);
-  background: var(--bg);
-}
-
-@media (pointer: coarse) {
-  :root {
-    --tap: 44px;
-  }
+  font-family: var(--font-sans);
+  line-height: var(--leading-body);
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 *,
@@ -41,7 +34,7 @@ html:is([data-route='cinema'], [data-route='inspector']) body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--canvas);
 }
 
 html:is([data-route='cinema'], [data-route='inspector']) #app {
@@ -64,6 +57,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border: 0;
 }
 
+/* One visual weight for every icon: 24-unit glyphs drawn at 20 px (18 px in dense rows). */
 .cinema-icon {
   flex: none;
   width: 20px;
@@ -71,156 +65,157 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   fill: currentColor;
 }
 
-/* ---------- Page: header on top, then the view with its task controls (and the seat panel). ---------- */
+/* ================================================================ Materials
 
-.cinema-app {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  /* Never wider than the screen, whatever a child's minimum width (the seat map scrolls instead). */
-  grid-template-columns: minmax(0, 1fr);
-  width: 100%;
-  height: 100vh;
-  /* Follows the browser's own toolbars as they show and hide. */
-  height: 100dvh;
-  overflow: hidden;
-  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+   Which part wears which material, in one place. Only the outer pane of a cluster blurs; what is
+   inside it never blurs again. */
+
+/* Clear: small floating controls over the room. */
+.cinema-brand,
+.cinema-header__end,
+.cinema-taskbar > .cinema-tasks,
+.cinema-hub__toggle,
+.cinema-return,
+.cinema-tourbar,
+.cinema-notice,
+.cinema-stick,
+.cinema-overlay > .cinema-mini {
+  border: 1px solid var(--glass-border);
+  background-color: var(--glass-clear-tint);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-highlight), var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-clear-filter);
+  backdrop-filter: var(--glass-clear-filter);
 }
 
-.cinema-header {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: 8px 16px;
-  min-width: 0;
-  padding: 8px var(--gutter);
+/* Regular: the task's controls, menus and panels, notes over the room. */
+.cinema-taskbar__tools > .cinema-dock__panel,
+.cinema-filmstatus,
+.cinema-seatcard,
+.cinema-hub__panel,
+.cinema-hub__hint,
+.cinema-seats,
+.cinema-status__card {
+  border: 1px solid var(--glass-border);
+  background-color: var(--glass-regular-tint);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
+  -webkit-backdrop-filter: var(--glass-regular-filter);
+  backdrop-filter: var(--glass-regular-filter);
 }
 
-.cinema-title {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+/* Dense, inside a pane (no second blur): the seat map, popovers, the 2D film's label. */
+.cinema-map,
+.cinema-taskbar .cinema-more[data-open='true'],
+.cinema-video2d__label {
+  background-color: var(--surface-dense-tint);
 }
 
-/* The brand, leading back to the landing page. */
-.cinema-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: var(--tap);
-  padding-right: 4px;
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 650;
-  text-decoration: none;
-  white-space: nowrap;
+/* Tiết kiệm: lighter glass (the room itself is cheaper too). Less glass wins over it. */
+.cinema-app--room[data-quality='economy'] {
+  --glass-clear-filter: blur(8px) saturate(140%) brightness(0.72);
+  --glass-regular-filter: blur(10px) saturate(140%) brightness(0.72);
+  --surface-dense-filter: none;
+  --glass-sheen: none;
 }
 
-.cinema-brand__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
+@media (prefers-reduced-transparency: reduce) {
+  .cinema-app--room[data-quality] {
+    --glass-clear-filter: none;
+    --glass-regular-filter: none;
+    --surface-dense-filter: none;
+  }
 }
 
-.cinema-brand:hover .cinema-brand__name {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+:root[data-glass='reduced'] .cinema-app--room[data-quality] {
+  --glass-clear-filter: none;
+  --glass-regular-filter: none;
+  --surface-dense-filter: none;
 }
 
-.cinema-brand:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.cinema-badge {
-  margin-left: 6px;
-  padding: 2px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  vertical-align: middle;
-}
-
-.cinema-header__end {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-/* The film's small play/pause, while another task is shown. */
-.cinema-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--tap);
-  padding: 4px 12px 4px 8px;
-  border: 1px solid #8a6a2e;
-  border-radius: 999px;
-  background: rgb(216 182 90 / 0.12);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.82rem;
-  white-space: nowrap;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.cinema-mini svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
-}
-
-/* ---------- Buttons and switches ---------- */
+/* ================================================================ Controls */
 
 .cinema-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: var(--tap);
-  padding: 6px 14px;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  background: var(--panel);
-  color: var(--text);
+  padding: 0 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--fill-subtle);
+  color: var(--ink);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-title);
+  text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .cinema-button:hover:not(:disabled) {
-  border-color: #50545f;
+  background-color: var(--fill-hover);
+  border-color: var(--glass-border-strong);
 }
 
+/* On, selected: a lighter fill and the same words (the label never changes width). */
 .cinema-button[aria-pressed='true'],
 .cinema-button[aria-expanded='true'].cinema-summary__map {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-  font-weight: 600;
+  border-color: var(--glass-border-strong);
+  background-color: var(--fill-pressed);
+  box-shadow: var(--glass-highlight);
+}
+
+/* The one action that matters most in a group (play, view from this seat, retry). */
+.cinema-button--accent:not(:disabled),
+.cinema-player__primary:not(:disabled) {
+  border-color: transparent;
+  background-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.cinema-button--accent:hover:not(:disabled),
+.cinema-player__primary:hover:not(:disabled) {
+  border-color: transparent;
+  background-color: var(--accent-strong);
 }
 
 .cinema-button--compact {
-  padding-inline: 10px;
+  padding-inline: 12px;
 }
 
+.cinema-button--icon {
+  width: var(--tap);
+  padding: 0;
+}
+
+/* Off: still shaped like a button (a faint edge), its words dimmed. */
 .cinema-button:disabled {
-  opacity: 0.45;
+  border-color: var(--separator);
+  background: transparent;
+  color: var(--ink-tertiary);
   cursor: not-allowed;
 }
 
-.cinema-button:focus-visible,
-.cinema-mini:focus-visible,
-.cinema-switch__input:focus-visible + .cinema-switch__track,
-.cinema-app a:focus-visible {
-  outline: 2px solid var(--accent);
+/* Focus: a light ring and a dark halo, visible on a bright film frame and on the dark room. */
+.cinema-app :is(button, a, input, [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+  box-shadow: var(--focus-halo);
+}
+
+.cinema-switch__input:focus-visible ~ .cinema-switch__track {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--focus-halo);
 }
 
 .cinema-menu__toggle,
@@ -230,19 +225,66 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   gap: 6px;
 }
 
+/* Segmented control: one choice of a few (quality). */
+.cinema-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-subtle);
+  box-shadow: inset 0 0 0 1px var(--separator);
+}
+
+.cinema-segmented__button {
+  flex: 1 1 0;
+  min-height: calc(var(--tap) - 6px);
+  min-width: 6.5em;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.cinema-segmented__button:hover:not(:disabled) {
+  background-color: var(--fill-hover);
+}
+
+.cinema-segmented__button[aria-pressed='true'] {
+  background-color: rgb(255 255 255 / 0.2);
+  box-shadow: var(--glass-highlight), 0 1px 3px rgb(0 0 0 / 0.25);
+}
+
+.cinema-segmented__button:disabled {
+  color: var(--ink-tertiary);
+  cursor: not-allowed;
+}
+
+/* Switch: label first, the track at the end of the row (as in iOS). */
 .cinema-switch {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-height: var(--tap);
-  padding: 0 10px;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  background: var(--panel);
-  font-size: 0.875rem;
+  padding: 0 4px 0 12px;
+  border-radius: var(--radius-md);
+  background: var(--fill-subtle);
+  font-size: var(--text-sm);
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.cinema-switch--row {
+  display: flex;
+  justify-content: space-between;
+  padding-right: 8px;
 }
 
 .cinema-switch__input {
@@ -255,11 +297,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-switch__track {
   position: relative;
   flex: none;
-  width: 30px;
-  height: 18px;
-  border-radius: 999px;
-  background: #3a3e47;
-  transition: background-color 0.15s;
+  width: 40px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.2);
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 .cinema-switch__track::after {
@@ -267,23 +309,25 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
-  transition: transform 0.15s;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  transition: transform var(--duration-fast) var(--ease-out);
+  pointer-events: none;
 }
 
-.cinema-switch__input:checked + .cinema-switch__track {
+.cinema-switch__input:checked ~ .cinema-switch__track {
   background: var(--accent);
 }
 
-.cinema-switch__input:checked + .cinema-switch__track::after {
-  transform: translateX(12px);
+.cinema-switch__input:checked ~ .cinema-switch__track::after {
+  transform: translateX(16px);
 }
 
 .cinema-switch__input:disabled ~ * {
-  opacity: 0.45;
+  color: var(--ink-tertiary);
 }
 
 .cinema-toolbar__group {
@@ -294,51 +338,253 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   min-width: 0;
 }
 
-/* ---------- Hiển thị (a section of the control panel) ---------- */
+/* Sliders: the seek bar and volume, drawn the same way everywhere (filled part from --fill). */
+.cinema-player__seek,
+.cinema-player__volume {
+  --fill: 0%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
 
-.cinema-settings {
+.cinema-player__seek::-webkit-slider-runnable-track,
+.cinema-player__volume::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--ink) var(--fill), rgb(255 255 255 / 0.24) var(--fill));
+}
+
+.cinema-player__seek::-webkit-slider-thumb,
+.cinema-player__volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}
+
+.cinema-player__seek::-moz-range-track,
+.cinema-player__volume::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.24);
+}
+
+.cinema-player__seek::-moz-range-progress,
+.cinema-player__volume::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+}
+
+.cinema-player__seek::-moz-range-thumb,
+.cinema-player__volume::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}
+
+.cinema-player__seek:disabled,
+.cinema-player__volume:disabled {
+  cursor: not-allowed;
+}
+
+.cinema-player__seek:disabled::-webkit-slider-thumb,
+.cinema-player__volume:disabled::-webkit-slider-thumb {
+  background: var(--ink-tertiary);
+}
+
+@media (pointer: coarse) {
+  .cinema-player__seek::-webkit-slider-thumb,
+  .cinema-player__volume::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+    margin-top: -8px;
+  }
+
+  .cinema-player__seek,
+  .cinema-player__volume {
+    height: 36px;
+  }
+}
+
+/* ================================================================ The room and its header */
+
+.cinema-app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  /* Never wider than the screen, whatever a child's minimum width (the seat map scrolls instead). */
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  height: 100vh;
+  /* Follows the browser's own toolbars as they show and hide. */
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* The auditorium: the room is the page, edge to edge; the header floats over it. */
+.cinema-app--room {
+  position: relative;
+  isolation: isolate;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cinema-app--room > .cinema-main {
+  grid-row: 1;
+}
+
+.cinema-header {
+  position: relative;
+  z-index: var(--z-header);
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 8px var(--edge);
+}
+
+/* Two small clusters along the top edge: the brand (home) left, film and settings right. */
+.cinema-app--room > .cinema-header {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(var(--edge) + env(safe-area-inset-left, 0px));
+  right: calc(var(--edge) + env(safe-area-inset-right, 0px));
+  justify-content: space-between;
+  padding: 0;
+  pointer-events: none;
+}
+
+.cinema-app--room > .cinema-header > * {
+  pointer-events: auto;
+}
+
+.cinema-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+  white-space: nowrap;
+}
+
+/* The brand, leading back to the landing page. */
+.cinema-brand {
+  display: inline-flex;
+  align-items: center;
   gap: 10px;
+  min-width: 0;
+  min-height: calc(var(--tap) + 8px);
+  padding: 0 18px 0 12px;
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
-.cinema-settings__heading {
-  flex-basis: 100%;
-  color: var(--text-muted);
-  font-size: 0.8rem;
+.cinema-brand__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.cinema-settings__hint {
-  margin: -4px 0 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
+.cinema-brand:hover {
+  background-color: rgb(40 40 46 / 0.6);
 }
 
-.cinema-settings__disclosure {
-  align-self: flex-start;
+.cinema-badge {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink-secondary);
+  vertical-align: middle;
 }
 
-.cinema-settings__disclosure::after {
-  content: ' ▾';
-}
-
-.cinema-settings__disclosure[aria-expanded='true']::after {
-  content: ' ▴';
-}
-
-.cinema-settings__tools {
+.cinema-header__end {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--panel-border);
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
 }
 
-/* ---------- Main area: the room and the seat panel, edge to edge under the header ---------- */
+.cinema-header__mini {
+  display: contents;
+}
+
+.cinema-header__end > .cinema-menu__toggle,
+.cinema-header__end .cinema-mini {
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.cinema-header__end > .cinema-menu__toggle {
+  padding: 0 16px 0 12px;
+  font-size: var(--text-md);
+}
+
+.cinema-header__end > .cinema-menu__toggle:hover,
+.cinema-header__end .cinema-mini:hover {
+  background-color: var(--fill-hover);
+}
+
+.cinema-header__end > .cinema-menu__toggle[aria-expanded='true'] {
+  background-color: var(--fill-pressed);
+}
+
+/* The film's small play/pause, while another task is shown. */
+.cinema-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap);
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cinema-mini svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* Xem phim has the player itself in view. */
+.cinema-app--room[data-layout='standard'][data-task='watch'] .cinema-header .cinema-mini {
+  display: none;
+}
+
+/* ================================================================ Main area: the room (and the seat panel) */
 
 .cinema-main {
   /* Always the flexible row, also while the header is out of the layout (full-screen sheet). */
   grid-row: 2;
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -358,7 +604,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  background: #16181c;
+  background: #121215;
 }
 
 .cinema-viewport {
@@ -373,21 +619,20 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   outline: none;
 }
 
-/* ---------- Overlays on the view ---------- */
+/* ================================================================ Over the view */
 
 .cinema-caption {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
+  left: 12px;
+  bottom: 12px;
   width: fit-content;
-  max-width: calc(100% - 20px);
+  max-width: calc(100% - 24px);
   margin: 0;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: rgb(10 11 14 / 0.78);
-  font-size: 0.8rem;
-  color: var(--text);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--glass-regular-tint);
+  font-size: var(--text-xs);
+  color: var(--ink);
   pointer-events: none;
 }
 
@@ -395,23 +640,22 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-/* The lower left corner: the card of a seat just tapped (phones). */
+/* The lower corner on phones: the film's problems, the card of a seat just tapped, the mini player. */
 .cinema-overlay {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  z-index: 1;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 8px;
   pointer-events: none;
 }
 
 /* The room's caption is not drawn over the view (it covered the room); it stays a live region for
-   screen readers, and on phones the hub shows it. The film's credit is in the player and on the
-   landing page. */
+   screen readers, and the control panel shows it under its title. */
 .cinema-overlay .cinema-caption {
   position: absolute;
   width: 1px;
@@ -424,27 +668,19 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border: 0;
 }
 
-/* While walking, it moves to the top so the stick has the lower corner. */
-.cinema-app[data-explore='true'] .cinema-overlay {
-  top: 10px;
-  bottom: auto;
-}
-
-/* Watching: the dock says where the camera is and credits the film; the corner is for its status. */
-.cinema-app[data-task='watch'] .cinema-overlay {
-  display: none;
-}
-
 .cinema-notice {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  max-width: calc(100% - 20px);
+  top: var(--chrome-top);
+  left: 50%;
+  z-index: var(--z-float);
+  max-width: min(520px, calc(100% - 24px));
   margin: 0;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: rgb(10 11 14 / 0.85);
-  font-size: 0.82rem;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -454,39 +690,58 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-return {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: var(--chrome-top);
+  left: calc(var(--edge) + env(safe-area-inset-left, 0px));
+  z-index: var(--z-float);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+}
+
+.cinema-return:hover:not(:disabled) {
+  background-color: rgb(40 40 46 / 0.62);
+}
+
+/* Off (no scene for a moment): still a pane over the room, its words dimmed. */
+.cinema-return:disabled {
+  border-color: var(--glass-border);
+  background-color: var(--glass-clear-tint);
 }
 
 .cinema-tourbar {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: var(--chrome-top);
+  left: calc(var(--edge) + env(safe-area-inset-left, 0px));
+  z-index: var(--z-float);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
-  max-width: calc(100% - 20px);
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgb(10 11 14 / 0.82);
-  font-size: 0.82rem;
+  gap: 4px 6px;
+  max-width: calc(100% - 2 * var(--edge));
+  padding: 4px 4px 4px 16px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
 }
 
 .cinema-tourbar__text {
-  padding-inline: 4px;
+  padding-right: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* On-screen stick for walking on touch screens; clear of the safe areas. */
+.cinema-tourbar .cinema-button {
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: var(--fill-hover);
+}
+
+/* On-screen stick for walking on touch screens; clear of the safe areas and of the task bar. */
 .cinema-stick {
   position: absolute;
   left: 16px;
-  bottom: 16px;
+  bottom: calc(28px + var(--taskbar-height, 0px));
   width: 124px;
   height: 124px;
-  border: 2px solid rgb(255 255 255 / 0.35);
   border-radius: 50%;
-  background: rgb(10 11 14 / 0.45);
+  border-width: 1.5px;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -496,11 +751,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 54px;
-  height: 54px;
-  margin: -27px 0 0 -27px;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
   border-radius: 50%;
-  background: rgb(216 182 90 / 0.85);
+  background: rgb(245 241 234 / 0.88);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
   pointer-events: none;
 }
 
@@ -512,34 +768,43 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-status {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: var(--z-status);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(10 10 12 / 0.55);
+  text-align: center;
+}
+
+.cinema-status__card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  padding: 24px;
-  text-align: center;
-  background: rgb(15 16 19 / 0.94);
-  font-size: 0.95rem;
+  max-width: 440px;
+  padding: 24px 28px;
+  border-radius: var(--radius-xl);
+  font-size: var(--text-md);
 }
 
 .cinema-status--error strong {
   color: var(--danger);
-  font-size: 1.05rem;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-title);
 }
 
 .cinema-status__hint {
   max-width: 46ch;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
 }
 
 .cinema-status__spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid #3a3e47;
-  border-top-color: var(--accent);
+  border: 3px solid rgb(255 255 255 / 0.16);
+  border-top-color: var(--ink);
   border-radius: 50%;
   animation: cinema-spin 0.9s linear infinite;
 }
@@ -550,26 +815,22 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
-/* The film's loading, waiting, notices and errors: a chip in the corner, never over the whole room. */
+/* The film's loading, waiting, notices and errors: a note at the head of the task bar (on phones,
+   of the overlay stack), never over the whole room. */
 .cinema-filmstatus {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  z-index: 3;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  max-width: min(560px, calc(100% - 20px));
-  padding: 6px 10px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: rgb(10 11 14 / 0.88);
-  font-size: 0.82rem;
+  max-width: min(560px, 100%);
+  padding: 6px 6px 6px 16px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  pointer-events: auto;
 }
 
 .cinema-filmstatus[data-kind='error'] {
-  border-color: #a8483f;
+  border-color: rgb(255 140 130 / 0.45);
 }
 
 .cinema-filmstatus[data-level='info'],
@@ -578,16 +839,20 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
+.cinema-player__status {
+  padding-block: 6px;
+}
+
 .cinema-player__status--busy::before {
   content: '';
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 6px;
-  border: 2px solid #3a3e47;
-  border-top-color: var(--accent);
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border: 2px solid rgb(255 255 255 / 0.2);
+  border-top-color: var(--ink);
   border-radius: 50%;
-  vertical-align: -1px;
+  vertical-align: -2px;
   animation: cinema-spin 0.9s linear infinite;
 }
 
@@ -595,39 +860,218 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   color: var(--danger);
 }
 
-/* ---------- Each task's controls (sections of the control panel) ---------- */
+.cinema-filmstatus .cinema-button {
+  border-radius: var(--radius-pill);
+}
+
+/* ================================================================ The task bar (bottom centre)
+
+   The film's problems, the current task's controls, and the task switch, stacked from the bottom,
+   centred in the room (beside the seat sidebar when it is open). */
+
+.cinema-taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-chrome);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.cinema-taskbar > *,
+.cinema-taskbar__tools > * {
+  pointer-events: auto;
+}
+
+.cinema-taskbar__tools {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  pointer-events: none;
+}
+
+/* The task switch: one pill, the current task lit. */
+.cinema-tasks {
+  display: flex;
+  gap: 2px;
+}
+
+.cinema-taskbar > .cinema-tasks {
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  transition:
+    opacity var(--duration-panel) var(--ease-out),
+    transform var(--duration-panel) var(--ease-out),
+    visibility 0s;
+}
+
+.cinema-tasks__button {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 18px 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.cinema-tasks__button .cinema-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.cinema-tasks__button:hover {
+  background-color: var(--fill-hover);
+}
+
+.cinema-tasks__button[aria-pressed='true'] {
+  background-color: var(--fill-pressed);
+  box-shadow: var(--glass-highlight);
+}
+
+/* Chosen seats, on "Chọn ghế". */
+.cinema-tasks__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Watching, nobody touching the page: the switch steps back (the player and its credit stay). */
+.cinema-taskbar[data-rest='true'] > .cinema-tasks {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity var(--duration-panel) var(--ease-out),
+    transform var(--duration-panel) var(--ease-out),
+    visibility 0s var(--duration-panel);
+}
+
+/* Beside the open seat sidebar. */
+.cinema-app--room[data-panel='open'] .cinema-taskbar {
+  right: calc(var(--seats-width) + 2 * var(--edge) + env(safe-area-inset-right, 0px));
+}
+
+/* ---------- Each task's controls ---------- */
 
 .cinema-dock__panel {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 16px;
+  gap: 6px 12px;
   min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  background: var(--panel);
+}
+
+.cinema-taskbar__tools > .cinema-dock__panel {
+  max-width: 100%;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+}
+
+/* A new task's controls arrive softly. */
+@starting-style {
+  .cinema-taskbar__tools > .cinema-dock__panel {
+    opacity: 0;
+  }
+}
+
+.cinema-taskbar__tools > .cinema-dock__panel {
+  transition: opacity var(--duration-medium) var(--ease-out);
+}
+
+/* Inside a pane, buttons are plain until hovered or on. */
+.cinema-taskbar__tools .cinema-button:not(.cinema-button--accent, .cinema-player__primary, .cinema-summary__view) {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.cinema-taskbar__tools .cinema-button:hover:not(:disabled, .cinema-button--accent, .cinema-player__primary, .cinema-summary__view) {
+  background-color: var(--fill-hover);
+}
+
+.cinema-taskbar__tools .cinema-button[aria-pressed='true'],
+.cinema-taskbar__tools .cinema-button[aria-expanded='true'].cinema-summary__map {
+  background-color: var(--fill-pressed);
+  box-shadow: var(--glass-highlight);
 }
 
 .cinema-dock__note {
   flex-basis: 100%;
+  max-width: 60ch;
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.8rem;
+  padding: 2px 10px 4px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
 }
 
-/* Khám phá */
+/* Khám phá: the views (one choice), then the tour and walking. */
 .cinema-explore {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px 16px;
-  width: 100%;
+  gap: 6px;
 }
 
-.cinema-explore__views {
+.cinema-explore__views,
+.cinema-explore__modes {
   position: relative;
+  gap: 2px;
+}
+
+.cinema-explore__modes {
+  padding-left: 6px;
+  border-left: 1px solid var(--separator);
+}
+
+.cinema-mode {
+  gap: 8px;
+}
+
+.cinema-mode .cinema-icon,
+.cinema-explore__reset .cinema-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Over the room the way back to the first view is a small icon (it keeps its name). */
+.cinema-taskbar .cinema-explore__reset {
+  width: var(--tap);
+  padding: 0;
+}
+
+.cinema-taskbar .cinema-explore__reset-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .cinema-more__toggle {
@@ -643,32 +1087,60 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: contents;
 }
 
-/* Chọn ghế: one line for the selection, the map button and the seat view. */
+/* Chọn ghế: one line for the selection, the map and the seat view. */
 .cinema-summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 12px;
-  width: 100%;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+/* Over the room, one row: the selection, the map, the view from the seat (the sidebar has the rest). */
+.cinema-taskbar .cinema-summary {
+  flex-wrap: nowrap;
+  padding-left: 10px;
+}
+
+/* A fixed width: picking seats never resizes the bar (a long list ends in "…", the sidebar has it all). */
+.cinema-taskbar .cinema-summary__text {
+  flex: 0 1 30ch;
+  max-width: none;
+}
+
+/* With the sidebar open it says it all: over the room only its two actions remain. */
+.cinema-app--room[data-panel='open'] .cinema-taskbar .cinema-summary__text {
+  display: none;
+}
+
+.cinema-taskbar .cinema-button {
+  white-space: nowrap;
+}
+
+.cinema-taskbar .cinema-summary__active {
+  display: none;
 }
 
 .cinema-summary__text {
-  flex: 1 1 240px;
+  flex: 1 1 260px;
+  max-width: 42ch;
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .cinema-summary__demo {
   display: inline-block;
-  padding: 0 6px;
-  border-left: 3px solid var(--accent);
-  background: rgb(216 182 90 / 0.1);
-  color: var(--text);
-  font-size: 0.75rem;
+  margin-right: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
 }
 
 .cinema-summary__selected {
@@ -677,8 +1149,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-summary__active {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.8rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -688,14 +1160,19 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-summary__actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
 }
 
 .cinema-summary__map {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+
+.cinema-summary__map .cinema-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .cinema-summary__view {
@@ -703,28 +1180,44 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-variant-numeric: tabular-nums;
 }
 
+.cinema-summary__view:hover:not(:disabled) {
+  background-color: var(--accent-strong);
+}
+
+.cinema-summary__view:not(:disabled) {
+  border-color: transparent;
+  background-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
 .cinema-summary__map-sheet {
   display: none;
 }
 
-/* Xem phim: the player, then where the camera is. */
+/* Xem phim: title, credit and where the camera is on top; the controls under them. */
 .cinema-player {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    'controls controls'
-    'info view';
+    'info view'
+    'controls controls';
   align-items: center;
   gap: 2px 16px;
   width: 100%;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
+}
+
+.cinema-taskbar .cinema-player {
+  width: min(720px, calc(100vw - 48px));
+  padding: 4px 6px 0 10px;
 }
 
 .cinema-player__controls {
   grid-area: controls;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -735,6 +1228,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   width: var(--tap);
   min-height: var(--tap);
   padding: 0;
+  border-radius: 50%;
 }
 
 .cinema-player__button svg {
@@ -743,81 +1237,63 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   fill: currentColor;
 }
 
-.cinema-player__primary:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
+.cinema-player__primary {
+  width: calc(var(--tap) + 4px);
+  min-height: calc(var(--tap) + 4px);
 }
 
 .cinema-player__time {
   flex: none;
-  min-width: 9ch;
+  min-width: 10ch;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
   text-align: center;
 }
 
 .cinema-player__seek {
   flex: 1 1 auto;
-  min-width: 60px;
-  height: 32px;
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
+  min-width: 80px;
 }
 
 .cinema-player__volume {
   flex: 0 1 96px;
-  min-width: 56px;
-  height: 32px;
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.cinema-player__seek:disabled,
-.cinema-player__volume:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.cinema-player__seek:focus-visible,
-.cinema-player__volume:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  min-width: 64px;
 }
 
 .cinema-player__hint {
   flex: none;
   max-width: 14ch;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  line-height: 1.2;
+  color: var(--ink-secondary);
+  font-size: var(--text-2xs);
+  line-height: 1.25;
 }
 
 .cinema-player__info {
   grid-area: info;
   min-width: 0;
-  padding-left: 4px;
-  line-height: 1.35;
+  padding-left: 2px;
+  line-height: 1.4;
 }
 
 .cinema-player__title {
-  margin-right: 10px;
-  font-weight: 650;
+  margin-right: 8px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .cinema-player__credit {
-  color: var(--text-muted);
-  font-size: 0.75rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-2xs);
 }
 
 .cinema-player__credit a {
   color: inherit;
+  text-underline-offset: 2px;
 }
 
-.cinema-player__retry {
-  min-height: 34px;
+.cinema-player__credit a:hover {
+  color: var(--ink);
 }
 
 .cinema-watchview {
@@ -825,13 +1301,13 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
 .cinema-watchview__text {
-  color: var(--text-muted);
-  font-size: 0.8rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -840,26 +1316,112 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Seat panel: header, scrolling body, footer with the active seat ---------- */
+/* With a mouse, the camera action sits small in the player's top line. */
+@media (pointer: fine) {
+  .cinema-taskbar .cinema-watchview__action {
+    min-height: 32px;
+  }
+}
+
+/* ================================================================ Hiển thị (in "Cài đặt") */
+
+.cinema-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cinema-settings__item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.cinema-settings__item .cinema-segmented {
+  display: flex;
+}
+
+.cinema-settings__heading {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.cinema-settings__hint {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+}
+
+.cinema-settings__disclosure {
+  justify-content: space-between;
+  width: 100%;
+  border-color: transparent;
+  background: var(--fill-subtle);
+}
+
+.cinema-settings__disclosure::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+  pointer-events: none;
+}
+
+.cinema-settings__disclosure[aria-expanded='true']::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.cinema-settings__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 0;
+}
+
+.cinema-settings__row .cinema-button {
+  flex: 1 1 auto;
+}
+
+/* ================================================================ Seat panel
+
+   A glass sidebar over the room (its header, a scrolling body with the map on a steadier pane, a
+   fixed footer with the active seat so "Xem từ ghế này" stays in reach). On portrait screens, a
+   sheet under the view. */
 
 .cinema-seats {
   flex: none;
   display: flex;
   flex-direction: column;
-  width: 396px;
+  width: var(--seats-width);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  background: var(--panel);
-  font-size: 0.86rem;
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
 }
 
-/* Beside the room, flush with it: one dividing line instead of a frame. */
-.cinema-seats[data-state='open'] {
-  border-width: 0 0 0 1px;
-  border-radius: 0;
+.cinema-app--room .cinema-seats[data-state='open'] {
+  position: absolute;
+  top: var(--chrome-top);
+  right: calc(var(--edge) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--edge) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-chrome);
+}
+
+@starting-style {
+  .cinema-app--room .cinema-seats[data-state='open'] {
+    opacity: 0;
+  }
+}
+
+.cinema-app--room .cinema-seats[data-state='open'] {
+  transition: opacity var(--duration-panel) var(--ease-out);
 }
 
 .cinema-seats__header {
@@ -867,20 +1429,27 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px 8px 14px;
-  border-bottom: 1px solid var(--panel-border);
+  padding: 14px 12px 10px 20px;
 }
 
 .cinema-seats__title {
   margin: 0 auto 0 0;
-  font-size: 1rem;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+  line-height: var(--leading-title);
 }
 
 .cinema-seats__badge {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
+  margin-left: 4px;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
+}
+
+.cinema-seats__header .cinema-button {
+  border-radius: var(--radius-pill);
 }
 
 .cinema-seats__expand {
@@ -898,25 +1467,26 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 14px;
+  overscroll-behavior: contain;
+  padding: 2px 16px 16px;
 }
 
 .cinema-seats__demo {
   margin: 0;
-  padding: 6px 8px;
-  border-left: 3px solid var(--accent);
-  background: rgb(216 182 90 / 0.08);
-  color: var(--text);
-  font-size: 0.8rem;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: var(--text-xs);
 }
 
 .cinema-seats__muted {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.8rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
 }
 
 .cinema-seats__info {
@@ -924,52 +1494,70 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 14px 12px;
-  border-top: 1px solid var(--panel-border);
-  background: var(--panel-raised);
+  gap: 10px;
+  padding: 12px 16px 16px 20px;
+  border-top: 1px solid var(--separator);
+  background: rgb(255 255 255 / 0.03);
 }
 
 .cinema-seats__seat {
   display: flex;
   align-items: center;
-  min-height: 2.6em;
+  min-height: 2.8em;
 }
 
 .cinema-seats__details {
   display: grid;
   grid-template-columns: repeat(4, auto);
   justify-content: start;
-  gap: 0 16px;
+  gap: 0 20px;
   margin: 0;
 }
 
 .cinema-seats__details dt {
-  color: var(--text-muted);
-  font-size: 0.75rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-2xs);
 }
 
 .cinema-seats__details dd {
   margin: 0;
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
 .cinema-seats__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+}
+
+.cinema-seats__actions .cinema-button {
+  flex: 1 1 auto;
+  border-radius: var(--radius-pill);
+}
+
+.cinema-seats__view:not(:disabled) {
+  border-color: transparent;
+  background-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.cinema-seats__view:hover:not(:disabled) {
+  background-color: var(--accent-strong);
 }
 
 .cinema-seats__count {
-  margin: 0 0 6px;
-  font-weight: 600;
+  margin: 0 0 8px;
+  font-weight: var(--weight-semibold);
 }
 
 .cinema-seats__list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   padding: 0;
   list-style: none;
 }
@@ -978,11 +1566,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 2px 2px 10px;
-  border: 1px solid #8a6a2e;
-  border-radius: 999px;
-  background: rgb(216 182 90 / 0.14);
-  font-weight: 600;
+  padding: 2px 2px 2px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px rgb(217 192 140 / 0.35);
+  font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 
@@ -992,35 +1580,31 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--text);
+  color: var(--ink);
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--text-base);
   cursor: pointer;
 }
 
 .cinema-seats__remove:hover {
-  background: rgb(255 255 255 / 0.08);
-}
-
-.cinema-seats__remove:focus-visible {
-  outline: 2px solid var(--accent);
+  background: var(--fill-hover);
 }
 
 .cinema-seats__limit {
-  margin: 0 0 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: rgb(255 138 128 / 0.12);
-  color: #ffb4ab;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-tint);
+  color: var(--danger);
 }
 
 .cinema-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 16px;
+  gap: 4px 16px;
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
 }
 
 .cinema-stats__item {
@@ -1030,32 +1614,32 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-stats dd {
   margin: 0;
-  color: var(--text);
-  font-weight: 600;
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 2D seat map ---------- */
+/* ---------- 2D seat map, on a steadier pane ---------- */
 
 .cinema-map {
   overflow-x: auto;
-  padding: 4px 2px 8px;
+  padding: 14px 8px 12px;
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--separator);
   /* A horizontal scrollbar shows when the rows do not fit (narrow phones). */
   scrollbar-gutter: stable;
 }
 
 .cinema-map__screen {
   width: calc(11 * 26px + 10 * 3px);
-  margin: 0 auto 10px;
+  margin: 0 auto 14px;
   padding: 3px 0;
   border-radius: 0 0 40% 40% / 0 0 10px 10px;
-  background: linear-gradient(#dfe5ec, #9aa3ad);
+  background: linear-gradient(#e9edf2, #a9b1ba);
   color: #1b1d22;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
   text-align: center;
-  text-transform: uppercase;
 }
 
 .cinema-map__grid {
@@ -1075,33 +1659,35 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-map__label {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
+  color: var(--ink-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
   text-align: center;
 }
 
+/* Seats: wine red (free), champagne with ✓ (chosen), graphite with ✕ (taken), a white ring (looked at). */
 .cinema-seat {
   display: inline-grid;
   place-items: center;
   width: 26px;
   height: 28px;
   padding: 0;
-  border: 1px solid #a33a4a;
-  border-radius: 6px 6px 3px 3px;
-  background: #5c1424;
-  color: #f1d9dd;
+  border: 1px solid #b04457;
+  border-radius: 7px 7px 4px 4px;
+  background: #6a1729;
+  color: #f6dfe3;
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  transition: filter var(--duration-fast) var(--ease-out);
 }
 
 .cinema-seat[data-status='selected'] {
-  border-color: #f3cd74;
-  background: #d8b65a;
-  color: #17130a;
-  font-weight: 700;
+  border-color: #f4dba4;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: var(--weight-bold);
 }
 
 .cinema-seat[data-status='selected']::after {
@@ -1111,9 +1697,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-seat[data-status='reserved'] {
-  border-color: #464a53;
-  background: #24262b;
-  color: #9a9ea8;
+  border-color: #4b4e56;
+  background: #26272c;
+  color: #a7aab2;
   cursor: not-allowed;
 }
 
@@ -1128,15 +1714,15 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-seat[data-active='true'] {
-  box-shadow: 0 0 0 2px #0f1013, 0 0 0 4px #eaeef3;
+  box-shadow: 0 0 0 2px #0e0e11, 0 0 0 4px #f5f1ea;
 }
 
-.cinema-seat:focus-visible {
-  outline: 3px solid var(--accent);
+.cinema-app .cinema-seat:focus-visible {
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
-.cinema-seat--swatch {
+.cinema-seat.cinema-seat--swatch {
   width: 18px;
   height: 18px;
   font-size: 0.55rem;
@@ -1147,12 +1733,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-map__legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 4px 0 0;
+  gap: 6px 14px;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  color: var(--text-muted);
-  font-size: 0.78rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
 }
 
 .cinema-map__swipe {
@@ -1173,7 +1759,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   .cinema-seat {
     width: 36px;
     height: 36px;
-    font-size: 0.78rem;
+    font-size: var(--text-xs);
   }
 
   .cinema-map__screen {
@@ -1191,18 +1777,44 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
+/* Touch screens wide enough for the sidebar (landscape tablets): a wider sidebar and slightly
+   smaller seats, so a whole row fits without scrolling sideways. */
+@media (pointer: coarse) and (min-width: 600px) {
+  :root {
+    --seats-width: 512px;
+  }
+
+  .cinema-app--room .cinema-seats[data-state='open'] .cinema-map__row {
+    grid-template-columns: 16px repeat(11, 34px) 16px;
+    gap: 4px;
+  }
+
+  .cinema-app--room .cinema-seats[data-state='open'] .cinema-map__grid {
+    gap: 4px;
+  }
+
+  .cinema-app--room .cinema-seats[data-state='open'] .cinema-seat:not(.cinema-seat--swatch) {
+    width: 34px;
+    height: 34px;
+  }
+
+  .cinema-app--room .cinema-seats[data-state='open'] .cinema-map__screen {
+    width: calc(11 * 34px + 10 * 4px);
+  }
+}
+
 /* Narrow touch screens: say that the map scrolls sideways. */
 @media (pointer: coarse) and (max-width: 520px) {
   .cinema-map__swipe {
     display: block;
     margin: 0 0 4px;
-    color: var(--text-muted);
-    font-size: 0.75rem;
+    color: var(--ink-secondary);
+    font-size: var(--text-xs);
     text-align: center;
   }
 }
 
-/* ---------- Without 3D: the film's own element fills the view, labelled as the 2D mode ---------- */
+/* ================================================================ Without 3D: the film flat, labelled */
 
 .cinema-stage--video2d {
   display: flex;
@@ -1212,24 +1824,32 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 .cinema-stage--video2d .cinema-status {
   position: static;
   flex: none;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 6px 10px;
+  display: block;
+  padding: calc(var(--chrome-top) - 4px) var(--edge) 8px;
   background: transparent;
-  font-size: 0.78rem;
   text-align: left;
 }
 
+.cinema-stage--video2d .cinema-status__card {
+  align-items: flex-start;
+  gap: 2px;
+  max-width: none;
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+}
+
 .cinema-stage--video2d .cinema-status strong {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .cinema-stage--video2d .cinema-status__hint {
   max-width: none;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .cinema-video2d {
+  position: relative;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -1238,11 +1858,15 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-video2d__label {
+  position: absolute;
+  top: 12px;
+  left: var(--edge);
+  z-index: 1;
+  max-width: calc(100% - 2 * var(--edge));
   margin: 0;
-  padding: 6px 10px;
-  background: rgb(216 182 90 / 0.14);
-  border-top: 1px solid var(--panel-border);
-  font-size: 0.8rem;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
 }
 
 .cinema-video2d__video {
@@ -1253,7 +1877,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   background: #000;
 }
 
-/* ---------- Seat inspector (development page): header, toolbar, view ---------- */
+/* ================================================================ Seat inspector (development page)
+
+   The same parts with a denser layout: header, toolbar, a framed view. */
 
 .cinema-app--inspector {
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -1261,6 +1887,11 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-app--inspector .cinema-header {
   justify-content: space-between;
+  padding: 12px var(--edge) 8px;
+}
+
+.cinema-app--inspector .cinema-title {
+  font-size: var(--text-lg);
 }
 
 .cinema-toolbar {
@@ -1269,246 +1900,133 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   align-items: center;
   justify-content: space-between;
   gap: 8px 16px;
-  padding: 4px var(--gutter) 10px;
+  padding: 0 var(--edge) 12px;
 }
 
 .cinema-app--inspector .cinema-stage {
-  margin: 0 var(--gutter) var(--gutter);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
+  margin: 0 var(--edge) var(--edge);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+}
+
+.cinema-app--inspector .cinema-caption {
+  border: 1px solid var(--glass-border);
 }
 
 /* Measured seat dimensions in the seat inspector. */
 .cinema-dimensions {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
   display: grid;
   grid-template-columns: auto auto;
   gap: 4px 14px;
-  max-width: calc(100% - 20px);
+  max-width: calc(100% - 24px);
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: rgb(10 11 14 / 0.78);
-  font-size: 0.8rem;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-regular-tint);
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
 
 .cinema-dimensions dt {
-  color: var(--text-muted);
+  color: var(--ink-secondary);
 }
 
 .cinema-dimensions dd {
   margin: 0;
   text-align: right;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
-/* ================================================================ Responsive layouts */
+.cinema-app--inspector .cinema-status {
+  background: rgb(10 10 12 / 0.8);
+}
 
-/* Narrower windows: the rarer views fold into "Góc khác". */
+/* ================================================================ Narrower windows */
+
+/* The rarer views fold into "Góc khác"; the player keeps the seek bar long. */
 @media (max-width: 719px) {
-  .cinema-explore {
-    flex-wrap: nowrap;
-    gap: 6px;
-  }
-
-  .cinema-explore__views,
-  .cinema-explore__modes {
-    flex: 1 1 auto;
-    flex-wrap: nowrap;
-    gap: 6px;
-  }
-
-  .cinema-explore .cinema-button {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding-inline: 6px;
-    white-space: nowrap;
-  }
-
   .cinema-more__toggle {
     display: inline-flex;
     justify-content: center;
   }
 
-  .cinema-more {
+  .cinema-taskbar .cinema-more {
     position: absolute;
-    bottom: calc(100% + 10px);
+    bottom: calc(100% + 14px);
     left: 0;
-    z-index: 30;
+    z-index: var(--z-popover);
     display: none;
     flex-direction: column;
-    gap: 6px;
-    min-width: 210px;
-    padding: 8px;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius);
-    background: var(--panel-raised);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+    gap: 4px;
+    min-width: 220px;
+    padding: 6px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--glass-highlight), var(--shadow-lg);
   }
 
-  .cinema-more[data-open='true'] {
+  .cinema-taskbar .cinema-more[data-open='true'] {
     display: flex;
   }
 
-  .cinema-more .cinema-button {
+  .cinema-taskbar .cinema-more .cinema-button {
     flex: none;
+    justify-content: flex-start;
     text-align: left;
+  }
+
+  .cinema-taskbar .cinema-more .cinema-explore__reset {
+    width: auto;
+    padding: 0 16px;
+  }
+
+  .cinema-taskbar .cinema-more .cinema-explore__reset-label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
   }
 
   .cinema-summary__active {
     display: none;
   }
-}
 
-/* Phones in portrait: one header row (title and menus). */
-@media (max-width: 599px) {
-  .cinema-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'title end';
-    gap: 6px 8px;
-    padding: 6px 12px 8px;
-  }
-
-  .cinema-title,
-  .cinema-brand {
-    grid-area: title;
-    overflow: hidden;
-    font-size: 0.98rem;
-    text-overflow: ellipsis;
-  }
-
-  .cinema-header__end {
-    grid-area: end;
-    gap: 6px;
-  }
-
-  .cinema-menu__toggle {
-    justify-content: center;
-    width: var(--tap);
-    padding: 0;
-  }
-
-  .cinema-menu__label {
+  .cinema-taskbar .cinema-player__volume,
+  .cinema-taskbar .cinema-player__hint {
     display: none;
-  }
-
-  .cinema-overlay {
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-  }
-
-  .cinema-caption {
-    font-size: 0.74rem;
-  }
-
-  /* Two lines, always: the list can grow to 8 seats without the view above resizing. */
-  .cinema-summary__text {
-    display: -webkit-box;
-    flex-basis: 100%;
-    min-height: calc(2 * 1.4em);
-    white-space: normal;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-
-  .cinema-summary__actions {
-    flex: 1 1 100%;
-  }
-
-  .cinema-summary__actions .cinema-button {
-    flex: 1 1 0;
-    justify-content: center;
-    min-width: 0;
-  }
-
-  /* Player: controls; then where the camera is; then title and credits in one small paragraph. */
-  .cinema-player {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'controls'
-      'view'
-      'info';
-    gap: 4px;
-  }
-
-  .cinema-player__controls {
-    gap: 6px;
-  }
-
-  .cinema-player__time {
-    min-width: 8ch;
-    font-size: 0.74rem;
-  }
-
-  /* The device's own buttons set the volume on phones; the slider would crowd the seek bar. */
-  .cinema-player__volume,
-  .cinema-player__hint {
-    display: none;
-  }
-
-  .cinema-watchview {
-    justify-content: space-between;
-  }
-
-  .cinema-player__info {
-    padding-left: 2px;
-    font-size: 0.72rem;
-  }
-
-  .cinema-player__credit {
-    font-size: inherit;
   }
 }
 
-/* Very narrow phones: the names carry the meaning; decorative icons go, icon buttons keep their names for screen readers. */
-@media (max-width: 399px) {
-  .cinema-more__toggle svg {
-    display: none;
-  }
-
-  .cinema-explore .cinema-button {
-    padding-inline: 4px;
-    font-size: 0.82rem;
-  }
-
-  .cinema-seats__expand {
-    justify-content: center;
-    width: var(--tap);
-    padding: 0;
-  }
-
-  .cinema-seats__expand span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-}
-
-/* Portrait phones and tablets: the seat panel is a sheet under the view (not modal), which can
-   grow to fill the screen (modal) for focused seat picking. */
+/* Portrait tablets: the seat panel is a sheet under the view (not modal), which can grow to fill
+   the screen (modal) for focused seat picking. */
 @media (orientation: portrait) and (max-width: 1024px) {
   .cinema-main {
     flex-direction: column;
   }
 
-  .cinema-seats {
+  .cinema-app--room .cinema-seats[data-state='open'] {
+    position: static;
     width: auto;
     max-height: 52vh;
     max-height: 52dvh;
+    border-width: 1px 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: var(--glass-highlight);
   }
 
-  .cinema-seats[data-state='open'] {
-    border-width: 1px 0 0;
+  /* The sheet is under the room, so the task bar stays centred in what is left of it. */
+  .cinema-app--room[data-panel='open'] .cinema-taskbar {
+    right: 0;
+  }
+
+  /* The sheet holds the selection: over the room only the switch remains. */
+  .cinema-app--room[data-panel='open'] .cinema-taskbar__tools > [data-dock='seats'] {
+    display: none;
   }
 
   .cinema-seats__expand {
@@ -1523,11 +2041,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 
   .cinema-app[data-panel='expanded'] .cinema-main {
-    padding: var(--gutter);
+    padding: var(--edge);
   }
 
   .cinema-seats[data-state='expanded'] {
     flex: 1 1 auto;
+    width: auto;
     max-height: none;
   }
 
@@ -1540,76 +2059,13 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   }
 }
 
-/* Phones in landscape and other low windows: one header row, compact docks, a narrow side panel. */
-@media (orientation: landscape) and (max-height: 500px) {
-  .cinema-header {
-    gap: 6px 10px;
-    padding-block: 4px;
-  }
-
-  .cinema-title {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-  }
-
-  /* Only the mark leads home here (its link keeps the name for screen readers). */
-  .cinema-brand__name {
-    display: none;
-  }
-
-  .cinema-seats {
-    width: 300px;
-  }
-
-  .cinema-seats__body {
-    padding: 8px 10px;
-  }
-
-  .cinema-seats__info {
-    min-height: 0;
-    padding: 6px 10px;
-  }
-
-  .cinema-stick {
-    width: 104px;
-    height: 104px;
-  }
-
-  /* One row: controls, then where the camera is; the credit on a small line under it. */
-  .cinema-player {
-    grid-template-areas:
-      'controls view'
-      'info info';
-    gap: 0 12px;
-  }
-
-  .cinema-player__info {
-    font-size: 0.72rem;
-  }
-
-  .cinema-player__title {
-    display: none;
-  }
-
-  .cinema-player__credit {
-    font-size: inherit;
-  }
-
-  .cinema-player__volume,
-  .cinema-player__hint {
-    display: none;
-  }
-}
-
 /* ================================================================ Phones: the room fills the screen
 
-   `data-layout="immersive"` (IMMERSIVE_LAYOUT_QUERY in taskLayout.ts): no header, dock or frame
-   around the view; one floating control (the hub) holds the controls, moved there as they are. The
-   overlays that remain stay clear of the safe areas: the way back from a seat, the tour bar, the
-   walking stick, the film's problems, and for a moment the card of a seat just tapped. */
+   `data-layout="immersive"` (IMMERSIVE_LAYOUT_QUERY in taskLayout.ts): no header and no task bar;
+   one floating round button (the hub) holds the task switch, the task's controls and the settings,
+   moved there as they are. The overlays that remain stay clear of the safe areas: the way back from
+   a seat, the tour bar, the walking stick, the film's problems, for a moment the card of a seat just
+   tapped, and once the film has started its mini control. */
 
 .cinema-seatcard {
   display: none;
@@ -1620,17 +2076,13 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-.cinema-app[data-layout='immersive'] {
-  grid-template-rows: minmax(0, 1fr);
-  padding: 0;
-}
-
-.cinema-app[data-layout='immersive'] .cinema-header {
+.cinema-app[data-layout='immersive'] .cinema-header,
+.cinema-app[data-layout='immersive'] .cinema-taskbar {
   display: none;
 }
 
-.cinema-app[data-layout='immersive'] .cinema-main {
-  grid-row: 1;
+.cinema-app[data-layout='immersive'] {
+  --chrome-top: calc(12px + env(safe-area-inset-top, 0px));
 }
 
 /* The seat map: closed, or the whole screen (a dialog, as the full-screen sheet was). */
@@ -1653,22 +2105,22 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-/* Overlays: lower corner for the card of a seat just tapped, clear of the hub. */
+/* Overlays: the lower corner, clear of the hub. */
 .cinema-app[data-layout='immersive'] .cinema-overlay {
   display: flex;
-  left: calc(10px + env(safe-area-inset-left, 0px));
-  right: calc(76px + env(safe-area-inset-right, 0px));
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  right: calc(80px + env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
 .cinema-app[data-layout='immersive']:has(.cinema-hub[data-side='left']) .cinema-overlay {
-  left: calc(76px + env(safe-area-inset-left, 0px));
-  right: calc(10px + env(safe-area-inset-right, 0px));
+  left: calc(80px + env(safe-area-inset-left, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
   align-items: flex-end;
 }
 
 .cinema-app[data-layout='immersive'][data-explore='true'] .cinema-overlay {
-  top: calc(10px + env(safe-area-inset-top, 0px));
+  top: calc(12px + env(safe-area-inset-top, 0px));
   bottom: auto;
 }
 
@@ -1677,49 +2129,66 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: none;
 }
 
-
-/* A seat tapped in the room: the card says it (the corner notice is not needed). */
+/* A seat tapped in the room: the card says it (the top notice is not needed). */
 .cinema-app[data-layout='immersive'] .cinema-notice {
   display: none;
 }
 
+/* The words on top, then "Xem từ ghế này" and the close button side by side. */
 .cinema-app[data-layout='immersive'] .cinema-seatcard {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'text text'
+    'view close';
   align-items: center;
-  gap: 6px 8px;
-  max-width: min(420px, 100%);
-  padding: 6px 6px 6px 12px;
-  border: 1px solid #8a6a2e;
-  border-radius: 10px;
-  background: rgb(14 15 18 / 0.92);
+  gap: 8px;
+  width: min(320px, 100%);
+  padding: 12px 10px 10px 16px;
+  border-radius: var(--radius-lg);
   pointer-events: auto;
 }
 
 .cinema-seatcard__text {
-  flex: 1 1 12ch;
+  grid-area: text;
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
+}
+
+.cinema-seatcard__view {
+  grid-area: view;
+}
+
+/* Without the view (the seat the camera is at), the close button stays at the end of the row. */
+.cinema-seatcard__close {
+  grid-area: close;
+}
+
+.cinema-seatcard .cinema-button {
+  border-radius: var(--radius-pill);
 }
 
 .cinema-seatcard__close {
-  width: var(--tap);
-  padding: 0;
-  font-size: 1.2rem;
-  line-height: 1;
+  border-color: transparent;
+  background: var(--fill-hover);
+}
+
+.cinema-seatcard__close .cinema-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .cinema-app[data-layout='immersive'] .cinema-return,
 .cinema-app[data-layout='immersive'] .cinema-tourbar {
-  top: calc(10px + env(safe-area-inset-top, 0px));
-  left: calc(10px + env(safe-area-inset-left, 0px));
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
 }
 
 .cinema-app[data-layout='immersive'] .cinema-tourbar {
-  max-width: calc(100% - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
 }
 
-/* Walking from the hub works in any task: the stick shows whenever walking is on. */
+/* Walking works from the hub: the stick shows whenever walking is on. */
 .cinema-app[data-layout='immersive'][data-explore='true'] .cinema-stick {
   display: block;
   left: calc(16px + env(safe-area-inset-left, 0px));
@@ -1730,19 +2199,20 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
    press (with that press on the chip), waiting once it plays. Not the quiet "preparing" states.
    The chip heads the overlay stack (ui.attachFilmStatus), clear of the way back and the tour bar. */
 .cinema-app[data-layout='immersive'] .cinema-filmstatus {
-  position: static;
-  display: flex;
   max-width: 100%;
-  pointer-events: auto;
 }
 
 .cinema-app[data-layout='immersive'][data-status='loading'] .cinema-filmstatus,
-.cinema-app[data-layout='immersive'][data-status='context-lost'] .cinema-filmstatus,
-.cinema-app[data-layout='immersive'] .cinema-filmstatus[data-level='info'] {
+.cinema-app[data-layout='immersive'][data-status='context-lost'] .cinema-filmstatus {
   display: none;
 }
 
-/* ---------- The control hub: the floating button and its panel ---------- */
+/* The mini player at the foot of the stack, once the film has started (pause without the hub). */
+.cinema-overlay > .cinema-mini {
+  pointer-events: auto;
+}
+
+/* ================================================================ The control hub */
 
 /* The full-screen seat map is the page: the hub waits behind it. */
 .cinema-app[data-panel='expanded'] .cinema-hub {
@@ -1761,28 +2231,25 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-hub__toggle {
   position: fixed;
-  z-index: 62;
+  z-index: var(--z-hub);
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   padding: 0;
-  border: 1px solid rgb(255 255 255 / 0.3);
+  border-color: var(--glass-border-strong);
   border-radius: 50%;
-  background: rgb(14 15 18 / 0.74);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
-  color: var(--text);
+  color: var(--ink);
   cursor: pointer;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
   transition:
-    opacity 0.4s,
-    left 0.2s,
-    top 0.2s;
+    background-color var(--duration-medium) var(--ease-out),
+    color var(--duration-medium) var(--ease-out),
+    left var(--duration-medium) var(--ease-out),
+    top var(--duration-medium) var(--ease-out);
 }
 
 .cinema-hub__toggle svg {
@@ -1794,56 +2261,57 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
-  opacity: 0.75;
 }
 
 .cinema-hub__dot {
   fill: var(--accent);
 }
 
-/* At rest it steps back, never out of sight. */
+/* At rest it steps back, never out of sight: a thinner tint, a softer ring (no opacity on the pane). */
 .cinema-hub[data-rest='true'] .cinema-hub__toggle {
-  opacity: 0.6;
+  background-color: rgb(22 22 26 / 0.3);
+  color: rgb(245 241 234 / 0.62);
 }
 
 .cinema-hub[data-dragging='true'] .cinema-hub__toggle {
-  opacity: 1;
   transition: none;
 }
 
 .cinema-hub[data-open='true'] .cinema-hub__toggle {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
+  background-color: rgb(245 241 234 / 0.92);
+  color: var(--accent-ink);
 }
 
 .cinema-hub[data-open='true'] .cinema-hub__dot {
-  fill: var(--accent-text);
+  fill: #9a7a35;
 }
 
-.cinema-hub__toggle:focus-visible {
-  opacity: 1;
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-
+/* Modal, but the room stays as it is: a press outside closes the panel and goes no further. */
 .cinema-hub__scrim {
   position: fixed;
   inset: 0;
-  z-index: 60;
-  background: rgb(0 0 0 / 0.35);
+  z-index: var(--z-scrim);
+  background: transparent;
+}
+
+.cinema-hub[data-floating='true'] .cinema-hub__scrim {
+  background: rgb(0 0 0 / 0.18);
 }
 
 .cinema-hub__panel {
   position: fixed;
-  z-index: 61;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  background: rgb(23 25 30 / 0.97);
-  box-shadow: 0 16px 40px rgb(0 0 0 / 0.55);
+  border-radius: var(--radius-xl);
+  transition: opacity var(--duration-panel) var(--ease-out);
+}
+
+@starting-style {
+  .cinema-hub__panel:not([hidden]) {
+    opacity: 0;
+  }
 }
 
 .cinema-hub__head {
@@ -1852,13 +2320,15 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 4px 0 14px;
+  padding: 10px 10px 2px 20px;
 }
 
 .cinema-hub__title {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 650;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+  line-height: var(--leading-title);
 }
 
 .cinema-hub__title:focus {
@@ -1866,31 +2336,58 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-hub__close {
-  display: inline-grid;
-  place-items: center;
   width: var(--tap);
   padding: 0;
   border-color: transparent;
-  background: transparent;
+  border-radius: 50%;
+  background: var(--fill-hover);
 }
 
 .cinema-hub__close svg {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   fill: currentColor;
 }
 
 .cinema-hub__now {
   flex: none;
   margin: 0;
-  padding: 0 14px 8px;
-  border-bottom: 1px solid var(--panel-border);
-  color: var(--text-muted);
-  font-size: 0.78rem;
+  padding: 2px 20px 10px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
 }
 
 .cinema-hub__now:empty {
   display: none;
+}
+
+/* Phones: the task switch under the title, one segmented row. */
+.cinema-hub__tasks {
+  flex: none;
+  padding: 0 12px 8px;
+}
+
+.cinema-hub__tasks:empty {
+  display: none;
+}
+
+.cinema-hub__tasks .cinema-tasks {
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-subtle);
+  box-shadow: inset 0 0 0 1px var(--separator);
+}
+
+.cinema-hub__tasks .cinema-tasks__button {
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: var(--text-sm);
+}
+
+.cinema-hub__tasks .cinema-tasks__button .cinema-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .cinema-hub__body {
@@ -1898,31 +2395,73 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 12px 12px;
+  padding: 0 16px 16px;
 }
 
 .cinema-hub__section {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--panel-border);
+  padding: 14px 0;
+  border-top: 1px solid var(--separator);
 }
 
-.cinema-hub__section:last-child {
-  border-bottom: 0;
+.cinema-hub__section:first-child {
+  border-top: 0;
+}
+
+/* The task's section only exists on phones (its controls live over the room elsewhere). */
+.cinema-hub[data-floating='false'] .cinema-hub__section[data-section='task'],
+.cinema-hub[data-floating='false'] .cinema-hub__more-toggle {
+  display: none;
+}
+
+.cinema-hub[data-floating='false'] .cinema-hub__more-body > .cinema-hub__section:first-child {
+  padding-top: 8px;
 }
 
 .cinema-hub__heading {
-  margin: 0 0 8px;
-  color: var(--accent);
-  font-size: 0.76rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .cinema-hub__content {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* "Cài đặt và trợ giúp": a row that unfolds the settings under the task's controls. */
+.cinema-hub__more {
+  border-top: 1px solid var(--separator);
+}
+
+.cinema-hub__more-toggle {
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  border-color: transparent;
+  background: var(--fill-subtle);
+  font-size: var(--text-md);
+}
+
+.cinema-hub__more-toggle::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+  pointer-events: none;
+}
+
+.cinema-hub__more-toggle[aria-expanded='true']::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.cinema-hub[data-floating='false'] .cinema-hub__more {
+  border-top: 0;
 }
 
 .cinema-hub__row {
@@ -1934,8 +2473,8 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-hub__note {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
 }
 
 .cinema-hub__note:empty {
@@ -1944,33 +2483,28 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-hub__help {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
   padding-left: 18px;
-  color: var(--text-muted);
-  font-size: 0.82rem;
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
 }
 
 .cinema-hub__home {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
+  align-self: flex-start;
+  border-radius: var(--radius-pill);
 }
 
 /* The first-visit hint next to the button. */
 .cinema-hub__hint {
   position: fixed;
-  z-index: 59;
+  z-index: var(--z-hint);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid #8a6a2e;
-  border-radius: 12px;
-  background: rgb(14 15 18 / 0.94);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.5);
-  font-size: 0.82rem;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
 }
 
 .cinema-hub__hint p {
@@ -1979,18 +2513,16 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 
 .cinema-hub__hint-close {
   align-self: flex-end;
+  border-radius: var(--radius-pill);
 }
 
-/* The moved controls, stacked for a narrow panel. */
-.cinema-hub .cinema-dock__panel,
-.cinema-hub .cinema-dock__panel[hidden] {
-  display: flex !important;
+/* ---------- The controls moved into the panel (phones): stacked, plain fills, 44 px ---------- */
+
+.cinema-hub .cinema-dock__panel {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
   padding: 0;
-  border: 0;
-  background: none;
 }
 
 .cinema-hub .cinema-button,
@@ -2010,10 +2542,12 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  padding: 0;
+  border: 0;
 }
 
 .cinema-hub .cinema-explore .cinema-button {
-  padding-inline: 8px;
+  padding-inline: 10px;
   white-space: normal;
 }
 
@@ -2022,18 +2556,24 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
 }
 
 .cinema-hub .cinema-more {
+  position: static;
   display: contents;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .cinema-hub .cinema-summary {
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 8px;
 }
 
 .cinema-hub .cinema-summary__text {
   display: block;
   flex: none;
+  max-width: none;
   min-height: 0;
   white-space: normal;
 }
@@ -2067,9 +2607,9 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'controls'
-    'view'
-    'info';
-  gap: 8px;
+    'info'
+    'view';
+  gap: 10px;
 }
 
 .cinema-hub .cinema-player__controls {
@@ -2092,10 +2632,6 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   max-width: none;
 }
 
-.cinema-hub .cinema-player__title {
-  display: inline;
-}
-
 .cinema-hub .cinema-watchview {
   flex-wrap: wrap;
   justify-content: space-between;
@@ -2105,7 +2641,7 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   white-space: normal;
 }
 
-/* ---------- Reduced motion: no spinning, no sliding switches ---------- */
+/* ================================================================ Reduced motion: nothing slides or spins */
 
 @media (prefers-reduced-motion: reduce) {
   .cinema-status__spinner,
@@ -2113,9 +2649,34 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
     animation: none;
   }
 
+  .cinema-button,
+  .cinema-segmented__button,
+  .cinema-tasks__button,
+  .cinema-taskbar > .cinema-tasks,
+  .cinema-taskbar[data-rest='true'] > .cinema-tasks,
+  .cinema-taskbar__tools > .cinema-dock__panel,
+  .cinema-app--room .cinema-seats[data-state='open'],
   .cinema-switch__track,
   .cinema-switch__track::after,
-  .cinema-hub__toggle {
+  .cinema-hub__toggle,
+  .cinema-hub__panel,
+  .cinema-seat,
+  .cinema-brand,
+  .cinema-settings__disclosure::after,
+  .cinema-hub__more-toggle::after {
     transition: none;
+  }
+
+  .cinema-taskbar[data-rest='true'] > .cinema-tasks {
+    transform: none;
+  }
+}
+
+/* Windows high contrast: panes keep an outline. */
+@media (forced-colors: active) {
+  .cinema-tasks__button[aria-pressed='true'],
+  .cinema-button[aria-pressed='true'],
+  .cinema-segmented__button[aria-pressed='true'] {
+    outline: 2px solid CanvasText;
   }
 }
