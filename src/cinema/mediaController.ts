@@ -36,7 +36,8 @@ export interface MediaSnapshot {
   error: { code: string; message: string } | null;
 }
 
-export type MediaChange = 'state' | 'time' | 'volume' | 'size' | 'frame' | 'notice';
+/** `film`: another film was chosen (title, credit, poster follow). */
+export type MediaChange = 'state' | 'time' | 'volume' | 'size' | 'frame' | 'notice' | 'film';
 
 export interface MediaControllerOptions {
   /** Restored from a previous mount (the seat inspector round trip): time, sound. */
@@ -77,7 +78,7 @@ function volumeIsControllable(): boolean {
  */
 export class MediaController {
   readonly video: HTMLVideoElement;
-  readonly film: FilmSource;
+  private current: FilmSource;
   private readonly listeners = new Set<(snapshot: MediaSnapshot, change: MediaChange) => void>();
   private readonly events = new AbortController();
   private state: MediaState = 'idle';
@@ -95,7 +96,7 @@ export class MediaController {
   private sourceAttached = false;
 
   constructor(film: FilmSource, options: MediaControllerOptions = {}) {
-    this.film = film;
+    this.current = film;
     this.slowAfterMs = options.slowAfterMs ?? 12_000;
     this.volumeControllable = volumeIsControllable();
     const video = options.element ?? document.createElement('video');
@@ -135,8 +136,9 @@ export class MediaController {
     on('waiting', () => {
       if (!video.paused) this.setState('buffering');
     });
+    // Idle: another film was just put on (its source is not loading yet); the old one's pause is stale.
     on('pause', () => {
-      if (!video.ended && this.state !== 'error') this.setState(this.started ? 'paused' : 'ready');
+      if (!video.ended && this.state !== 'error' && this.state !== 'idle') this.setState(this.started ? 'paused' : 'ready');
     });
     on('ended', () => this.setState('ended'));
     on('timeupdate', () => {
@@ -161,11 +163,42 @@ export class MediaController {
     if (options.loadNow !== false) this.load();
   }
 
+  /** The film on the screen. */
+  get film(): FilmSource {
+    return this.current;
+  }
+
   /** Attaches the source (metadata only, by preload) once; later calls change nothing. */
   load(): void {
     if (this.disposed || this.state === 'error' || this.sourceAttached) return;
     this.sourceAttached = true;
-    this.video.src = this.film.src;
+    this.video.src = this.current.src;
+  }
+
+  /**
+   * Puts another film on the same element (one audio stream still): what played stops, the new film
+   * waits at its start, not started (its poster shows) with the sound as it was, until play().
+   * Before the source is attached (the page still waiting for its scene) only the choice changes.
+   */
+  setFilm(film: FilmSource): void {
+    if (this.disposed || film.id === this.current.id) return;
+    this.token++;
+    this.video.pause();
+    clearTimeout(this.slowTimer);
+    this.current = film;
+    this.started = false;
+    this.hasAudio = null;
+    this.notice = null;
+    this.error = null;
+    this.pendingSeek = null;
+    if (film.type && this.video.canPlayType(film.type) === '') {
+      this.error = { code: 'unsupported', message: ERROR_MESSAGES[4][1] };
+      this.state = 'error';
+    } else {
+      this.state = 'idle';
+      if (this.sourceAttached) this.video.src = film.src;
+    }
+    this.emit('film');
   }
 
   get snapshot(): MediaSnapshot {

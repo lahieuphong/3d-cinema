@@ -148,10 +148,10 @@ async function openHubPanel(page) {
   await page.waitForSelector('#cinema-hub-panel:not([hidden])');
 }
 
-/** Closes the control panel and "Góc khác" with their own buttons, if open. */
+/** Closes the control panel, "Góc khác" and the film list with their own buttons, if open. */
 async function closeMenus(page) {
   await page.evaluate(() => {
-    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"], button[data-action="inspector-options"][aria-expanded="true"], .cinema-hub__toggle[aria-expanded="true"]')) toggle.click();
+    for (const toggle of document.querySelectorAll('button[data-action="settings"][aria-expanded="true"], button[data-action="more-views"][aria-expanded="true"], button[data-action="inspector-options"][aria-expanded="true"], button[data-action="film-menu"][aria-expanded="true"], .cinema-hub__toggle[aria-expanded="true"]')) toggle.click();
   });
 }
 
@@ -520,6 +520,7 @@ async function main() {
       ['film-desktop', () => filmDesktop(browser, base)],
       ['film-fixtures', () => filmFixtures(browser, base)],
       ['film-mobile', () => filmMobile(browser, base)],
+      ['film-choice', () => filmChoice(browser, base)],
       ['ui-layouts', () => uiLayouts(browser, base)],
       ['ui-focus', () => uiFocus(browser, base)],
       ['ui-states', () => uiStates(browser, base)],
@@ -3529,6 +3530,133 @@ async function filmMobile(browser, base) {
     check(`film mobile ${name}: still playing through the map, the seat view and walking`, f.snapshot.state === 'playing', f.snapshot.state);
     await context.close();
   }
+}
+
+// Three films: the list over the room (desktop) and in the control hub (phone). Another film on the
+// same element: the old one stops, the new one plays on if the last one was playing, else its
+// poster shows; title, credit and tick follow; the choice survives the inspector round trip.
+async function filmChoice(browser, base) {
+  const FILM_IDS = ['big-buck-bunny-trailer', 'daily-dweebs', 'caminandes-3'];
+  const shown = (page) =>
+    page.evaluate(() => {
+      const f = window.__cinema.film();
+      const menu = document.querySelector('.cinema-films__menu');
+      const r = menu && menu.getClientRects().length > 0 ? menu.getBoundingClientRect() : null;
+      return {
+        id: f.id,
+        src: window.__cinema.filmElement().getAttribute('src'),
+        poster: f.poster,
+        state: f.snapshot.state,
+        started: f.snapshot.started,
+        time: f.snapshot.currentTime,
+        screen: f.view?.screen?.content ?? null,
+        title: document.querySelector('.cinema-player__title')?.textContent ?? null,
+        credit: document.querySelector('.cinema-player__credit')?.textContent ?? null,
+        pressed: [...document.querySelectorAll('.cinema-film[aria-pressed="true"]')].map((b) => b.dataset.film),
+        options: [...document.querySelectorAll('.cinema-film')].map((b) => b.dataset.film),
+        expanded: document.querySelector('button[data-action="film-menu"]')?.getAttribute('aria-expanded') ?? null,
+        menu: r ? { x: Math.round(r.x), y: Math.round(r.y), right: Math.round(r.right), bottom: Math.round(r.bottom) } : null,
+        live: document.querySelector('[data-film-live]')?.textContent ?? '',
+        focus: document.activeElement?.dataset.action ?? document.activeElement?.dataset.film ?? null,
+      };
+    });
+
+  // Desktop: the title is the way to the other films.
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  attachConsole(page, 'film-choice');
+  await page.goto(`${base}cinema`);
+  await waitForStatus(page);
+  await ensureTask(page, 'watch');
+  await page.waitForFunction(() => window.__cinema.film().view?.screen?.content === 'poster', null, { timeout: 10_000 });
+  let s = await shown(page);
+  check('film choice: three films offered under the title, the first one on and ticked, the list closed', JSON.stringify(s.options) === JSON.stringify(FILM_IDS) && s.id === FILM_IDS[0] && JSON.stringify(s.pressed) === JSON.stringify([FILM_IDS[0]]) && s.expanded === 'false' && s.menu === null && /Big Buck Bunny/.test(s.title), s);
+
+  await page.click('button[data-action="film-menu"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('.cinema-film__thumb')].every((i) => i.complete && i.naturalWidth > 0 && !('loading' in i.dataset)), null, { timeout: 10_000 });
+  s = await shown(page);
+  const player = await page.evaluate(() => document.querySelector('.cinema-taskbar .cinema-player').getBoundingClientRect().top);
+  check('film choice: the list opens above the player, inside the window, each film with its still, length and studio', s.expanded === 'true' && s.menu && s.menu.x >= 0 && s.menu.right <= 1440 && s.menu.y >= 0 && s.menu.bottom <= player, { menu: s.menu, player });
+  await screenshot(page, 'film-choice-menu');
+  await page.keyboard.press('Escape');
+  s = await shown(page);
+  check('film choice: Escape closes the list and comes back to the title', s.expanded === 'false' && s.menu === null && s.focus === 'film-menu', s);
+  await page.click('button[data-action="film-menu"]');
+  await page.mouse.click(720, 200);
+  s = await shown(page);
+  check('film choice: a press anywhere else closes the list', s.expanded === 'false' && s.menu === null, { expanded: s.expanded });
+
+  // Playing, then another film: it plays on, from its start, on the same element.
+  const element = await page.evaluateHandle(() => window.__cinema.filmElement());
+  await playFilm(page);
+  await page.waitForFunction(() => window.__cinema.film().snapshot.currentTime > 1.5, null, { timeout: 20_000 });
+  await page.click('button[data-action="film-menu"]');
+  await page.click('.cinema-film[data-film="daily-dweebs"]');
+  s = await shown(page);
+  const switched = s;
+  await page.waitForFunction(() => {
+    const f = window.__cinema.film();
+    return f.snapshot.state === 'playing' && f.snapshot.currentTime > 0.5 && f.view?.screen?.content === 'video';
+  }, null, { timeout: 20_000 });
+  s = await shown(page);
+  const same = await page.evaluate((v) => v === window.__cinema.filmElement() && document.querySelectorAll('video').length === 0, element);
+  check('film choice: chosen while playing, the next film plays on from its start (same element), title, credit and tick follow, the list closes', switched.id === 'daily-dweebs' && switched.src === '/media/daily-dweebs-720p.mp4' && switched.time < 1 && switched.expanded === 'false' && s.state === 'playing' && s.screen === 'video' && same && s.title === 'The Daily Dweebs' && /dailydweebs\.com · CC BY-SA 4\.0/.test(s.credit) && JSON.stringify(s.pressed) === '["daily-dweebs"]', { switched, now: s, same });
+  check('film choice: screen readers hear the switch once ("Đang phát: …", not "Đang phát" again)', s.live === 'Đang phát: The Daily Dweebs', { live: s.live });
+
+  // Paused, then another film: not started, its poster on the screen.
+  await pauseFilm(page);
+  await page.click('button[data-action="film-menu"]');
+  await page.click('.cinema-film[data-film="caminandes-3"]');
+  await page.waitForFunction(() => {
+    const f = window.__cinema.film();
+    return f.snapshot.state === 'ready' && f.view?.screen?.content === 'poster';
+  }, null, { timeout: 15_000 });
+  await page.waitForTimeout(500);
+  s = await shown(page);
+  const poster = await page.evaluate(async () => {
+    const image = new Image();
+    image.src = '/media/caminandes-3-llamigos-poster.jpg';
+    await image.decode();
+    return { width: image.naturalWidth, height: image.naturalHeight };
+  });
+  check('film choice: chosen while paused, the next film waits at its start, not started, its poster on the screen', s.id === 'caminandes-3' && !s.started && s.time === 0 && s.poster === '/media/caminandes-3-llamigos-poster.jpg' && s.screen === 'poster' && poster.width === 1280 && s.live === 'Đang chiếu: Caminandes 3: Llamigos' && (await page.getAttribute(PRIMARY, 'aria-label')) === 'Phát', { s, poster });
+  await screenshot(page, 'film-choice-poster');
+
+  // Through the inspector and back: the same film, paused.
+  await openInspectTools(page);
+  await clickUi(page, 'button[data-action="open-inspector"]');
+  await page.waitForFunction(() => document.querySelector('.cinema-app--inspector')?.dataset.status === 'ready');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => Boolean(window.__cinema) && document.querySelector('.cinema-app')?.dataset.status === 'ready');
+  await ensureTask(page, 'watch');
+  s = await shown(page);
+  check('film choice: the chosen film is still on after the inspector round trip (paused)', s.id === 'caminandes-3' && s.src === '/media/caminandes-3-llamigos-720p.mp4' && s.title === 'Caminandes 3: Llamigos' && s.state !== 'playing', s);
+  await context.close();
+
+  // Phone: the films are rows in the control hub's Xem phim, no menu to open.
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
+  const p = await phone.newPage();
+  attachConsole(p, 'film-choice-mobile');
+  await p.goto(`${base}cinema`);
+  await waitForStatus(p);
+  await openHubPanel(p);
+  await hubView(p, 'task');
+  await p.tap('#cinema-hub-panel button[data-task="watch"]');
+  await p.waitForFunction(() => document.querySelector('.cinema-app').dataset.task === 'watch');
+  const rows = await p.evaluate(() => ({
+    toggle: document.querySelector('.cinema-hub button[data-action="film-menu"]')?.getClientRects().length ?? 0,
+    rows: [...document.querySelectorAll('.cinema-hub .cinema-film')].map((b) => {
+      const r = b.getBoundingClientRect();
+      return { id: b.dataset.film, width: Math.round(r.width), height: Math.round(r.height), inside: r.x >= 0 && r.right <= innerWidth };
+    }),
+  }));
+  check('film choice mobile: the three films are rows in the hub (no menu), each at least 44 px tall and inside the screen', rows.toggle === 0 && rows.rows.length === 3 && rows.rows.every((r) => r.height >= 44 && r.inside), rows);
+  await p.tap('.cinema-hub .cinema-film[data-film="daily-dweebs"]');
+  await p.waitForFunction(() => window.__cinema.film().id === 'daily-dweebs');
+  s = await shown(p);
+  check('film choice mobile: a tap puts the film on and ticks it; the hub stays open', s.src === '/media/daily-dweebs-720p.mp4' && JSON.stringify(s.pressed) === '["daily-dweebs"]' && (await p.getAttribute('.cinema-hub__toggle', 'aria-expanded')) === 'true', s);
+  await screenshot(p, 'film-choice-mobile');
+  await phone.close();
 }
 
 // ---------------------------------------------------------------- Prompt 08: tasks, layouts, flows

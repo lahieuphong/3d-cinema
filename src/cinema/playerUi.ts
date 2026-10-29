@@ -1,6 +1,11 @@
 import type { FilmSource } from './media.ts';
 import type { MediaChange, MediaNotice, MediaSnapshot, MediaState } from './mediaController.ts';
-import { el } from './ui.ts';
+import { el, icon, ICONS as UI_ICONS } from './ui.ts';
+
+/** A strip of film (the window and its perforations): "the films". */
+const FILM_ICON =
+  'M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm3 2v14h10V5zM4.8 5.2v1.6h1.4V5.2zm0 3.4v1.6h1.4V8.6zm0 3.4v1.6h1.4V12zm0 3.4V17h1.4v-1.6zm13-10.2v1.6h1.4V5.2zm0 3.4v1.6h1.4V8.6zm0 3.4v1.6h1.4V12zm0 3.4V17h1.4v-1.6z';
+const CHECK_ICON = 'M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L21.1 7.4 19.7 6z';
 
 export interface PlayerHandlers {
   onPlay(): void;
@@ -12,6 +17,8 @@ export interface PlayerHandlers {
   onVolume(volume: number): void;
   /** Load the source again after an error or a long wait (never automatic). */
   onRetry(): void;
+  /** Another film chosen in the film list (only offered with more than one film). */
+  onFilm?(id: string): void;
 }
 
 export interface PlayerUi {
@@ -27,6 +34,11 @@ export interface PlayerUi {
   update(snapshot: MediaSnapshot, change: MediaChange | 'all'): void;
   /** Playback is impossible for now (no 3D context): play is disabled and `reason` is shown. */
   setUnavailable(reason: string | null): void;
+  /**
+   * Another film is on the screen: title, credit, the list's tick; screen readers hear it, and that
+   * it plays on when `playing` (then "Đang phát" is not said again a moment later).
+   */
+  setFilm(film: FilmSource, playing: boolean): void;
   dispose(): void;
 }
 
@@ -96,12 +108,13 @@ const MINI: Partial<Record<MediaState, string>> = {
  * `data-keys="own"` keeps arrow keys and Space on its controls away from the explore walker. No
  * page-wide shortcut exists (Space only activates a focused button, as usual).
  */
-export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): PlayerUi {
+export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers, films: readonly FilmSource[] = [film]): PlayerUi {
   const listeners = new AbortController();
   const { signal } = listeners;
   const root = el('section', 'cinema-player');
   root.dataset.keys = 'own';
   root.setAttribute('aria-label', `Trình phát phim: ${film.title}`);
+  let shown = film;
 
   const controls = el('div', 'cinema-player__controls');
   const primary = iconButton('cinema-player__primary');
@@ -138,10 +151,109 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   const info = el('div', 'cinema-player__info');
   const title = el('strong', 'cinema-player__title', film.title);
   const credit = el('span', 'cinema-player__credit');
-  credit.append(link(film.credit, film.creditUrl), ' · ', link(film.license, film.licenseUrl));
-  credit.title = `${film.credit} · ${film.license}`;
-  info.append(title, credit);
+  const showCredit = (source: FilmSource) => {
+    credit.replaceChildren(link(source.credit, source.creditUrl), ' · ', link(source.license, source.licenseUrl));
+    credit.title = `${source.credit} · ${source.license}`;
+  };
+  showCredit(film);
+
+  // More than one film: the title is the way to the others. Over the room a menu opens above it
+  // (like "Góc khác"); in the phone's panel the list is simply there, as rows (the CSS decides).
+  const choice = films.length > 1 ? el('div', 'cinema-films') : null;
+  const filmToggle = el('button', 'cinema-films__toggle');
+  const filmMenu = el('div', 'cinema-films__menu');
+  const filmButtons = new Map<string, HTMLButtonElement>();
+  const setMenu = (open: boolean, focusToggle = false) => {
+    filmMenu.dataset.open = String(open);
+    filmToggle.setAttribute('aria-expanded', String(open));
+    if (!open && focusToggle) filmToggle.focus();
+  };
+  if (choice) {
+    filmToggle.type = 'button';
+    filmToggle.dataset.action = 'film-menu';
+    filmMenu.id = 'cinema-film-menu';
+    filmToggle.setAttribute('aria-controls', filmMenu.id);
+    title.className = 'cinema-player__title cinema-films__title';
+    filmToggle.append(icon(FILM_ICON), title, icon(UI_ICONS.more));
+    filmMenu.setAttribute('role', 'group');
+    filmMenu.setAttribute('aria-label', 'Chọn phim');
+    const heading = el('span', 'cinema-films__heading', 'Phim');
+    heading.setAttribute('aria-hidden', 'true');
+    filmMenu.append(heading);
+    for (const source of films) {
+      const option = el('button', 'cinema-film');
+      option.type = 'button';
+      option.dataset.film = source.id;
+      option.setAttribute('aria-pressed', String(source.id === film.id));
+      const thumb = el('img', 'cinema-film__thumb');
+      thumb.alt = '';
+      thumb.width = 96;
+      thumb.height = 54;
+      thumb.loading = 'lazy';
+      thumb.decoding = 'async';
+      // Fetched when the list first shows; it shimmers until then (site.css).
+      if (source.thumb) {
+        thumb.dataset.loading = '';
+        const done = () => delete thumb.dataset.loading;
+        thumb.addEventListener('load', done, { signal, once: true });
+        thumb.addEventListener('error', done, { signal, once: true });
+        thumb.src = source.thumb;
+      }
+      const words = el('span', 'cinema-film__text');
+      words.append(el('span', 'cinema-film__name', source.title), el('span', 'cinema-film__meta', `${source.length} · ${source.studio}`));
+      const check = icon(CHECK_ICON);
+      check.classList.add('cinema-film__check');
+      option.append(thumb, words, check);
+      option.addEventListener(
+        'click',
+        () => {
+          const open = filmMenu.dataset.open === 'true';
+          setMenu(false, open);
+          if (source.id !== shown.id) handlers.onFilm?.(source.id);
+        },
+        { signal },
+      );
+      filmButtons.set(source.id, option);
+      filmMenu.append(option);
+    }
+    setMenu(false);
+    filmToggle.addEventListener('click', () => setMenu(filmMenu.dataset.open !== 'true'), { signal });
+    // A press anywhere else closes the menu; Escape closes it and comes back to the title.
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (filmMenu.dataset.open === 'true' && !choice.contains(event.target as Node)) setMenu(false);
+      },
+      { signal, capture: true },
+    );
+    choice.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape' || filmMenu.dataset.open !== 'true') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setMenu(false, true);
+      },
+      { signal },
+    );
+    choice.append(filmToggle, filmMenu);
+    info.classList.add('cinema-player__info--films');
+    info.append(choice, credit);
+  } else {
+    info.append(title, credit);
+  }
   root.append(controls, info);
+
+  /** Another film on the screen: its title, credit and name, the list's tick. */
+  const showFilm = (source: FilmSource) => {
+    shown = source;
+    title.textContent = source.title;
+    showCredit(source);
+    root.setAttribute('aria-label', `Trình phát phim: ${source.title}`);
+    filmToggle.setAttribute('aria-label', `${source.title} — đổi phim`);
+    for (const [id, option] of filmButtons) option.setAttribute('aria-pressed', String(id === source.id));
+  };
+  if (choice) showFilm(film);
 
   const chip = el('div', 'cinema-filmstatus');
   chip.dataset.keys = 'own';
@@ -175,6 +287,8 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
   /** The user is dragging the seek bar: media time must not move it back. */
   let seeking = false;
   let announced = '';
+  /** A film switch already said it plays on. */
+  let playSaid = false;
 
   const runPrimary = () => {
     if (!last || primary.disabled) return;
@@ -324,6 +438,13 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     mini.dataset.state = snapshot.state;
 
     const spoken = snapshot.error?.message ?? (snapshot.notice ? NOTICES[snapshot.notice] : (ANNOUNCE[snapshot.state] ?? ''));
+    if (spoken && playSaid) {
+      playSaid = false;
+      if (spoken === ANNOUNCE.playing) {
+        announced = spoken;
+        return;
+      }
+    }
     if (spoken && spoken !== announced) {
       announced = spoken;
       live.textContent = spoken;
@@ -337,13 +458,22 @@ export function createPlayerUi(film: FilmSource, handlers: PlayerHandlers): Play
     live,
     update(snapshot, change) {
       last = snapshot;
-      if (change === 'all' || change === 'state' || change === 'notice') renderState(snapshot);
-      if (change === 'all' || change === 'time' || change === 'state' || change === 'size') renderTime(snapshot);
-      if (change === 'all' || change === 'volume' || change === 'state') renderSound(snapshot);
+      // Another film: everything starts over (state, time, sound).
+      const all = change === 'all' || change === 'film';
+      if (all || change === 'state' || change === 'notice') renderState(snapshot);
+      if (all || change === 'time' || change === 'state' || change === 'size') renderTime(snapshot);
+      if (all || change === 'volume' || change === 'state') renderSound(snapshot);
     },
     setUnavailable(reason) {
       unavailable = reason;
       if (last) renderState(last);
+    },
+    setFilm(source, playing) {
+      if (source.id === shown.id) return;
+      showFilm(source);
+      playSaid = playing;
+      announced = `${playing ? 'Đang phát' : 'Đang chiếu'}: ${source.title}`;
+      live.textContent = announced;
     },
     dispose() {
       listeners.abort();

@@ -118,7 +118,16 @@ Nguyên tắc chung:
     Khám phá / Chọn ghế / Xem phim. Dock gồm:
     - Khám phá: góc nhìn, tham quan, đi bộ;
     - Chọn ghế: tóm tắt, sơ đồ, “Xem từ ghế”;
-    - Xem phim: trình phát kèm dòng ghi công.
+    - Xem phim: trình phát kèm dòng ghi công. Tên phim là một nút viên thuốc (icon dải phim, tên,
+      mũi tên menu — cùng khuôn với “Góc khác”); dòng ghi công đứng cạnh, thành cột riêng.
+  - Chọn phim (3 phim): bấm tên phim mở danh sách kính gần đặc phía trên trình phát (như “Góc
+    khác”, không blur lần hai), tiêu đề nhỏ “Phim”, mỗi phim một dòng: ảnh nhỏ 16:9 bo 8 px (shimmer
+    tới khi tải xong), tên đậm, “thời lượng · hãng” nhỏ, dấu ✓ champagne ở phim đang chiếu (nền
+    sáng hơn, bo tròn). Hover là một giọt sáng bo tròn, không có ô vuông. Esc hoặc bấm ra ngoài là
+    đóng và trả focus về tên phim. Đổi phim: phim cũ dừng; nếu đang phát thì phim mới phát tiếp từ
+    đầu, nếu không thì poster của nó lên màn chiếu; tên, ghi công và dấu ✓ đổi theo, trình đọc màn
+    hình nghe “Đang chiếu: …” (hoặc “Đang phát: …”). Phim đã chọn được giữ khi qua Duyệt mẫu ghế rồi
+    quay lại.
   - Nút có chữ trong cùng một cụm đều theo một khuôn: icon 18 px, cách 8 px, rồi chữ (không có nút
     chỉ-chữ cạnh nút icon-chữ). Khám phá: Tổng quan (màn chiếu và hàng ghế), Nhìn về ghế (ghế),
     Ghế F06 (mắt — cùng icon với “Xem từ ghế …”), Về góc ban đầu, Tham quan, Đi bộ; “Góc khác” có
@@ -144,6 +153,8 @@ Nguyên tắc chung:
     “Cài đặt” chuyển chính panel đó sang màn Cài đặt. Đóng rồi mở lại luôn về màn tác vụ.
   - Khám phá trong hub: hai nhóm có tiêu đề nhỏ (“Góc nhìn”, “Di chuyển”), mỗi nhóm là lưới 2 cột
     ô bằng nhau; trong ô, icon 20 px rồi chữ, canh trái, nên icon và chữ thẳng cột dù chữ dài ngắn.
+  - Xem phim trong hub: trình phát, rồi nhóm “Phim” là ba dòng luôn hiện (ảnh nhỏ 80 px, tên, thời
+    lượng · hãng, ✓), không có menu phải mở; dòng ghi công của phim đang chiếu ở dưới.
   - Khi phim đã phát, mini player “Đang phát / Tạm dừng” ở góc dưới.
   - Sơ đồ ghế vẫn toàn màn hình, giờ là một tấm kính đè lên khán phòng: phòng vẫn hiện mờ phía
     sau (inert, không đổi kích thước), thay cho nền đen.
@@ -163,8 +174,9 @@ chỗ, không mở thêm modal và không bung accordion.
   - Không có mô tả camera, danh sách hướng dẫn hay chú thích thường trực. Chỉ hiện chữ khi cần:
     trình duyệt từ chối toàn màn hình, hoặc lý do các nút bị tắt khi không có cảnh 3D.
 - **Hướng dẫn nhanh:** bốn dòng theo chuột hoặc cảm ứng (Nhìn quanh, Chọn ghế, Đi bộ, Phát phim).
-- **Thông tin:** Tân Phong Cinema, “Bản demo — không bán vé hoặc giữ chỗ.”, ghi công phim và hai
-  liên kết. Dòng ghi công trong trình phát vẫn giữ nguyên.
+- **Thông tin:** Tân Phong Cinema, “Bản demo — không bán vé hoặc giữ chỗ.”, rồi mỗi phim một nhóm
+  (tiêu đề là tên phim): ghi công và giấy phép, có liên kết. Dòng ghi công trong trình phát vẫn giữ
+  nguyên (theo phim đang chiếu).
 - **Công cụ nâng cao:** Góc kiểm tra (Mặt cắt bên, Mặt bằng), Thành phần phòng (Trần, Vách sau,
   Vách phải), hành động riêng “Kiểm tra ghế”.
 - **Duyệt mẫu ghế (`/cinema?inspect=seat`):** header chỉ có tiêu đề, “Tùy chọn” và “Đóng” (icon +

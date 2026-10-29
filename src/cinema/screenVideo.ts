@@ -30,6 +30,13 @@ export function imageReady(image: HTMLImageElement | null): boolean {
   return image !== null && image.complete && image.naturalWidth > 0;
 }
 
+function posterTexture(image: HTMLImageElement): Texture {
+  const texture = new Texture(image);
+  texture.colorSpace = SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 /**
  * The film on the screen, in front of the room's screen surface (which is left untouched):
  * - a black matte over the whole picture area (2 mm in front), so letterbox and pillarbox bars are
@@ -92,7 +99,10 @@ export class ScreenVideo {
   /** Shows poster or video for this media state; returns true if what is drawn changed. */
   update(snapshot: MediaSnapshot): boolean {
     if (this.disposed) return false;
-    const content = screenContent(snapshot, imageReady(this.poster));
+    // Once a poster has been up, it stays while the next film's is loading (the image still holds
+    // the last picture until the new one is decoded; a failed one leaves it empty).
+    const posterReady = imageReady(this.poster) || (this.posterTexture !== null && this.poster!.naturalWidth > 0);
+    const content = screenContent(snapshot, posterReady);
     const aspect =
       content === 'video' && snapshot.videoWidth > 0 && snapshot.videoHeight > 0
         ? snapshot.videoWidth / snapshot.videoHeight
@@ -101,11 +111,7 @@ export class ScreenVideo {
           : 16 / 9;
     if (content === this.content && aspect === this.aspect) return false;
     const material = this.picture.material;
-    if (content === 'poster' && !this.posterTexture) {
-      this.posterTexture = new Texture(this.poster!);
-      this.posterTexture.colorSpace = SRGBColorSpace;
-      this.posterTexture.needsUpdate = true;
-    }
+    if (content === 'poster' && !this.posterTexture) this.posterTexture = posterTexture(this.poster!);
     // Upload the current frame now: the texture may not have had a frame callback yet.
     if (content === 'video' && this.content !== 'video') this.videoTexture.needsUpdate = true;
     this.content = content;
@@ -118,6 +124,21 @@ export class ScreenVideo {
     const { width, height } = containSize(aspect, this.layout.screen.width, this.layout.screen.height);
     this.picture.scale.set(width, height, 1);
     this.picture.updateMatrix();
+    return true;
+  }
+
+  /**
+   * The poster image has (re)loaded — another film was chosen: its picture goes up in a new texture
+   * (it may not be the size of the last one; the view then updates the shape). Returns true when the
+   * poster is what the screen shows (the view then draws again).
+   */
+  refreshPoster(): boolean {
+    if (this.disposed || !this.posterTexture) return false;
+    this.posterTexture.dispose();
+    this.posterTexture = posterTexture(this.poster!);
+    if (this.content !== 'poster') return false;
+    this.picture.material.map = this.posterTexture;
+    this.picture.material.needsUpdate = true;
     return true;
   }
 

@@ -70,7 +70,8 @@ async function bundle() {
     // Everything a visit to /cinema downloads before the scene is ready (all JS except the seat inspector).
     toScene: { raw: sum(files, 'raw') - sum(inspector, 'raw') + htmlBytes, gzip: sum(files, 'gzip') - sum(inspector, 'gzip') + gzipSync(html).length },
     jsTotal: { raw: sum(js, 'raw'), gzip: sum(js, 'gzip') },
-    media: await Promise.all(['big-buck-bunny-trailer-720p.mp4', 'big-buck-bunny-trailer-poster.jpg'].map(async (name) => ({ name, bytes: (await stat(path.join(dist, 'media', name))).size }))),
+    // The three films, their posters and the film list's stills.
+    media: await Promise.all((await readdir(path.join(dist, 'media'))).sort().map(async (name) => ({ name, bytes: (await stat(path.join(dist, 'media', name))).size }))),
     fixturesInDist: existsSync(path.join(dist, 'fixtures')),
   };
 }
@@ -427,6 +428,8 @@ async function main() {
       // regressions this guards against in view: the fragmented MP4 of Prompt 07 (7–10 requests,
       // 40–50 %) and preload="auto" (reading on); the second check catches reading that does not stop.
       check('film: before Play only the poster and the start of the film are fetched (≤ 2 requests, ≤ 25 % of the file)', result.network.beforePlay.requests <= 2 && result.network.beforePlay.bytes <= fileBytes * 0.25 && result.network.beforePlay.poster === 1, result.network.beforePlay);
+      const others = idle.filter((r) => r.path !== FILM && r.path !== '/media/big-buck-bunny-trailer-poster.jpg').map((r) => r.path);
+      check('film: the other two films (files, posters, stills of the film list) are not fetched before they are chosen', others.length === 0, others);
       check('film: before Play, reading stops (no more bytes over 5 s left alone)', result.network.idleBeforePlay.bytes === result.network.beforePlay.bytes && result.network.idleBeforePlay.requests === result.network.beforePlay.requests, { at3s: result.network.beforePlay, at8s: result.network.idleBeforePlay });
       check('film: its duration is known before Play', /\/ 0:3\d/.test(metadata ?? ''), metadata);
       check('film: watching to the end downloads the file about once (≤ 1,2 × its size)', result.network.afterEnd.bytes <= fileBytes * 1.2, { ...result.network.afterEnd, fileBytes });

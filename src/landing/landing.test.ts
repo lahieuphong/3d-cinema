@@ -100,6 +100,8 @@ describe('landing content', () => {
 
   it('credits the film used inside the auditorium', () => {
     expect(html).toContain('(c) copyright 2008, Blender Foundation / www.bigbuckbunny.org');
+    expect(html).toContain('© 2017 Blender Animation Studio, Amsterdam / dailydweebs.com');
+    expect(html).toContain('© Blender Foundation / Blender Institute, caminandes.com');
     expect(html).toContain('CC BY 3.0');
   });
 

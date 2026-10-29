@@ -189,5 +189,6 @@ Kiểm tra bằng `BASE_URL=<preview> ACCEPTANCE_ONLY=hosting yarn acceptance`, 
   - bản rollback đã biết tốt: `dpl_NpH96…` (`192318f`) hoặc `dpl_FVoxAkbu…` (`f55ef30`).
 - [ ] Làm các mục ở phần 4 trên ít nhất một iPhone và một Android trước khi quảng bá cho người dùng
   mobile.
-- [ ] Giữ dòng ghi công CC BY của Big Buck Bunny ở mọi nơi phát video và trong footer trang mở đầu
-  (xem `docs/media-credits.md`).
+- [ ] Giữ dòng ghi công và giấy phép của cả ba phim (Big Buck Bunny CC BY 3.0, The Daily Dweebs
+  CC BY-SA 4.0, Caminandes 3 CC BY) ở mọi nơi phát video, trong Cài đặt › Thông tin và footer trang
+  mở đầu (xem `docs/media-credits.md`).

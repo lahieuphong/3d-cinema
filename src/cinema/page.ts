@@ -3,7 +3,7 @@ import { PAGE_TITLES } from '../brand.ts';
 import type { ToggleablePart } from './architecture.ts';
 import { DEFAULT_PRESET, describePreset, formatMetres, presetInfo, type CameraMode, type CameraPresetId } from './cameraPresets.ts';
 import { createAuditoriumLayout, type Vec3 } from './layout.ts';
-import { DEMO_FILM, devFilm } from './media.ts';
+import { DEMO_FILM, devFilm, FILMS } from './media.ts';
 import { MediaController, type MediaControllerOptions } from './mediaController.ts';
 import { createPlayerUi } from './playerUi.ts';
 import { loadQuality, prefersReducedMotion, saveQuality } from './quality.ts';
@@ -59,8 +59,8 @@ export interface CinemaSession {
   selection: SeatSelection;
   /** null until the user opens or closes the seat panel; then their choice. */
   seatPanelOpen: boolean | null;
-  /** Where the film was and how it sounded when the page was last left (it always comes back paused). */
-  media: MediaControllerOptions['resume'] | null;
+  /** Which film was on, where it was and how it sounded when the page was last left (it always comes back paused). */
+  media: (NonNullable<MediaControllerOptions['resume']> & { film: string }) | null;
   /** The task shown when the page was left (null: start in Khám phá). */
   task: CinemaTask | null;
 }
@@ -141,19 +141,42 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
 
   // The film: one controller (one element, one audio stream) for the life of this mount. Leaving
   // the page records where it was; the next mount starts paused there, with the same sound.
-  const film = (import.meta.env.DEV ? devFilm(location.search) : null) ?? DEMO_FILM;
+  // Development: a test clip plays alone; a test poster stands in for the first film's.
+  const override = import.meta.env.DEV ? devFilm(location.search) : null;
+  const films = override ? (override.id === DEMO_FILM.id ? [override, ...FILMS.slice(1)] : [override]) : FILMS;
+  const resume = options.session.media;
+  let film = films.find(({ id }) => id === resume?.film) ?? films[0];
   // The film's metadata and poster wait for the 3D part (they would share the connection with it).
-  const media = new MediaController(film, { resume: options.session.media ?? undefined, loadNow: false });
+  const media = new MediaController(film, { resume: resume?.film === film.id ? resume : undefined, loadNow: false });
   let poster: HTMLImageElement | null = null;
-  const player = createPlayerUi(film, {
-    onPlay: () => void media.play(),
-    onPause: () => media.pause(),
-    onReplay: () => void media.replay(),
-    onSeek: (seconds) => media.seek(seconds),
-    onToggleMute: () => media.setMuted(!media.video.muted),
-    onVolume: (volume) => media.setVolume(volume),
-    onRetry: () => media.retry(),
-  });
+  /** Another film on the same element and screen; it keeps playing if the last one was. */
+  const chooseFilm = (id: string) => {
+    const next = films.find((source) => source.id === id);
+    if (!next || next.id === film.id) return;
+    const { state } = media.snapshot;
+    const watching = state === 'playing' || state === 'buffering';
+    film = next;
+    media.setFilm(next);
+    player.setFilm(next, watching);
+    // The screen keeps the last poster until the new one has loaded (the view listens for it).
+    if (poster && next.poster) poster.src = next.poster;
+    if (sceneFailed) ui.setVideo2dLabel(video2dLabel());
+    if (watching) void media.play();
+  };
+  const player = createPlayerUi(
+    film,
+    {
+      onPlay: () => void media.play(),
+      onPause: () => media.pause(),
+      onReplay: () => void media.replay(),
+      onSeek: (seconds) => media.seek(seconds),
+      onToggleMute: () => media.setMuted(!media.video.muted),
+      onVolume: (volume) => media.setVolume(volume),
+      onRetry: () => media.retry(),
+      onFilm: chooseFilm,
+    },
+    films,
+  );
   const unsubscribePlayer = media.subscribe((snapshot, change) => {
     player.update(snapshot, change);
     if (change === 'state') ui.setPlaying(snapshot.state === 'playing');
@@ -283,7 +306,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       dispatch({ type: 'view-from-seat' });
       viewFromSeat(id);
     },
-  }, { touch, film });
+  }, { touch, films });
   ui.setLayout(isImmersive());
 
   const viewFromSeat = (id: string) => {
@@ -457,6 +480,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     },
   };
 
+  const video2dLabel = () => `Đang xem video ở chế độ 2D (không có cảnh 3D): ${film.title}`;
+
   /** No scene (no WebGL, a failed download or build): the map and the flat film carry on. */
   const failScene = (message: string, retry: boolean) => {
     const first = !sceneFailed;
@@ -468,7 +493,7 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     player.setUnavailable(null);
     media.load();
     // The same film, element and controls, shown flat in place of the room (never both).
-    ui.showVideo2d(media.video, `Đang xem video ở chế độ 2D (không có cảnh 3D): ${film.title}`);
+    ui.showVideo2d(media.video, video2dLabel());
     updateWatchView();
     // Seat selection does not need the renderer: with nothing to explore, it is where the page starts.
     // On a phone the map would cover the message and the film; it stays one press away in the hub.
@@ -595,7 +620,8 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
       film: () => {
         const quality = media.video.getVideoPlaybackQuality?.();
         return {
-          id: film.id,
+          id: media.film.id,
+          poster: poster?.getAttribute('src') ?? null,
           snapshot: media.snapshot,
           readyState: media.video.readyState,
           networkState: media.video.networkState,
@@ -623,9 +649,9 @@ export function mountCinemaPage(host: HTMLElement, options: CinemaPageOptions): 
     sheetQuery?.removeEventListener('change', onSheetChange);
     immersiveQuery?.removeEventListener('change', onImmersiveChange);
     document.removeEventListener('visibilitychange', onVisibility);
-    // Remember the film's place and sound, then stop it before anything else goes.
+    // Remember the film, its place and sound, then stop it before anything else goes.
     const { currentTime, muted, volume, started } = media.snapshot;
-    options.session.media = { time: currentTime, muted, volume, started };
+    options.session.media = { film: media.film.id, time: currentTime, muted, volume, started };
     media.pause();
     view?.dispose();
     view = null;

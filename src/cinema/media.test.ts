@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEMO_FILM, devFilm, type FilmSource } from './media.ts';
+import { DEMO_FILM, devFilm, FILMS, type FilmSource } from './media.ts';
 import { MediaController, type MediaChange, type MediaSnapshot } from './mediaController.ts';
 import { formatTime, primaryAction } from './playerUi.ts';
 import { containSize, screenContent } from './screenVideo.ts';
@@ -353,6 +353,52 @@ describe('media controller', () => {
     expect(controller.snapshot).toMatchObject({ state: 'paused', started: true });
     expect(video.paused).toBe(true);
   });
+
+  it('another film on the same element: the last one stops, the new one waits at its start with the sound as it was', async () => {
+    const { video, controller, changes } = setup();
+    video.loadMetadata();
+    const result = controller.play();
+    video.pendingPlay!.resolve();
+    video.fire('playing');
+    expect(await result).toBe('playing');
+    video.currentTime = 12;
+    controller.setMuted(true);
+    const next = FILMS[1];
+    controller.setFilm(next);
+    expect(video.paused).toBe(true);
+    expect(video.src).toBe(next.src);
+    expect(controller.film).toBe(next);
+    expect(controller.snapshot).toMatchObject({ state: 'idle', started: false, notice: null, error: null, muted: true });
+    expect(changes.at(-1)?.[0]).toBe('film');
+    // Browsers queue the old film's pause: arriving late, it changes nothing.
+    video.fire('pause');
+    expect(controller.snapshot.state).toBe('idle');
+    video.currentTime = 0;
+    video.fire('loadstart');
+    expect(controller.snapshot.state).toBe('loading');
+    video.loadMetadata(60);
+    expect(controller.snapshot).toMatchObject({ state: 'ready', duration: 60, started: false });
+    // The same film again: nothing happens.
+    const count = changes.length;
+    controller.setFilm(next);
+    expect(changes.length).toBe(count);
+  });
+
+  it('a film chosen before the source is attached only changes the choice (and forgets the last place)', () => {
+    const video = new FakeVideo();
+    const controller = new MediaController(DEMO_FILM, {
+      element: video as unknown as HTMLVideoElement,
+      loadNow: false,
+      resume: { time: 14.5, muted: false, volume: 1, started: true },
+    });
+    controller.setFilm(FILMS[2]);
+    expect(video.src).toBe('');
+    controller.load();
+    expect(video.src).toBe(FILMS[2].src);
+    video.loadMetadata(150);
+    expect(video.currentTime).toBe(0);
+    expect(controller.snapshot).toMatchObject({ state: 'ready', started: false });
+  });
 });
 
 describe('film picture and controls', () => {
@@ -389,6 +435,21 @@ describe('film picture and controls', () => {
     expect(primaryAction(snapshot('playing'))).toBe('pause');
     expect(primaryAction(snapshot('buffering'))).toBe('pause');
     expect(primaryAction(snapshot('ended'))).toBe('replay');
+  });
+
+  it('three films, each with its own file, stills and the attribution its licence asks for', () => {
+    expect(FILMS).toHaveLength(3);
+    expect(DEMO_FILM).toBe(FILMS[0]);
+    expect(new Set(FILMS.map((film) => film.id)).size).toBe(FILMS.length);
+    for (const film of FILMS) {
+      expect(film.src).toMatch(/^\/media\/[\w-]+\.mp4$/);
+      expect(film.poster).toMatch(/^\/media\/[\w-]+-poster\.jpg$/);
+      expect(film.thumb).toMatch(/^\/media\/[\w-]+-thumb\.webp$/);
+      expect(film.length).toMatch(/^\d+:\d\d$/);
+      expect(film.studio && film.credit && film.license).toBeTruthy();
+      expect(film.creditUrl).toMatch(/^https:\/\//);
+      expect(film.licenseUrl).toMatch(/^https:\/\//);
+    }
   });
 
   it('development film override accepts plain file names only', () => {

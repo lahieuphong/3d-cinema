@@ -1,6 +1,19 @@
 # Nguồn media và giấy phép
 
-## Video demo trên màn chiếu
+Phòng chiếu có ba phim, chọn trong **Xem phim** (danh sách mở từ tên phim trên trình phát; trên điện
+thoại là các dòng trong nút điều khiển). Cả ba là phim mở của Blender, không lời thoại:
+
+| Phim | Tệp | Giấy phép |
+| --- | --- | --- |
+| *Big Buck Bunny* (trailer, 2008) | `big-buck-bunny-trailer-720p.mp4` | CC BY 3.0 |
+| *The Daily Dweebs* (2017) | `daily-dweebs-720p.mp4` | CC BY-SA 4.0 |
+| *Caminandes 3: Llamigos* (2016) | `caminandes-3-llamigos-720p.mp4` | CC BY (Blender Studio) |
+
+Mỗi phim có poster (`*-poster.jpg`, hiện trên màn chiếu trước khi phát) và ảnh nhỏ cho danh sách
+(`*-thumb.webp`, 192 × 108, chỉ tải khi danh sách mở). Dữ liệu và dòng ghi công: `FILMS` trong
+`src/films.ts` (dùng chung cho phòng chiếu và trang mở đầu).
+
+## Video demo trên màn chiếu: Big Buck Bunny
 
 | Mục | Nội dung |
 | --- | --- |
@@ -94,12 +107,89 @@ Trình phát luôn hiện (desktop, mobile dọc, mobile ngang, chế độ 2D):
 > (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org · CC BY 3.0
 
 với liên kết tới https://peach.blender.org/about/ và trang giấy phép. Nếu đổi giao diện player, giữ
-nguyên dòng này (nguồn: `DEMO_FILM.credit` trong `src/cinema/media.ts`).
+nguyên dòng này (nguồn: `credit` của phim trong `FILMS`, `src/films.ts`).
 
 ### Phụ đề
 
 Trailer không có lời thoại (chỉ chữ trên hình và nhạc), nên không có phụ đề đi kèm; player chưa hỗ trợ
 phụ đề (`captions: null`).
+
+## The Daily Dweebs
+
+| Mục | Nội dung |
+| --- | --- |
+| Tác phẩm | *The Daily Dweebs* — phim ngắn (tập thử), 2017 |
+| Tác giả / đơn vị | Blender Animation Studio, Amsterdam |
+| URL nguồn (tệp gốc) | https://video.blender.org/download/web-videos/7b2eff2a-35f2-4403-9d88-d0dd6e4b5ba1-720.mp4 (bản 720p trên video.blender.org, PeerTube chính thức của Blender) |
+| Trang dự án | https://studio.blender.org/projects/dailydweebs/ · https://www.dailydweebs.com |
+| Giấy phép | Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0) |
+| URL giấy phép | https://creativecommons.org/licenses/by-sa/4.0/ |
+| Tệp trong dự án | `public/media/daily-dweebs-720p.mp4`, `daily-dweebs-poster.jpg`, `daily-dweebs-thumb.webp` |
+
+### Cách đã xác minh giấy phép (ngày 2026-10-29)
+
+- README của bản phát hành không nén (bản sao: https://cdimage.debian.org/mirror/media.xiph.org/dweebs/README.txt):
+  "These files are licensed under the Creative Commons Attribution-ShareAlike 4.0 License …
+  Attribution to: Blender Animation Studio | dailydweebs.com".
+- Khung cuối của chính phim (giây 58) ghi "© 2017 Blender Animation Studio, Amsterdam — Available as
+  Creative Commons on blender.cloud" (không ghi phiên bản; phiên bản lấy từ README).
+- Dòng ghi công trên trang ghép khung cuối với phần "Attribution to" của README:
+  **"© 2017 Blender Animation Studio, Amsterdam / dailydweebs.com"**.
+- Phim không có lời thoại (chỉ tiếng kêu của con vật và nhạc), nên không có phụ đề (`captions: null`).
+
+### Tệp
+
+- **Không chỉnh sửa:** tệp tải về được dùng nguyên byte. MP4 (H.264 + AAC), 1280×720, 60,1 s,
+  6 763 799 byte, đã là "fast start" (`ftyp`, `moov`, `free`, `mdat`), SHA-256
+  `d43cb62f12eeb73b9b420b4f1484b662e164d5682e266336782d2f81044e9c56`.
+- **Poster:** hình ở giây 18, JPEG chất lượng 82, 1280×720, 88 555 byte, SHA-256
+  `a878450ed490180c46c0478b777e9dd90ce0beafc7231ebf2cad2d03dc6c1ac5`.
+- **Ảnh nhỏ:** thu nhỏ từ poster, WebP 192×108, 4 292 byte.
+- ShareAlike: poster và ảnh nhỏ là ảnh trích từ phim nên dùng cùng giấy phép CC BY-SA 4.0 và cùng dòng
+  ghi công. Phần còn lại của trang không phải tác phẩm phái sinh của phim.
+
+## Caminandes 3: Llamigos
+
+| Mục | Nội dung |
+| --- | --- |
+| Tác phẩm | *Caminandes 3: Llamigos* — phim ngắn, 2016 |
+| Tác giả / đơn vị | Blender Institute (Blender Foundation) |
+| URL nguồn (tệp gốc) | https://video.blender.org/download/web-videos/23f3ef79-15dc-44c5-aa45-cf92e78a4509-720.mp4 (bản 720p trên video.blender.org) |
+| Trang dự án | https://studio.blender.org/projects/caminandes-3/ · https://www.caminandes.com |
+| Giấy phép | Creative Commons Attribution (CC BY); xem phần xác minh về phiên bản |
+| URL giấy phép | https://studio.blender.org/remixing/ (trang giấy phép của Blender Studio) |
+| Tệp trong dự án | `public/media/caminandes-3-llamigos-720p.mp4`, `caminandes-3-llamigos-poster.jpg`, `caminandes-3-llamigos-thumb.webp` |
+
+### Cách đã xác minh giấy phép (ngày 2026-10-29)
+
+- https://studio.blender.org/remixing/: "Blender Studio content is generally released under Creative
+  Commons Attribution License (CC-BY), with copyright © Blender Foundation."
+- Trang video trên video.blender.org ghi giấy phép "Attribution". Blog Blender Studio
+  (https://studio.blender.org/blog/caminandes-3-caminandes-on-creative-commons-blog/) nhắc phim được
+  chia sẻ theo Creative Commons.
+- Khung cuối của phim ghi "A Blender Institute production", không ghi giấy phép.
+- **Chưa tìm thấy nguồn chính thức ghi số phiên bản CC BY** (3.0 hay 4.0). Vì vậy trang ghi "CC BY"
+  và dẫn tới trang giấy phép của Blender Studio, không tự chọn một phiên bản. Dòng ghi công:
+  **"© Blender Foundation / Blender Institute, caminandes.com"**. Nếu tìm được phiên bản, sửa
+  `license` và `licenseUrl` trong `FILMS`.
+- Phim không có lời thoại (tiếng con vật và nhạc), nên không có phụ đề (`captions: null`).
+
+### Tệp
+
+- **Không chỉnh sửa:** MP4 (H.264 + AAC), 1280×720, 150,1 s, 29 113 055 byte, "fast start", SHA-256
+  `dd0475d345cbc608a1192b1eeaf94fa22bab6a25c7a7a438bcc347ac99d0c2ea`.
+- **Poster:** hình ở giây 12, JPEG chất lượng 82, 1280×720, 75 662 byte, SHA-256
+  `519ae4a696ac493e396c30d6e9158694a1f33a4c68dba34098039240956de564`.
+- **Ảnh nhỏ:** thu nhỏ từ poster, WebP 192×108, 4 128 byte.
+
+## Ghi công hiển thị cho cả ba phim
+
+- **Trình phát** hiện dòng ghi công và giấy phép (có liên kết) của phim đang chiếu, ở mọi bố cục
+  (desktop, mobile dọc, mobile ngang, chế độ 2D). Đổi phim thì dòng này đổi theo.
+- **Cài đặt › Thông tin** liệt kê cả ba phim, mỗi phim một nhóm: ghi công và giấy phép.
+- **Footer trang mở đầu** liệt kê cả ba phim với ghi công và giấy phép.
+- Ảnh nhỏ của *Big Buck Bunny* (`big-buck-bunny-trailer-thumb.webp`, 3 578 byte) thu nhỏ từ poster
+  của nó, cùng giấy phép CC BY 3.0.
 
 ## Clip kiểm tra nội bộ (không phát hành)
 
@@ -125,10 +215,10 @@ không chép thư mục này vào `dist/`.
 - **Màn chiếu không có frame phim nào.** Màn hiện một tấm slate do script vẽ bằng canvas: logo và
   chữ "Tân Phong Cinema". Slate được đưa vào qua tham số `?poster=` *chỉ có ở chế độ dev*;
   tệp nằm ở `fixtures/brand/screen-slate.png`, không vào `dist/`.
-  - Nguồn phim của khán phòng (Big Buck Bunny và poster của nó) không đổi.
+  - Nguồn phim của khán phòng (các phim và poster của chúng) không đổi.
 - **Ảnh bước 2 và 3** là ảnh chụp giao diện thật của trang `/cinema`. Trong đó có dòng ghi công Big
   Buck Bunny của trình phát (chữ), nhưng không có hình của phim.
-- **Ghi công video:** footer của trang mở đầu vẫn ghi công *Big Buck Bunny* (CC BY 3.0), vì video này
-  được phát trong phòng chiếu mà trang dẫn vào.
+- **Ghi công video:** footer của trang mở đầu ghi công cả ba phim (mục "Ghi công hiển thị cho cả ba
+  phim" ở trên), vì chúng được phát trong phòng chiếu mà trang dẫn vào.
 - **Mã hoá:** WebP (và JPEG dự phòng) bằng canvas của Chrome. AVIF không dùng được: canvas của Chrome
   không mã hoá AVIF và không cài thêm công cụ nào.

@@ -44,8 +44,8 @@ export interface CinemaUiHandlers {
 export interface CinemaUiOptions {
   /** A touch screen: the help speaks of fingers rather than a mouse. */
   touch: boolean;
-  /** The film's title and attribution, for Cài đặt › Thông tin (the player keeps its own credit). */
-  film: Pick<FilmSource, 'title' | 'credit' | 'creditUrl' | 'license' | 'licenseUrl'>;
+  /** Every film's title and attribution, for Cài đặt › Thông tin (the player credits the one on). */
+  films: ReadonlyArray<Pick<FilmSource, 'title' | 'credit' | 'creditUrl' | 'license' | 'licenseUrl'>>;
 }
 
 /**
@@ -129,6 +129,8 @@ export interface CinemaUi {
   attachMini(element: HTMLElement): void;
   /** Without 3D: shows the film's own element in the viewport area, labelled as the 2D mode. */
   showVideo2d(video: HTMLVideoElement, label: string): void;
+  /** Another film on the flat (2D) player: its label follows. */
+  setVideo2dLabel(label: string): void;
   hideVideo2d(): void;
   dispose(): void;
 }
@@ -674,7 +676,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
     ]),
   );
 
-  // Thông tin: what this is, and the film's attribution (the player shows it too, as the licence asks).
+  // Thông tin: what this is, and each film's attribution (the player shows the one on, as the licences ask).
   const outLink = (label: string, href: string) => {
     const a = el('a', '', label);
     a.href = href;
@@ -686,13 +688,14 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   about.append(el('p', 'cinema-hub__about-name', BRAND.name), el('p', 'cinema-hub__about-note', 'Bản demo — không bán vé hoặc giữ chỗ.'));
   hub.content('about').append(
     about,
-    rowGroup(
-      'Phim trên màn chiếu',
-      facts([
-        ['Phim', options.film.title],
-        ['Ghi công', outLink(options.film.credit, options.film.creditUrl)],
-        ['Giấy phép', outLink(options.film.license, options.film.licenseUrl)],
-      ]),
+    ...options.films.map((film) =>
+      rowGroup(
+        film.title,
+        facts([
+          ['Ghi công', outLink(film.credit, film.creditUrl)],
+          ['Giấy phép', outLink(film.license, film.licenseUrl)],
+        ]),
+      ),
     ),
   );
 
@@ -959,6 +962,11 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
       // Under the status line (the reason there is no 3D), in place of the room.
       status.after(box);
       video2d = box;
+    },
+    setVideo2dLabel(label) {
+      if (!video2d) return;
+      video2d.querySelector('.cinema-video2d__label')!.textContent = label;
+      video2d.querySelector('video')?.setAttribute('aria-label', label);
     },
     hideVideo2d() {
       if (!video2d) return;

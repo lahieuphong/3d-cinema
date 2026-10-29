@@ -1,4 +1,5 @@
 import { BRAND, markImg } from '../brand.ts';
+import { FILMS } from '../films.ts';
 import { CINEMA_PATH } from '../router.ts';
 
 /**
@@ -19,6 +20,12 @@ export const LANDING_IMAGES = {
   heroPortrait: { widths: [720, 1080, 1440], width: 1080, height: 1620 },
   steps: { widths: [640, 960], width: 960, height: 640 },
 } as const;
+
+/** Each film the auditorium can show, with the attribution its licence asks for. */
+const FILM_CREDITS = FILMS.map(
+  (film) =>
+    `<li><em>${film.title}</em> — <a href="${film.creditUrl}" rel="noopener noreferrer">${film.credit}</a> · <a href="${film.licenseUrl}" rel="noopener noreferrer">${film.license}</a></li>`,
+).join('');
 
 const srcset = (name: string, widths: readonly number[], ext: string) => widths.map((w) => `${IMG}/${name}-${w}.${ext} ${w}w`).join(', ');
 
@@ -116,7 +123,8 @@ ${cta('Bước vào rạp')}
 <footer class="site-footer">
 <div class="section__inner">
 <p class="site-footer__brand">${BRAND.name} · ${BRAND.demoNote}</p>
-<p>Video trong phòng chiếu: <em>Big Buck Bunny</em> (trailer) — <a href="https://peach.blender.org/about/" rel="noopener noreferrer">(c) copyright 2008, Blender Foundation / www.bigbuckbunny.org</a> · <a href="https://creativecommons.org/licenses/by/3.0/" rel="noopener noreferrer">CC BY 3.0</a>.</p>
+<p>Phim trong phòng chiếu:</p>
+<ul class="site-footer__films">${FILM_CREDITS}</ul>
 <p>Hình ảnh trên trang được kết xuất từ chính khán phòng 3D này.</p>
 </div>
 </footer>

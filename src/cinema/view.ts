@@ -39,7 +39,7 @@ import {
 import type { MediaChange, MediaController, MediaSnapshot } from './mediaController.ts';
 import type { QualityLevel } from './quality.ts';
 import { RenderHost, type ViewStatus } from './renderHost.ts';
-import { imageReady, ScreenVideo } from './screenVideo.ts';
+import { ScreenVideo } from './screenVideo.ts';
 import { SeatHighlighter } from './seatHighlight.ts';
 import { pickSeat, SeatPicker, visibleMeshes, type SeatHit } from './seatPicking.ts';
 import { createCinemaSeatModel, createSeatInstances, seatPivotMatrix, type SeatInstances, type SeatModel } from './seats.ts';
@@ -254,8 +254,17 @@ export class CinemaView {
     const media = this.media;
     this.frameClock = media ? new VideoFrameClock(media.controller.video, this.host.requestRender) : null;
     this.unsubscribeMedia = media ? media.controller.subscribe(this.handleMedia) : () => {};
-    if (media?.poster && !imageReady(media.poster)) {
-      media.poster.addEventListener('load', () => this.handleMedia(media.controller.snapshot, 'size'), { signal });
+    // Every time the poster (re)loads — the first time, or another film chosen — its picture goes up.
+    if (media?.poster) {
+      media.poster.addEventListener(
+        'load',
+        () => {
+          if (this.disposed || this.contextLost) return;
+          if (this.content.screenVideo?.refreshPoster()) this.host.requestRender();
+          this.handleMedia(media.controller.snapshot, 'size');
+        },
+        { signal },
+      );
     }
     renderer.shadowMap.needsUpdate = true;
     this.host.start();

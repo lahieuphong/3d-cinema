@@ -1414,6 +1414,187 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   color: var(--ink);
 }
 
+/* More than one film: the title is a pill (its film icon, its name, the small arrow of a menu, like
+   "Góc khác") that opens the list above the player; the credit stands beside it, in its own column. */
+.cinema-player__info--films {
+  display: flex;
+  align-items: center;
+  gap: 4px 12px;
+  line-height: 1.35;
+}
+
+.cinema-films {
+  position: relative;
+  display: flex;
+  flex: none;
+  max-width: 60%;
+}
+
+.cinema-player__info--films .cinema-player__credit {
+  min-width: 0;
+}
+
+.cinema-films__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--tap);
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--glass-edge-soft);
+  border-radius: var(--radius-pill);
+  background: var(--fill-subtle);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.cinema-films__toggle:hover {
+  border-color: var(--glass-border-strong);
+  background-color: var(--fill-hover);
+}
+
+.cinema-films__toggle[aria-expanded='true'] {
+  border-color: var(--glass-border-strong);
+  background-color: var(--fill-pressed);
+  box-shadow: var(--glass-highlight);
+}
+
+.cinema-films__toggle .cinema-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.cinema-films__toggle .cinema-icon:last-child {
+  width: 16px;
+  height: 16px;
+  margin-left: -2px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.cinema-films__toggle[aria-expanded='true'] .cinema-icon:last-child {
+  transform: rotate(180deg);
+}
+
+.cinema-films__title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The list: the films as rows (a still, the name, length and studio, a tick on the one showing).
+   It leaves its pane, so no second blur: nearly solid, like "Góc khác". */
+.cinema-films__menu {
+  position: absolute;
+  bottom: calc(100% + 18px);
+  left: 0;
+  z-index: var(--z-popover);
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background-color: rgb(18 18 22 / 0.94);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
+}
+
+.cinema-films__menu[data-open='true'] {
+  display: flex;
+}
+
+.cinema-films__heading {
+  padding: 6px 10px 4px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.cinema-film {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 6px 12px 6px 6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.cinema-film:hover {
+  background-color: var(--fill-hover);
+}
+
+.cinema-film[aria-pressed='true'] {
+  background-color: var(--fill-pressed);
+  box-shadow: var(--glass-highlight);
+}
+
+.cinema-film__thumb {
+  display: block;
+  width: 72px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  object-fit: cover;
+  outline: 1px solid rgb(255 255 255 / 0.12);
+  outline-offset: -1px;
+}
+
+.cinema-film__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cinema-film__name,
+.cinema-film__meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cinema-film__name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-title);
+}
+
+.cinema-film__meta {
+  color: var(--ink-secondary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.cinema-film__check {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  visibility: hidden;
+}
+
+.cinema-film[aria-pressed='true'] .cinema-film__check {
+  visibility: visible;
+}
+
 .cinema-watchview {
   grid-area: view;
   display: flex;
@@ -1434,9 +1615,10 @@ html:is([data-route='cinema'], [data-route='inspector']) #app {
   font-variant-numeric: tabular-nums;
 }
 
-/* With a mouse, the camera action sits small in the player's top line. */
+/* With a mouse, the camera action and the film's title sit small in the player's top line. */
 @media (pointer: fine) {
-  .cinema-taskbar .cinema-watchview__action {
+  .cinema-taskbar .cinema-watchview__action,
+  .cinema-taskbar .cinema-films__toggle {
     min-height: 32px;
   }
 }
@@ -3037,6 +3219,56 @@ button.cinema-hub__row:disabled {
   max-width: none;
 }
 
+/* In the phone's panel the films are simply there, a group of rows under a small title (no menu),
+   the credit under them. */
+.cinema-hub .cinema-player__info--films {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.cinema-hub .cinema-films {
+  display: block;
+  max-width: none;
+}
+
+.cinema-hub .cinema-films__toggle {
+  display: none;
+}
+
+.cinema-hub .cinema-films__menu,
+.cinema-hub .cinema-films__menu[data-open='true'] {
+  position: static;
+  display: flex;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.cinema-hub .cinema-films__heading {
+  padding: 0 12px 4px;
+}
+
+.cinema-hub .cinema-film {
+  min-height: 60px;
+  padding: 6px 12px 6px 8px;
+}
+
+.cinema-hub .cinema-film__thumb {
+  width: 80px;
+}
+
+.cinema-hub .cinema-film__name {
+  font-size: var(--text-md);
+}
+
+.cinema-hub .cinema-film__meta {
+  font-size: var(--text-xs);
+}
+
 .cinema-hub .cinema-watchview {
   flex-wrap: wrap;
   justify-content: space-between;
@@ -3067,7 +3299,10 @@ button.cinema-hub__row:disabled {
   .cinema-hub__panel,
   .cinema-seat,
   .cinema-brand,
-  .cinema-hub__row {
+  .cinema-hub__row,
+  .cinema-films__toggle,
+  .cinema-films__toggle .cinema-icon,
+  .cinema-film {
     transition: none;
   }
 
@@ -3080,7 +3315,8 @@ button.cinema-hub__row:disabled {
 @media (forced-colors: active) {
   .cinema-tasks__button[aria-pressed='true'],
   .cinema-button[aria-pressed='true'],
-  .cinema-segmented__button[aria-pressed='true'] {
+  .cinema-segmented__button[aria-pressed='true'],
+  .cinema-film[aria-pressed='true'] {
     outline: 2px solid CanvasText;
   }
 }
