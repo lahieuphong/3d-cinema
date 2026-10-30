@@ -74,17 +74,14 @@ export function startHeroMotion(hero: HTMLElement, layer: HTMLElement, options: 
     },
     { signal },
   );
-  window.addEventListener(
-    'scroll',
-    () => {
-      if (!enabled()) return;
-      const next = Math.min(window.scrollY, hero.offsetHeight) * scrollFactor;
-      if (Math.abs(next - scrollShift) < 0.5) return;
-      scrollShift = next;
-      if (frame === null) frame = requestAnimationFrame(step);
-    },
-    { signal, passive: true },
-  );
+  const followScroll = () => {
+    if (!enabled()) return;
+    const next = Math.min(window.scrollY, hero.offsetHeight) * scrollFactor;
+    if (Math.abs(next - scrollShift) < 0.5) return;
+    scrollShift = next;
+    if (frame === null) frame = requestAnimationFrame(step);
+  };
+  window.addEventListener('scroll', followScroll, { signal, passive: true });
   document.addEventListener('visibilitychange', () => document.hidden && stop(), { signal });
   const resetForReducedMotion = () => {
     if (!(reduce?.matches ?? false)) return;
@@ -98,6 +95,8 @@ export function startHeroMotion(hero: HTMLElement, layer: HTMLElement, options: 
     ? new IntersectionObserver(([entry]) => {
         inView = entry.isIntersecting;
         if (!inView) stop();
+        // Back in view: the scroll that brought it back was ignored while it was out of view.
+        else followScroll();
       })
     : null;
   observer?.observe(hero);
@@ -109,5 +108,52 @@ export function startHeroMotion(hero: HTMLElement, layer: HTMLElement, options: 
     listeners.abort();
     observer?.disconnect();
     layer.style.transform = '';
+  };
+}
+
+/**
+ * The frames' pictures drift a little against their frames as the page scrolls (each overhangs its
+ * frame by `range` px top and bottom, site.css), only with a mouse and without reduced motion: on
+ * touch screens they stay put. One frame is drawn per scroll step, and only for the pictures in
+ * view; nothing runs while the page stands still.
+ */
+export function startFrameParallax(layers: HTMLElement[], range = 14): () => void {
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const fine = window.matchMedia?.('(hover: hover) and (pointer: fine)');
+  if (layers.length === 0 || typeof IntersectionObserver !== 'function' || !(fine?.matches ?? false) || (reduce?.matches ?? false)) return () => {};
+  const listeners = new AbortController();
+  const visible = new Set<HTMLElement>();
+  let frame: number | null = null;
+
+  const step = () => {
+    frame = null;
+    const middle = window.innerHeight / 2;
+    for (const layer of visible) {
+      const box = layer.parentElement!.getBoundingClientRect();
+      // −1 when the frame's centre is a screen height below the middle, +1 a screen height above.
+      const t = Math.max(-1, Math.min(1, (middle - (box.top + box.height / 2)) / window.innerHeight));
+      layer.style.transform = `translate3d(0, ${(t * range).toFixed(1)}px, 0)`;
+    }
+  };
+  const schedule = () => {
+    if (frame === null && visible.size > 0 && !(reduce?.matches ?? false)) frame = requestAnimationFrame(step);
+  };
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const layer = entry.target.querySelector<HTMLElement>(':scope > picture');
+      if (!layer) continue;
+      if (entry.isIntersecting) visible.add(layer);
+      else visible.delete(layer);
+    }
+    schedule();
+  });
+  for (const layer of layers) observer.observe(layer.parentElement!);
+  window.addEventListener('scroll', schedule, { signal: listeners.signal, passive: true });
+
+  return () => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    listeners.abort();
+    observer.disconnect();
+    for (const layer of layers) layer.style.transform = '';
   };
 }

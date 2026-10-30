@@ -53,7 +53,7 @@ Bằng chứng (ứng viên Prompt 10; kết quả ở mục 9 của bản rà s
   - Ctrl/⌘/Shift/click giữa: mở tab mới;
   - bấm nhiều lần chỉ tạo một mục history.
 - [x] Back/Forward giữa landing và rạp; refresh cả hai route; `/cinema/` có dấu `/` cuối; trang "Không
-  tìm thấy"; link trong trang (`#cach-su-dung`) không dựng lại trang.
+  tìm thấy"; link trong trang (`#goc-nhin`) không dựng lại trang.
 - [x] Landing không tải mã phòng chiếu, three.js hay video trước khi người dùng tương tác (bản
   production).
   - Hover/focus/nhấn CTA chỉ tải mã, không tạo canvas, WebGL hay video.
@@ -153,6 +153,16 @@ Chi tiết, cách kiểm tra, ảnh trước/sau: [mobile-fullscreen.md](mobile-
 - [x] Landing vẫn cuộn trước và sau khi vào rạp.
 - [ ] iPhone thật: Safari (tab) và mở từ Màn hình chính; Android Chrome thật (cài đặt, toàn màn hình).
 
+**Landing "Cuộn phim dẫn vào rạp" (30/10/2026)**
+
+Chi tiết, số đo trước/sau: [landing-filmstrip.md](landing-filmstrip.md).
+
+- [x] Dải phim liên tục tới chân trang, mép phim là pseudo-element, không đè chữ hay nút ở 9 kích thước.
+- [x] Nút "Vào rạp" ở màn hình đầu; "Bước vào rạp" ở khung cuối; cả hai vào `/cinema`.
+- [x] Giảm chuyển động, bàn phím, khi tắt JavaScript; Back/Forward giữa landing và rạp.
+- [x] Lần đầu vào landing 139,1 → 142,3 KB; CLS 0; không tải mã rạp trước khi người dùng tỏ ý.
+- [ ] Safari, Firefox và máy thật.
+
 ## 2. Chưa kiểm chứng
 
 - [ ] **Âm thanh bằng tai** — chưa nghe; chỉ biết track tiếng được giải mã và mute/volume đúng.
@@ -194,7 +204,7 @@ Chi tiết, cách kiểm tra, ảnh trước/sau: [mobile-fullscreen.md](mobile-
 ## 4. Việc cần người dùng thử thủ công
 
 1. **iPhone (Safari) và một máy Android (Chrome), dọc và ngang.**
-   - Mở `/`, cuộn trang, bấm "Cách trải nghiệm", rồi "Bước vào rạp".
+   - Mở `/`, cuộn trang, bấm "Xem trải nghiệm", rồi "Bước vào rạp".
    - Trong rạp: Khám phá (Tham quan, Đi bộ); Chọn ghế (Mở sơ đồ, Mở rộng, chọn 2 ghế, Xem từ ghế này);
      Xem phim (Phát, xoay máy, Tạm dừng).
    - Bấm tên "Tân Phong Cinema" để về trang chủ; Back để vào lại; kiểm tra ghế vẫn còn.

@@ -369,12 +369,12 @@ async function flows(browser, base) {
     const content = await page.evaluate(() => ({
       h1: document.querySelector('h1')?.textContent?.trim(),
       ctas: [...document.querySelectorAll('a[data-cta]')].map((a) => a.getAttribute('href')),
-      steps: document.querySelectorAll('#cach-su-dung h3').length,
+      steps: document.querySelectorAll('#kham-pha h3').length,
       heroImage: Boolean(document.querySelector('.hero img')?.currentSrc || document.querySelector('.hero img')?.src),
     }));
     await shot(page, 'k-landing-no-javascript');
     report.flows.noJavaScript = content;
-    check('K. without JavaScript the landing page has its heading, three links to /cinema, the three steps and the hero picture', /Bước vào rạp/.test(content.h1 ?? '') && content.ctas.length === 3 && content.ctas.every((href) => href === '/cinema') && content.steps === 3 && content.heroImage, content);
+    check('K. without JavaScript the landing page has its heading, three links to /cinema, the three shots of "Khám phá" and the hero picture', /Bước vào rạp/.test(content.h1 ?? '') && content.ctas.length === 3 && content.ctas.every((href) => href === '/cinema') && content.steps === 3 && content.heroImage, content);
     await context.close();
   }
 

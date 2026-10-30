@@ -69,27 +69,37 @@ describe('landing content', () => {
   const html = landingHtml();
 
   it('has the agreed copy, one h1, and real links into the auditorium', () => {
-    expect(html).toContain('Trải nghiệm cinema 3D');
     expect(html).toContain('Bước vào rạp. Chọn góc nhìn của bạn.');
-    expect(html).toContain('Khám phá khán phòng, chọn một chỗ ngồi và xem màn chiếu từ chính vị trí đó.');
+    expect(html).toContain('Khám phá không gian. Chọn ghế. Thưởng thức bộ phim.');
     expect(html).toContain(BRAND.demoNote);
     expect(html.match(/<h1[ >]/g)).toHaveLength(1);
-    expect(html.match(/href="\/cinema" data-cta="cinema"/g)?.length).toBe(3);
-    expect(html).toContain('href="#cach-su-dung"');
-    expect(html).toContain('id="cach-su-dung"');
-    expect(html).toContain('id="trai-nghiem"');
+    // The header's "Vào rạp", the opening frame's "Vào rạp" and the last frame's "Bước vào rạp".
+    expect(html.match(/href="\/cinema" data-cta="cinema">(Vào rạp|Bước vào rạp)</g)).toHaveLength(3);
+    expect(html).toContain('href="#goc-nhin"');
+    expect(html).toContain('id="goc-nhin"');
+    expect(html).toContain('id="kham-pha"');
     expect(html).toContain('class="skip-link" href="#noi-dung"');
-    expect(html.match(/<li class="step">/g)).toHaveLength(3);
   });
 
-  it('loads the hero at once and the step pictures lazily, all with their size reserved', () => {
+  it('is one film strip of four frames, the credits on its tail; the perforations are not markup', () => {
+    expect(html.match(/class="filmstrip"/g)).toHaveLength(1);
+    expect(html.match(/<section class="frame[ "]/g)).toHaveLength(4);
+    expect([...html.matchAll(/<span class="frame__number">(\d+)<\/span>/g)].map((m) => m[1])).toEqual(['02', '03', '04']);
+    expect(html.match(/<li class="reel__shot"/g)).toHaveLength(3);
+    expect(html.indexOf('<footer class="site-footer">')).toBeGreaterThan(html.indexOf('</main>'));
+    // Inside the strip: the strip closes after the footer.
+    expect(html).toMatch(/<\/footer>\s*<\/div>/);
+    expect(html).not.toMatch(/perforation|sprocket/);
+  });
+
+  it("loads the hero at once and the frames' pictures lazily, all with their size reserved", () => {
     const hero = /<img class="hero__image"[^>]*>/.exec(html)![0];
     expect(hero).toContain('fetchpriority="high"');
     expect(hero).not.toContain('loading="lazy"');
     expect(hero).toContain(`width="${LANDING_IMAGES.hero.width}" height="${LANDING_IMAGES.hero.height}"`);
-    const steps = html.match(/<img class="step__image"[^>]*>/g)!;
-    expect(steps).toHaveLength(3);
-    expect(steps.every((img) => img.includes('loading="lazy"') && /width="\d+" height="\d+"/.test(img))).toBe(true);
+    const frames = html.match(/<img class="frame__image"[^>]*>/g)!;
+    expect(frames).toHaveLength(5);
+    expect(frames.every((img) => img.includes('loading="lazy"') && /width="\d+" height="\d+"/.test(img) && /alt="[^"]{12,}"/.test(img))).toBe(true);
     expect(html).not.toMatch(/data:image|base64/);
   });
 

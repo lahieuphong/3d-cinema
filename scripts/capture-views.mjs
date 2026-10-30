@@ -6011,7 +6011,44 @@ async function landingLayouts(browser, base) {
     check(`landing ${name}: "Bước vào rạp" on the first screen, no horizontal overflow, header ≤ 80 px`, layout.cta.bottom <= layout.viewport.height && layout.overflowX <= 0 && layout.header.height <= 80, { cta: layout.cta, header: layout.header.height, overflowX: layout.overflowX });
     check(`landing ${name}: the words stay clear of the screen in the picture; the ${portrait ? 'portrait' : '16:9'} render is used`, clear && (portrait ? /hero-portrait/.test(layout.picture) : /\/hero-\d+/.test(layout.picture)), { text: layout.text, screen: layout.screenInPicture, picture: layout.picture });
     check(`landing ${name}: main links and buttons are at least 44 px tall; headings h1 → h2 → h3`, layout.smallTargets.length === 0 && layout.headings[0] === 'H1' && layout.headings.filter((h) => h === 'H1').length === 1, { small: layout.smallTargets, headings: layout.headings.join(' ') });
+    // The film strip: its perforated edges are two pseudo-elements (no element per hole, no pointer),
+    // and no word, link or button of the page lies over them, at any scroll position; the strip
+    // runs to the foot of the page.
+    const strip = await page.evaluate(() => {
+      const element = document.querySelector('.filmstrip');
+      const r = element.getBoundingClientRect();
+      const edge = getComputedStyle(element, '::before');
+      const rail = parseFloat(edge.width);
+      const bad = [];
+      for (const e of document.querySelectorAll('.filmstrip :is(h1, h2, h3, p, a, li, figcaption), .site-header')) {
+        for (const box of e.getClientRects()) {
+          if (box.width === 0) continue;
+          if (box.left < r.left + rail - 0.5 || box.right > r.right - rail + 0.5) bad.push({ text: e.textContent.trim().slice(0, 30), left: Math.round(box.left), right: Math.round(box.right) });
+        }
+      }
+      return {
+        rail,
+        pointer: edge.pointerEvents,
+        elements: document.querySelectorAll('.landing *').length,
+        strip: { left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom + scrollY) },
+        page: document.documentElement.scrollHeight,
+        bad,
+      };
+    });
+    report.landing.layouts[name].strip = strip;
+    check(`landing ${name}: the film strip runs to the foot of the page; its edges (${Math.round(strip.rail)} px, pseudo-elements, no pointer) lie under no word or control; the page has ${strip.elements} elements`, strip.rail >= 15 && strip.pointer === 'none' && strip.bad.length === 0 && strip.page - strip.strip.bottom <= 1 && strip.elements < 260, strip);
     await screenshot(page, `landing-${name}-1-top`);
+    // Down the page so every frame has come up, then back: the whole page as a visitor sees it.
+    const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    for (let y = 0; y < pageHeight; y += Math.round(layout.viewport.height * 0.6)) {
+      await page.evaluate((top) => scrollTo({ top, behavior: 'instant' }), y);
+      await page.waitForTimeout(80);
+    }
+    await page.waitForTimeout(1300);
+    const shown = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].every((e) => e.hasAttribute('data-shown') && getComputedStyle(e).opacity === '1'));
+    check(`landing ${name}: scrolled down, every frame has come up (full opacity)`, shown, shown);
+    await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+    await page.waitForTimeout(300);
     if (!name.startsWith('zoom')) await screenshot(page, `landing-${name}-2-page`, { fullPage: true });
     await context.close();
   }
@@ -6067,10 +6104,10 @@ async function landingNetwork(browser, base) {
     return result;
   };
   const cold = await run('opened');
-  // The step pictures are loading="lazy"; Chrome still fetches lazy images within a distance of the
-  // viewport, so they may come early. The film and the auditorium's code never do. The logo is one
+  // The frames' pictures are loading="lazy"; Chrome still fetches lazy images within a distance of
+  // the viewport, so they may come early. The film and the auditorium's code never do. The logo is one
   // small file (the size for this screen's pixel ratio), not a render.
-  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy step pictures and one logo size', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length === 1 && cold.before.brand.every((p) => /hero|step-|\/logo-\d+\.webp$/.test(p)), cold.before);
+  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy frame pictures and the logo', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length <= 2 && cold.before.brand.every((p) => /hero|frame-|\/logo-\d+\.webp$/.test(p)), cold.before);
   check('landing idle: no WebGL context, no video element, no animation frames once the entrance animation is over', cold.idle.webgl === 0 && cold.idle.videos === 0 && cold.idle.framesIn2s === 0, cold.idle);
   const hover = await run('hover', { hover: true });
   check('landing intent: hovering "Bước vào rạp" fetches the auditorium code (page and 3D part) but builds nothing — no canvas, no WebGL, no video, no film request', hover.after.page && hover.after.view && hover.after.three && hover.after.canvases === 0 && hover.after.webgl === 0 && hover.after.videos === 0 && hover.after.media === 0, hover.after);
@@ -6131,14 +6168,14 @@ async function landingFlows(browser, base) {
     check('refresh: /cinema stays in the auditorium, / stays on the landing page', reloadCinema.path === '/cinema' && reloadCinema.cinema === 'ready' && reloadLanding.path === '/' && reloadLanding.landing, { reloadCinema, reloadLanding });
     // In-page links do not re-render the page.
     await page.evaluate(() => (window.__landingMarker = document.querySelector('[data-landing]')));
-    await page.click('.hero a[href="#cach-su-dung"]');
+    await page.click('.hero a[href="#goc-nhin"]');
     await page.waitForTimeout(900);
     // The navigation floats over the page (Prompt 15): the guide lands just below it, not under it.
-    const anchored = await page.evaluate(() => ({ hash: location.hash, top: Math.round(document.querySelector('#cach-su-dung').getBoundingClientRect().top), header: Math.round(document.querySelector('.site-header').getBoundingClientRect().bottom), same: window.__landingMarker === document.querySelector('[data-landing]') }));
+    const anchored = await page.evaluate(() => ({ hash: location.hash, top: Math.round(document.querySelector('#goc-nhin').getBoundingClientRect().top), header: Math.round(document.querySelector('.site-header').getBoundingClientRect().bottom), same: window.__landingMarker === document.querySelector('[data-landing]') }));
     await page.goBack();
     await page.waitForTimeout(600);
     const anchorBack = await page.evaluate(() => ({ hash: location.hash, same: window.__landingMarker === document.querySelector('[data-landing]') }));
-    check('in-page links: "Cách trải nghiệm" scrolls to the guide; Back returns without rebuilding the page', anchored.hash === '#cach-su-dung' && anchored.top >= anchored.header && anchored.top < anchored.header + 40 && anchored.same && anchorBack.hash === '' && anchorBack.same, { anchored, anchorBack });
+    check('in-page links: "Xem trải nghiệm" scrolls to frame 02; Back returns without rebuilding the page', anchored.hash === '#goc-nhin' && anchored.top >= anchored.header && anchored.top < anchored.header + 40 && anchored.same && anchorBack.hash === '' && anchorBack.same, { anchored, anchorBack });
     await context.close();
   }
 
@@ -6194,7 +6231,7 @@ async function landingFlows(browser, base) {
     await page.keyboard.press('Enter');
     await waitForLanding(page);
     const back = await landingState(page);
-    check('keyboard: Tab reaches "Bỏ qua, tới nội dung chính" first; Enter jumps to the content; the hero links come next; Enter on "Bước vào rạp" enters; the brand link is the first stop inside and Enter leads home', /Bỏ qua/.test(skip.text) && skip.visible && skipped.focus === 'main#noi-dung' && order.includes('Bước vào rạp') && outline !== 'none' && inside.cinema === 'ready' && firstInside === 'home' && back.path === '/' && back.focus === 'main#noi-dung', { skip, order, inside: inside.focus, firstInside, back: back.focus });
+    check('keyboard: Tab reaches "Bỏ qua, tới nội dung chính" first; Enter jumps to the content; the hero links come next; Enter on "Vào rạp" enters; the brand link is the first stop inside and Enter leads home', /Bỏ qua/.test(skip.text) && skip.visible && skipped.focus === 'main#noi-dung' && order.includes('Vào rạp') && outline !== 'none' && inside.cinema === 'ready' && firstInside === 'home' && back.path === '/' && back.focus === 'main#noi-dung', { skip, order, inside: inside.focus, firstInside, back: back.focus });
     await context.close();
   }
 
@@ -6382,7 +6419,7 @@ async function landingFlows(browser, base) {
     const f0 = (await probe(page)).frames;
     await page.waitForTimeout(1000);
     const f1 = (await probe(page)).frames;
-    await page.evaluate(() => window.scrollTo(0, document.querySelector('#cach-su-dung').offsetTop));
+    await page.evaluate(() => window.scrollTo(0, document.querySelector('#kham-pha').offsetTop));
     await page.waitForTimeout(800);
     const f2 = (await probe(page)).frames;
     await page.mouse.move(200, 200, { steps: 10 });

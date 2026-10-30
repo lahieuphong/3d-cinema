@@ -1,5 +1,7 @@
 // Renders the landing page's pictures from the auditorium itself and writes them to public/brand/:
-// hero (16:9 and a portrait cut), three step pictures, the share card; and every size of the logo.
+// hero (16:9 and a portrait cut), the pictures of the landing page's frames (the view from a seat,
+// three corners of the room, the closing view in scope and portrait), the share card; and every size
+// of the logo.
 //
 // The logo comes from one file, fixtures/brand/logo-source.png (the gold film reel, as supplied):
 // faint stray pixels dropped, trimmed and centred on a transparent square, then written as the
@@ -15,10 +17,10 @@
 // (playwright-core, no browser download). WebP and JPEG are encoded by the browser's canvas.
 //
 //   node scripts/capture-brand-assets.mjs
-//   BRAND_ONLY=step-2,step-3 node scripts/capture-brand-assets.mjs   # only those pictures
+//   BRAND_ONLY=frame-seat,frame-finale node scripts/capture-brand-assets.mjs   # only those pictures
 //
-// Picture names for BRAND_ONLY: logo, icons, hero, hero-portrait, step-1, step-2, step-3. (The logo
-// comes first: the step pictures show the page's header, which shows the mark.)
+// Picture names for BRAND_ONLY: logo, icons, hero, hero-portrait, frame-seat, frame-aisle, frame-rows,
+// frame-screen, frame-finale. Every picture is the room alone (the page's controls hidden).
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -44,6 +46,21 @@ const wanted = (name) => only.size === 0 || only.has(name);
 
 const COLORS = { charcoal: '#14110f', champagne: '#d9c08c' };
 
+/**
+ * The landing page's frames (src/landing/content.ts LANDING_IMAGES): the pose, the window it is
+ * rendered in (CSS px, pixel ratio 2) and the widths written (WebP; JPEG for browsers without it).
+ */
+const FRAMES = {
+  'frame-seat': [{ pose: 'seat', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1440], jpegWidths: [1080] }],
+  'frame-aisle': [{ pose: 'stairs', viewport: { width: 640, height: 800 }, widths: [600, 1000], jpegWidths: [1000] }],
+  'frame-rows': [{ pose: 'rows', viewport: { width: 960, height: 640 }, widths: [640, 960], jpegWidths: [960] }],
+  'frame-screen': [{ pose: 'screen', viewport: { width: 960, height: 640 }, widths: [640, 960], jpegWidths: [960] }],
+  'frame-finale': [
+    { pose: 'finale', viewport: { width: 1200, height: 502 }, widths: [960, 1440, 2048], jpegWidths: [1440] },
+    { pose: 'finalePortrait', viewport: { width: 640, height: 800 }, suffix: '-portrait', widths: [720, 1080], jpegWidths: [1080] },
+  ],
+};
+
 /** Only the 3D view, filling the window (development page, styles injected by this script). */
 const VIEW_ONLY =
   '.cinema-header,.cinema-hub,.cinema-taskbar,.cinema-overlay,.cinema-filmstatus,.cinema-notice,.cinema-caption,.cinema-return,.cinema-tourbar{display:none!important}' +
@@ -54,7 +71,17 @@ const VIEW_ONLY =
 const POSES = {
   hero: { position: [3.5, 3.6, 7.5], target: [-3.5, 1.6, -8.0] },
   heroPortrait: { position: [0.8, 4.2, 8.4], target: [-0.6, 1.4, -8.7] },
-  aisle: { position: [5.15, 2.95, 4.2], target: [1.2, 2.2, -8.7] },
+  // Up the right aisle from its foot: the lit steps, the handrail, the rows rising beside them.
+  stairs: { position: [5.15, 1.75, -4.6], target: [4.4, 3.2, 8.5] },
+  // From seat F06's eyes (layout.seatEyePosition), at the screen.
+  seat: { seat: 'F06', target: [0, 2.3, -8.7] },
+  // From beside the stage, back up the rows.
+  rows: { position: [2.6, 1.8, -6.9], target: [-2.5, 3.0, 5.5] },
+  // From the left aisle, mid-room: the screen, its curtain and the rows in front of it.
+  screen: { position: [-4.6, 2.7, 0.8], target: [0.8, 2.0, -8.7] },
+  // Down the middle from the back: the closing frame (scope, and a portrait cut for phones).
+  finale: { position: [0, 4.0, 8.3], target: [0, 2.4, -8.7] },
+  finalePortrait: { position: [0, 4.4, 8.3], target: [0, 2.0, -8.7] },
 };
 
 /**
@@ -218,7 +245,16 @@ async function openRoom(browser, base, viewport, deviceScaleFactor, query = '?po
 async function renderView(page, pose) {
   await page.addStyleTag({ content: VIEW_ONLY });
   await page.waitForTimeout(400);
-  await page.evaluate(({ position: p, target: t }) => window.__cinema.setCamera({ x: p[0], y: p[1], z: p[2] }, { x: t[0], y: t[1], z: t[2] }, 'eye'), pose);
+  await page.evaluate(({ position, seat, target: t }) => {
+    let p = position;
+    if (seat) {
+      // A seated eye: above the seat, a little behind its pivot (as layout.seatEyePosition).
+      const data = window.__cinema.layout.seatById.get(seat);
+      const { eyeHeight, eyeSetback } = window.__cinema.layout.config.viewer;
+      p = [data.position.x + Math.sin(data.yaw) * eyeSetback, data.position.y + eyeHeight, data.position.z + Math.cos(data.yaw) * eyeSetback];
+    }
+    window.__cinema.setCamera({ x: p[0], y: p[1], z: p[2] }, { x: t[0], y: t[1], z: t[2] }, 'eye');
+  }, pose);
   await page.waitForTimeout(600);
   return (await page.locator('canvas.cinema-canvas').screenshot({ type: 'png' })).toString('base64');
 }
@@ -258,7 +294,7 @@ async function main() {
       await write('brand/icon-maskable-512.png', await logoAt(tool, logo, 512, { background: COLORS.charcoal, inset: 0.22 }));
     }
     // The screen's slate: only the pictures of the room need it.
-    if (['hero', 'hero-portrait', 'step-1', 'step-2', 'step-3'].some(wanted)) {
+    if (['hero', 'hero-portrait', ...Object.keys(FRAMES)].some(wanted)) {
       await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool, logo), 'base64'));
       console.log('slate: fixtures/brand/screen-slate.png');
     }
@@ -284,43 +320,17 @@ async function main() {
       await encode(tool, portrait, 'hero-portrait', [720, 1080, 1440], { jpegWidths: [1080] });
     }
 
-    if (wanted('step-1')) {
-      // Step 1: walking — the right aisle from standing eye height (3:2).
-      page = await openRoom(browser, base, { width: 960, height: 640 }, 2);
-      const aisle = await renderView(page, POSES.aisle);
-      await page.close();
-      console.log('step 1');
-      await encode(tool, aisle, 'step-1', [640, 960], { jpegWidths: [960] });
-    }
-
-    if (wanted('step-2') || wanted('step-3')) {
-      // Step 2: the real page — Chọn ghế in the task bar, the map beside the room, two seats selected (3:2).
-      page = await openRoom(browser, base, { width: 1200, height: 800 }, 1.6);
-      await page.click('.cinema-taskbar button[data-task="seats"]');
-      if ((await page.getAttribute('button[data-action="seat-panel"]', 'aria-expanded')) !== 'true') await page.click('.cinema-taskbar button[data-action="seat-panel"]');
-      await page.waitForSelector('#cinema-seat-panel:not([hidden])');
-      for (const id of ['F05', 'F06']) await page.click(`button[data-seat="${id}"]`);
-      await page.mouse.move(5, 5);
-      await page.waitForTimeout(700);
-      if (wanted('step-2')) {
-        const seats = (await page.screenshot({ type: 'png' })).toString('base64');
-        console.log('step 2');
-        await encode(tool, seats, 'step-2', [640, 960], { jpegWidths: [960] });
+    // The landing page's frames, each from its own render (High quality, pixel ratio 2).
+    for (const [name, frame] of Object.entries(FRAMES)) {
+      if (!wanted(name)) continue;
+      for (const { pose, viewport, suffix = '', widths, jpegWidths } of frame) {
+        page = await openRoom(browser, base, viewport, 2);
+        await page.evaluate(() => window.__cinema.setQualityLevel('high'));
+        const picture = await renderView(page, POSES[pose]);
+        await page.close();
+        console.log(`${name}${suffix}`);
+        await encode(tool, picture, `${name}${suffix}`, widths, { jpegWidths });
       }
-
-      // Step 3: from seat F06 — the screen (slate) and, in Xem phim, the player over the room (3:2).
-      await page.click('button[data-action="view-from-seat"]');
-      await page.waitForFunction(() => document.querySelector('.cinema-app').dataset.camera === 'seat', null, { timeout: 10_000 });
-      await page.click('.cinema-taskbar button[data-task="watch"]');
-      await page.waitForSelector('#cinema-seat-panel', { state: 'hidden' });
-      await page.mouse.move(5, 5);
-      await page.waitForTimeout(900);
-      if (wanted('step-3')) {
-        const watch = (await page.screenshot({ type: 'png' })).toString('base64');
-        console.log('step 3');
-        await encode(tool, watch, 'step-3', [640, 960], { jpegWidths: [960] });
-      }
-      await page.close();
     }
   } finally {
     await browser.close();

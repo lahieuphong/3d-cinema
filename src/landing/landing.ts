@@ -1,6 +1,6 @@
 import { isPlainClick } from '../router.ts';
 import { landingHtml } from './content.ts';
-import { startHeroMotion } from './motion.ts';
+import { startFrameParallax, startHeroMotion } from './motion.ts';
 
 export interface LandingPageOptions {
   /** Takes the visitor into the auditorium (in-app navigation). */
@@ -32,6 +32,7 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
       (event) => {
         if (!isPlainClick(event, link.target)) return;
         event.preventDefault();
+        fadeFromDark();
         options.enterCinema();
       },
       { signal },
@@ -40,7 +41,7 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
 
   // Pictures still on their way shimmer in their place and the hero fades in over it (site.css);
   // the ones already here are left alone. Without this script they simply appear.
-  for (const image of root.querySelectorAll<HTMLImageElement>('.hero__image, .step__image')) {
+  for (const image of root.querySelectorAll<HTMLImageElement>('.hero__image, .frame__image')) {
     if (image.complete) continue;
     image.dataset.loading = '';
     const arrived = () => delete image.dataset.loading;
@@ -51,9 +52,54 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
   const hero = root.querySelector<HTMLElement>('.hero');
   const layer = root.querySelector<HTMLElement>('.hero__media');
   const stopMotion = hero && layer ? startHeroMotion(hero, layer) : () => {};
+  const stopParallax = startFrameParallax([...root.querySelectorAll<HTMLElement>('.frame__media > picture, .reel__shot > picture')]);
+  const stopReveal = revealFrames(root);
 
   return () => {
     stopMotion();
+    stopParallax();
+    stopReveal();
     listeners.abort();
   };
+}
+
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+/**
+ * The frames below the first screen come up as they reach it: hidden only once this script runs
+ * (`data-frames="reveal"` on the page), shown for good when a tenth of them is in view
+ * (`data-shown`). Without IntersectionObserver, or with reduced motion, they stay as they are:
+ * visible.
+ */
+function revealFrames(root: HTMLElement): () => void {
+  if (typeof IntersectionObserver !== 'function' || reducedMotion()) return () => {};
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        (entry.target as HTMLElement).dataset.shown = '';
+        observer.unobserve(entry.target);
+      }
+    },
+    { threshold: 0.1 },
+  );
+  for (const element of root.querySelectorAll('[data-reveal]')) observer.observe(element);
+  root.dataset.frames = 'reveal';
+  return () => observer.disconnect();
+}
+
+/**
+ * Entering the auditorium: the next page appears under a dark veil that lifts at once (site.css
+ * `.page-fade`, a third of a second). Nothing waits for it and it never takes a press; it removes
+ * itself when done, wherever the visitor has gone meanwhile.
+ */
+function fadeFromDark(): void {
+  if (reducedMotion()) return;
+  const veil = document.createElement('div');
+  veil.className = 'page-fade';
+  veil.setAttribute('aria-hidden', 'true');
+  const remove = () => veil.remove();
+  veil.addEventListener('animationend', remove, { once: true });
+  setTimeout(remove, 1000);
+  document.body.append(veil);
 }
