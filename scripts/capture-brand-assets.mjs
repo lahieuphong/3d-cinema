@@ -12,8 +12,8 @@
 //
 // The screen shows one of two slates drawn here, passed in with the development-only `?poster=`
 // override, so no frame of the demo film ends up in an image without its credit:
-// fixtures/brand/screen-slate.png (the logo and the working wordmark on dark) or screen-glow.png (a
-// softly lit blank screen, the moment before the film: no logo to compete with the words over it).
+// fixtures/brand/screen-slate.png (the logo and the working wordmark on dark: the hero, "Xem phim") or
+// screen-glow.png (a softly lit blank screen, the moment before the film: the closing view).
 // The auditorium's own film and poster are untouched.
 // Starts its own Vite dev server and a locally installed Chrome/Edge with a fresh profile
 // (playwright-core, no browser download). WebP and JPEG are encoded by the browser's canvas.
@@ -55,8 +55,8 @@ const COLORS = { charcoal: '#14110f', champagne: '#d9c08c' };
  */
 const PICTURES = {
   'portal-hero': [
-    { pose: 'portal', viewport: { width: 1280, height: 720 }, slate: 'screen-glow.png', widths: [960, 1440, 1920, 2560], jpegWidths: [1920] },
-    { pose: 'portalPortrait', viewport: { width: 450, height: 960 }, slate: 'screen-glow.png', suffix: '-portrait', widths: [720, 900], jpegWidths: [900] },
+    { pose: 'portal', viewport: { width: 1280, height: 720 }, widths: [960, 1440, 1920, 2560], jpegWidths: [1920] },
+    { pose: 'portalPortrait', viewport: { width: 450, height: 960 }, suffix: '-portrait', widths: [720, 900], jpegWidths: [900] },
   ],
   'exp-explore': [{ pose: 'stairs', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1600], jpegWidths: [1080] }],
   'exp-seats': [{ pose: 'layout', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1600], jpegWidths: [1080] }],

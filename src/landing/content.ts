@@ -84,7 +84,7 @@ ${wordmarkHtml()}
 <source media="(max-aspect-ratio: 4/5)" type="image/webp" srcset="${srcset('portal-hero-portrait', heroPortrait.widths)}" sizes="100vw">
 <source media="(max-aspect-ratio: 4/5)" type="image/jpeg" srcset="${IMG}/portal-hero-portrait-900.jpg 900w" sizes="100vw">
 <source type="image/webp" srcset="${srcset('portal-hero', hero.widths)}" sizes="100vw">
-<img class="hero__image" src="${IMG}/portal-hero-1920.jpg" width="${hero.width}" height="${hero.height}" alt="Khán phòng nhìn dọc lối đi bên trái: các hàng ghế đỏ dẫn tới màn chiếu đang sáng dịu." fetchpriority="high" decoding="async">
+<img class="hero__image" src="${IMG}/portal-hero-1920.jpg" width="${hero.width}" height="${hero.height}" alt="Khán phòng nhìn dọc lối đi bên trái: các hàng ghế đỏ dẫn tới màn chiếu mang logo Tân Phong Cinema." fetchpriority="high" decoding="async">
 </picture>
 </div>
 <div class="hero__shade" aria-hidden="true"></div>

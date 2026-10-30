@@ -22,7 +22,7 @@ cho nút vào rạp và vài điểm nhấn. Toàn bộ token để trong `.land
 1. **Hero:**
    - ảnh rạp tràn chiều rộng, cao gần một màn hình;
    - góc máy từ đầu lối đi trái, nhìn xuống các bậc có đèn và qua các hàng ghế tới màn chiếu;
-   - màn chiếu sáng dịu, không chữ, nên không tranh với tiêu đề;
+   - màn chiếu mang slate logo Tân Phong Cinema; chữ nằm dưới màn chiếu nên không tranh với tiêu đề;
    - chỉ có lớp tối cục bộ sau chữ (góc dưới trái) và dưới header;
    - header phẳng: logo nhỏ, "Trải nghiệm", "Vào rạp" (viền champagne); trên điện thoại chỉ logo và
      "Vào rạp";
@@ -45,7 +45,7 @@ cho nút vào rạp và vài điểm nhấn. Toàn bộ token để trong `.land
 Ảnh mới chụp từ chính khán phòng bằng `scripts/capture-brand-assets.mjs` (`portal-hero`, `exp-*`,
 `portal-finale`):
 - giao diện ẩn khi chụp, chất lượng Ưu tiên đẹp, tỉ lệ điểm ảnh 2;
-- màn chiếu dùng slate mới `screen-glow.png` (màn sáng dịu, không chữ) hoặc slate logo (ảnh Xem phim);
+- màn chiếu dùng slate logo (hero, ảnh Xem phim) hoặc slate mới `screen-glow.png` (màn sáng dịu, không chữ: ảnh lời mời);
 - scene production không đổi;
 - ảnh `frame-*` và `hero-*` cũ đã bỏ. Ảnh chia sẻ `share-1200.jpg` giữ nguyên.
 
@@ -80,12 +80,12 @@ cho nút vào rạp và vài điểm nhấn. Toàn bộ token để trong `.land
 
 | | Dải phim (trước) | Cinematic Portal (sau) |
 | --- | --- | --- |
-| Tổng trước khi bấm | 142,3 KB | 142,7 KB |
+| Tổng trước khi bấm | 142,3 KB | 145,1 KB (có logo trên màn chiếu) |
 | Ảnh | 123,0 KB | 123,6 KB |
-| Ảnh hero (1440 WebP) | 47,7 KB | 53,4 KB |
+| Ảnh hero (1440 WebP) | 47,7 KB | 55,5 KB |
 | JS / CSS chính (gzip) | 8,0 / 6,1 KB | 8,4 / 5,8 KB |
 | LCP, máy cục bộ | 72–80 ms (ảnh hero) | 64–76 ms (dòng tiêu đề) |
-| LCP, 1,6 Mbit/s | 784–860 ms | 520–552 ms |
+| LCP, 1,6 Mbit/s | 784–860 ms | 520–552 ms (có logo: 532–536 ms) |
 | CLS | 0 | 0 |
 
 - Lúc đầu bản mới tải tới 205,9 KB: trang ngắn hơn, nên Chrome tải sớm cả ba ảnh Trải nghiệm.

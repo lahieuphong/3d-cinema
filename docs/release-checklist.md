@@ -160,7 +160,7 @@ Chi tiết, số đo trước/sau: [landing-portal.md](landing-portal.md).
 - [x] Ba phần: hero tràn chiều rộng, "Trải nghiệm" (một ảnh, ba lựa chọn dạng tab), lời mời; không còn dải phim.
 - [x] Nút "Vào rạp" ở màn hình đầu, "Bước vào rạp" ở cuối; cả hai vào `/cinema`. Chữ không đè màn chiếu ở 9 kích thước.
 - [x] Bàn phím (tab, mũi tên), giảm chuyển động, khi tắt JavaScript; Back/Forward giữa landing và rạp.
-- [x] Lần đầu vào landing 142,3 → 142,7 KB; CLS 0; LCP là tiêu đề; không tải mã rạp trước khi người dùng tỏ ý.
+- [x] Lần đầu vào landing 142,3 → 145,1 KB; CLS 0; LCP là tiêu đề; không tải mã rạp trước khi người dùng tỏ ý.
 - [ ] Safari, Firefox và máy thật.
 
 ## 2. Chưa kiểm chứng
