@@ -1,4 +1,5 @@
 import { BRAND, markImg } from '../brand.ts';
+import { isStandalone } from '../display.ts';
 import { loadReducedGlass, setReducedGlass } from '../glass.ts';
 import { isPlainClick } from '../router.ts';
 import { roomSkeleton, seatSkeleton } from '../skeleton.ts';
@@ -611,8 +612,10 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   const advancedNote = el('p', 'cinema-hub__note cinema-hub__note--scene');
   settingsNote.hidden = advancedNote.hidden = true;
 
-  // Hiển thị › Toàn màn hình: the browser's full screen, where it can (never on iPhone Safari); the
-  // page works without it. Its words follow the state; a refusal is said under it.
+  // Hiển thị › Toàn màn hình: the browser's full screen for the whole page (the room and its controls,
+  // never the film alone), where it can (never on iPhone Safari); the page works without it. Nothing
+  // is rebuilt on the way in or out: the room only resizes. Its words follow the state; a refusal is
+  // said under it.
   const fullscreenLabel = el('span', 'cinema-hub__label', 'Toàn màn hình');
   const fullscreenButton = button('', 'cinema-hub__row cinema-hub__row--button cinema-hub__fullscreen');
   fullscreenButton.dataset.action = 'fullscreen';
@@ -637,6 +640,20 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
   );
   document.addEventListener('fullscreenchange', paintFullscreen, { signal });
 
+  // Hiển thị › Mở như ứng dụng: where the page cannot go full screen (iPhone), the way to the room
+  // without the browser's bars is the Home Screen. Its steps on a screen of their own, only when asked
+  // (iOS has no button a page could offer for this); not in an app window already.
+  const installRow = hub.link('install', 'Mở như ứng dụng', 'hub-install');
+  installRow.hidden = fullscreenSupported || isStandalone();
+  const guide = el('div', 'cinema-hub__guide');
+  guide.append(
+    el('p', 'cinema-hub__guide-steps', 'Chia sẻ → Thêm vào Màn hình chính → Mở dưới dạng ứng dụng, nếu có → Thêm.'),
+    el('p', 'cinema-hub__guide-steps', `Sau đó mở ${BRAND.shortName} từ Màn hình chính.`),
+    el('p', 'cinema-hub__guide-note', 'Nút Chia sẻ có thể nằm trong menu của thanh địa chỉ.'),
+    el('p', 'cinema-hub__guide-note', 'Mở từ Màn hình chính, rạp không có thanh địa chỉ của trình duyệt. Giờ, pin và thanh Home vẫn do máy hiển thị.'),
+  );
+  hub.content('install').append(guide);
+
   // Về trang chủ: a plain link at the foot of Cài đặt.
   const homeLink = el('a', 'cinema-hub__home', 'Về trang chủ');
   homeLink.href = '/';
@@ -655,7 +672,7 @@ export function createCinemaUi(host: HTMLElement, handlers: CinemaUiHandlers, op
 
   hub.content('settings').append(
     settingsNote,
-    rowGroup('Hiển thị', rows(qualityRow, qualityNote, glass.wrapper, fullscreenButton, fullscreenNote)),
+    rowGroup('Hiển thị', rows(qualityRow, qualityNote, glass.wrapper, fullscreenButton, fullscreenNote, installRow)),
     rowGroup(
       'Khác',
       rows(

@@ -2,14 +2,15 @@ import { el } from './ui.ts';
 
 /**
  * The screens of the panel, one at a time: `task` (phones only: the task switch and the current
- * task's controls), `settings` (Cài đặt), and its three sub-screens. They only choose what the panel
+ * task's controls), `settings` (Cài đặt), and its sub-screens. They only choose what the panel
  * shows; the task itself stays with taskLayout.
  */
-export type HubView = 'task' | 'settings' | 'help' | 'about' | 'advanced';
+export type HubView = 'task' | 'settings' | 'install' | 'help' | 'about' | 'advanced';
 
 const TITLES: Record<HubView, string> = {
   task: 'Điều khiển rạp',
   settings: 'Cài đặt',
+  install: 'Mở như ứng dụng',
   help: 'Hướng dẫn nhanh',
   about: 'Thông tin',
   advanced: 'Công cụ nâng cao',

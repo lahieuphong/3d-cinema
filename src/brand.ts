@@ -5,6 +5,8 @@
  */
 export const BRAND = {
   name: 'Tân Phong Cinema',
+  /** Under the icon on the Home Screen, where the full name does not fit. */
+  shortName: 'TP Cinema',
   /** Two-line wordmark: the name, then a small spaced word. */
   wordmark: { name: 'Tân Phong', suffix: 'Cinema' },
   /** Short line for titles and the share card. */
@@ -21,6 +23,8 @@ export const BRAND = {
   colors: {
     /** Warm charcoal (page background). */
     charcoal: '#14110f',
+    /** The auditorium page's background (tokens.css `--canvas`): the app's window and splash screen. */
+    room: '#0d0d10',
     /** Wine red, from the seat upholstery. */
     wine: '#7d2232',
     /** Restrained champagne (accents; it sits with the gold of the logo). */
@@ -29,6 +33,34 @@ export const BRAND = {
   /** Share card (1200 × 630) rendered from the auditorium, see scripts/capture-brand-assets.mjs. */
   shareImage: '/brand/share-1200.jpg',
 } as const;
+
+/**
+ * The web app manifest (served as /manifest.webmanifest, written by vite.config.ts). Added to the Home
+ * Screen, the site opens on the auditorium as an app of its own: no address bar or browser toolbar
+ * (the clock, the Dynamic Island and the home indicator stay the system's). The icons are the reel on
+ * charcoal (scripts/capture-brand-assets.mjs); the maskable one keeps it inside the central circle
+ * that every mask shape leaves. There is no service worker: nothing is cached for offline use.
+ */
+export function webAppManifest() {
+  return {
+    id: '/cinema',
+    name: BRAND.name,
+    short_name: BRAND.shortName,
+    description: BRAND.cinemaDescription,
+    lang: 'vi',
+    dir: 'ltr',
+    start_url: '/cinema',
+    scope: '/',
+    display: 'standalone',
+    theme_color: BRAND.colors.room,
+    background_color: BRAND.colors.room,
+    icons: [
+      { src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/brand/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/brand/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  };
+}
 
 export const PAGE_TITLES = {
   landing: `${BRAND.name} — ${BRAND.tagline}`,

@@ -15,7 +15,9 @@
 // controls over it, the task bar Khám phá / Chọn ghế / Xem phim and "Cài đặt"; on a phone the round
 // button's panel): layouts and measured canvas share per viewport, the seat sidebar, sheet and
 // full-screen dialog, focus and keyboard,
-// zoom 200 %, loading and failure states, end-to-end flows; and the landing page at / with the way
+// zoom 200 %, loading and failure states, end-to-end flows; edge to edge on phones (emulated safe
+// areas, a Home Screen app window, turning, full screen, "Mở như ứng dụng", the manifest and its
+// icons); and the landing page at / with the way
 // in and out of /cinema (layouts, what it downloads, intent preloading, history, new tabs, keyboard,
 // slow or failing code, many visits, reduced motion), then writes screenshots, videos and
 // report.json to artifacts/<CAPTURE_DIR or prompt-09>/.
@@ -205,7 +207,7 @@ async function reveal(page, selector) {
 }
 
 /** The rows of Cài đặt that open its sub-screens. */
-const HUB_LINKS = { help: 'hub-help', about: 'hub-about', advanced: 'inspect-tools' };
+const HUB_LINKS = { install: 'hub-install', help: 'hub-help', about: 'hub-about', advanced: 'inspect-tools' };
 
 /**
  * The open control panel moved to one of its screens the way a visitor gets there: from the task
@@ -568,6 +570,7 @@ async function main() {
       ['ui-flows', () => uiFlows(browser, base)],
       ['mobile-hub', () => mobileHub(browser, base)],
       ['ui-settings', () => uiSettings(browser, base)],
+      ['edge', () => edgeToEdge(browser, base)],
       ['ui-zoom', () => uiZoom(browser, base)],
       ['landing-layouts', () => landingLayouts(browser, base)],
       ['landing-network', () => landingNetwork(browser, base)],
@@ -4911,6 +4914,347 @@ async function mobileHub(browser, base) {
     await page.tap('[data-action="hub-settings"]');
     const offered = await page.isVisible('.cinema-hub [data-action="fullscreen"]');
     check('hub: without the Fullscreen API the "Toàn màn hình" button is not offered (the rest of Hiển thị is)', !offered && (await page.isVisible('.cinema-hub button[data-quality="economy"]')), { offered });
+    await context.close();
+  }
+}
+
+// Edge to edge (iPhone first): the room fills what the browser leaves, controls stay clear of the
+// safe areas (emulated through CDP), the page never scrolls; on iPhone (no Fullscreen API) Cài đặt
+// offers "Mở như ứng dụng" and its steps, which go away in an app window opened from the Home Screen
+// (Safari's own `navigator.standalone` there; the display mode through matchMedia in D); turning the
+// phone several times only resizes (the same canvas, the right buffer and aspect, a tap still picks
+// its seat); full screen, where the API is there, keeps the canvas and the film's element; the
+// manifest and its icons are what they say; the landing page still scrolls. Chrome emulation
+// throughout: no real iPhone or Safari here.
+async function edgeToEdge(browser, base) {
+  report.ui.edge = {};
+  const PHONE = { deviceScaleFactor: 2, hasTouch: true, isMobile: true };
+  const NO_FULLSCREEN = () => Object.defineProperty(Document.prototype, 'fullscreenEnabled', { get: () => false });
+  const setSafeArea = (cdp, { top = 0, right = 0, bottom = 0, left = 0 }) =>
+    cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top, topMax: top, right, rightMax: right, bottom, bottomMax: bottom, left, leftMax: left } });
+  const openHub = async (page) => {
+    if ((await page.getAttribute('.cinema-hub__toggle', 'aria-expanded')) !== 'true') await page.tap('.cinema-hub__toggle');
+    await page.waitForSelector('#cinema-hub-panel:not([hidden])');
+  };
+  const dismissHint = async (page) => {
+    if (await page.isVisible('[data-action="hub-hint-close"]')) await page.tap('[data-action="hub-hint-close"]');
+  };
+  const settle = async (page) => {
+    for (let i = 0; i < 3; i++) {
+      await nextFrames(page);
+      await page.waitForTimeout(120);
+    }
+  };
+  /** The room, the page and the round button against the window and the safe area (CSS px). */
+  const measure = (page, inset) =>
+    page.evaluate((inset) => {
+      const box = (e) => {
+        if (!e || e.getClientRects().length === 0) return null;
+        const r = e.getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+      };
+      const canvas = document.querySelector('.cinema-canvas');
+      const s = window.__cinema.getState();
+      scrollTo({ left: 200, top: 400, behavior: 'instant' });
+      const scrolled = { x: scrollX, y: scrollY };
+      scrollTo({ left: 0, top: 0, behavior: 'instant' });
+      const win = { w: innerWidth, h: innerHeight };
+      const inside = (b) => Boolean(b) && b.x >= inset.left - 1 && b.y >= inset.top - 1 && b.x + b.w <= win.w - inset.right + 1 && b.y + b.h <= win.h - inset.bottom + 1;
+      const toggle = box(document.querySelector('.cinema-hub__toggle'));
+      return {
+        win,
+        app: box(document.querySelector('.cinema-app')),
+        canvas: box(canvas),
+        buffer: { w: canvas.width, h: canvas.height },
+        dpr: devicePixelRatio,
+        aspect: s.view.camera.aspect,
+        quality: s.view.quality,
+        page: { scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight },
+        scrolled,
+        toggle,
+        toggleInside: inside(toggle),
+        canvases: document.querySelectorAll('canvas').length,
+        sameCanvas: window.__edge?.canvas === canvas,
+        sameVideos: window.__edge ? window.__edge.videos.length === document.querySelectorAll('video').length && window.__edge.videos.every((v) => v.isConnected) : null,
+        display: document.documentElement.dataset.display,
+      };
+    }, inset);
+  /** Fills the window, the page does not move, the buffer and the camera follow the canvas. */
+  const CAPS = { high: 2, balanced: 1.5, economy: 1.25, minimal: 1 };
+  const fills = (m) => {
+    const ratio = Math.min(m.dpr, CAPS[m.quality]);
+    return (
+      m.app.x === 0 && m.app.y === 0 && m.app.w === m.win.w && m.app.h === m.win.h &&
+      m.canvas.x === 0 && m.canvas.y === 0 && m.canvas.w === m.win.w && m.canvas.h === m.win.h &&
+      m.page.scrollW <= m.win.w && m.page.scrollH <= m.win.h && m.scrolled.x === 0 && m.scrolled.y === 0 &&
+      Math.abs(m.buffer.w - Math.floor(m.canvas.w * ratio)) <= 1 && Math.abs(m.buffer.h - Math.floor(m.canvas.h * ratio)) <= 1 &&
+      Math.abs(m.aspect - m.canvas.w / m.canvas.h) < 1e-3 && m.canvases === 1
+    );
+  };
+  const remember = (page) => page.evaluate(() => (window.__edge = { canvas: document.querySelector('.cinema-canvas'), videos: [...document.querySelectorAll('video')] }));
+
+  // A. iPhone in Safari: no Fullscreen API; the status bar and the home indicator as safe areas.
+  {
+    const SAFE = { top: 47, bottom: 34 };
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+    await context.addInitScript(NO_FULLSCREEN);
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await setSafeArea(cdp, SAFE);
+    attachConsole(page, 'edge-iphone');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await dismissHint(page);
+    await settle(page);
+    await remember(page);
+    const portrait = await measure(page, { ...SAFE, left: 0, right: 0 });
+    report.ui.edge.iphone = { portrait };
+    await screenshot(page, 'edge-1-iphone-safari');
+    check('edge: iPhone browser tab: the room fills the whole window (canvas = window, no margin or band), the page cannot scroll, buffer and camera follow the canvas', fills(portrait) && portrait.display === 'browser', portrait);
+    check('edge: iPhone: the round button sits inside the safe area (below the status bar, above the home indicator)', portrait.toggleInside, portrait.toggle);
+
+    // Dragged to the top edge, then to the bottom edge: it stops below the status bar, then above
+    // the home indicator.
+    const dragged = [];
+    for (const y of [2, 842]) {
+      const t = (await measure(page, { ...SAFE, left: 0, right: 0 })).toggle;
+      await touchDrag(cdp, page, [t.x + t.w / 2, t.y + t.h / 2], [0, y - (t.y + t.h / 2)], 10);
+      await settle(page);
+      dragged.push((await measure(page, { ...SAFE, left: 0, right: 0 })).toggle);
+    }
+    check('edge: iPhone: dragged to the top and the bottom edge, the button stops below the status bar and above the home indicator', dragged[0].y >= SAFE.top && dragged[0].y < 200 && dragged[1].y + dragged[1].h <= 844 - SAFE.bottom && dragged[1].y > 600, dragged);
+
+    // Cài đặt › Hiển thị: no "Toàn màn hình" here; "Mở như ứng dụng" opens its steps on request.
+    await openHub(page);
+    await page.tap('[data-action="hub-settings"]');
+    const offered = { fullscreen: await page.isVisible('[data-action="fullscreen"]'), install: await page.isVisible('[data-action="hub-install"]') };
+    await screenshot(page, 'edge-2-iphone-settings');
+    await page.tap('[data-action="hub-install"]');
+    const guide = await page.evaluate(() => {
+      const panel = document.querySelector('#cinema-hub-panel');
+      const r = panel.getBoundingClientRect();
+      return {
+        view: panel.dataset.view,
+        title: document.querySelector('#cinema-hub-title').textContent,
+        text: [...document.querySelectorAll('.cinema-hub__view[data-view="install"] p')].map((p) => p.textContent),
+        panel: { x: r.x, y: r.y, w: r.width, h: r.height },
+      };
+    });
+    await screenshot(page, 'edge-3-iphone-install-steps');
+    await page.tap('[data-action="hub-back"]');
+    const back = await page.evaluate(() => ({ view: document.querySelector('#cinema-hub-panel').dataset.view, focus: document.activeElement?.dataset.action ?? null }));
+    await page.tap('[data-action="hub-close"]');
+    report.ui.edge.iphone.settings = { offered, guide, back };
+    check(
+      'edge: iPhone: Cài đặt offers "Mở như ứng dụng" instead of "Toàn màn hình"; it shows the Home Screen steps (Chia sẻ → Thêm vào Màn hình chính → Mở dưới dạng ứng dụng, nếu có → Thêm; then TP Cinema) inside the safe area; back returns to its row',
+      !offered.fullscreen && offered.install && guide.view === 'install' && guide.title === 'Mở như ứng dụng' &&
+        guide.text[0] === 'Chia sẻ → Thêm vào Màn hình chính → Mở dưới dạng ứng dụng, nếu có → Thêm.' && guide.text[1] === 'Sau đó mở TP Cinema từ Màn hình chính.' &&
+        guide.panel.y >= SAFE.top && guide.panel.y + guide.panel.h <= 844 - SAFE.bottom && back.view === 'settings' && back.focus === 'hub-install',
+      report.ui.edge.iphone.settings,
+    );
+
+    // Turned three times (the safe area moves to the sides, the home indicator stays at the bottom).
+    const LANDSCAPE = { left: 47, right: 47, bottom: 21 };
+    const turns = [];
+    for (let i = 0; i < 3; i++) {
+      await setSafeArea(cdp, LANDSCAPE);
+      await page.setViewportSize({ width: 844, height: 390 });
+      await settle(page);
+      turns.push(await measure(page, { top: 0, ...LANDSCAPE }));
+      if (i === 0) await screenshot(page, 'edge-4-iphone-landscape');
+      await setSafeArea(cdp, SAFE);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await settle(page);
+      turns.push(await measure(page, { ...SAFE, left: 0, right: 0 }));
+    }
+    report.ui.edge.iphone.turns = turns;
+    check(
+      'edge: iPhone turned 3 times: each time the room fills the window, buffer and camera aspect follow, the button stays inside the safe area; the same canvas and film element (nothing rebuilt)',
+      turns.every((m) => fills(m) && m.toggleInside && m.sameCanvas && m.sameVideos),
+      turns.map((m) => ({ win: m.win, canvas: m.canvas, buffer: m.buffer, toggle: m.toggle, sameCanvas: m.sameCanvas, sameVideos: m.sameVideos })),
+    );
+
+    // After all that resizing, a tap on a seat in the room still picks that seat.
+    await setSafeArea(cdp, LANDSCAPE);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await settle(page);
+    const p = await firstVisibleSeat(page);
+    if (p) {
+      await touch(cdp, 'touchStart', [[p.x, p.y, 1]]);
+      await page.waitForTimeout(60);
+      await touch(cdp, 'touchEnd', []);
+      await page.waitForTimeout(150);
+    }
+    const picked = (await seatsState(page)).selected;
+    check('edge: after turning, a tap on a seat in the room picks that seat', p && picked.includes(p.id), { seat: p, picked });
+    await context.close();
+  }
+
+  // B. Opened from the Home Screen on iPhone (Safari's `navigator.standalone`): the status bar over
+  // the room (black-translucent), the home indicator, no Fullscreen API.
+  {
+    const SAFE = { top: 59, bottom: 34 };
+    const context = await browser.newContext({ viewport: { width: 393, height: 852 }, ...PHONE });
+    await context.addInitScript(NO_FULLSCREEN);
+    await context.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }));
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await setSafeArea(cdp, SAFE);
+    attachConsole(page, 'edge-standalone');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await dismissHint(page);
+    await settle(page);
+    const room = await measure(page, { ...SAFE, left: 0, right: 0 });
+    await screenshot(page, 'edge-5-home-screen-app');
+    const height = await page.evaluate(() => getComputedStyle(document.querySelector('.cinema-app')).height);
+    check('edge: Home Screen app: marked standalone; the room covers the whole screen, under the status bar and the home indicator (100vh); the button stays inside the safe area', room.display === 'standalone' && fills(room) && height === '852px' && room.toggleInside, { room, height });
+
+    await openHub(page);
+    await page.tap('[data-action="hub-settings"]');
+    const offered = { fullscreen: await page.isVisible('[data-action="fullscreen"]'), install: await page.isVisible('[data-action="hub-install"]') };
+    await page.tap('[data-action="hub-close"]');
+    check('edge: Home Screen app: no "Mở như ứng dụng" (it is one already), no "Toàn màn hình" (no API)', !offered.install && !offered.fullscreen, offered);
+
+    // The full-screen seat map: inside the safe area, its close button reachable, its list scrolling.
+    await openSeatPanel(page);
+    await settle(page);
+    const map = await page.evaluate(() => {
+      const box = (e) => {
+        const r = e.getBoundingClientRect();
+        return { y: Math.round(r.y), bottom: Math.round(r.bottom) };
+      };
+      const panel = document.querySelector('#cinema-seat-panel');
+      const close = panel.querySelector('[data-action="seat-panel-close"]');
+      const scroller = [...panel.querySelectorAll('*')].find((e) => /auto|scroll/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight);
+      return {
+        panel: box(panel),
+        close: close && close.getClientRects().length > 0 ? { ...box(close), label: close.textContent.trim() } : null,
+        scroller: scroller ? { className: scroller.className, scrollHeight: scroller.scrollHeight, clientHeight: scroller.clientHeight } : null,
+        pageScroll: document.documentElement.scrollHeight - innerHeight,
+      };
+    });
+    await screenshot(page, 'edge-6-home-screen-map');
+    report.ui.edge.standalone = { room, height, offered, map };
+    check('edge: Home Screen app: the full-screen seat map stays inside the safe area, its close button reachable, the page itself not scrolling', map.panel.y >= SAFE.top && map.panel.bottom <= 852 - SAFE.bottom + 1 && map.close && map.close.y >= SAFE.top && map.pageScroll <= 0, map);
+    await closeSeatPanel(page);
+    await context.close();
+  }
+
+  // C. A phone with the Fullscreen API (Android Chrome): "Toàn màn hình" on and off only resizes.
+  {
+    const context = await browser.newContext({ viewport: { width: 412, height: 915 }, ...PHONE });
+    const page = await context.newPage();
+    attachConsole(page, 'edge-android');
+    await page.goto(`${base}cinema`);
+    await waitForStatus(page);
+    await dismissHint(page);
+    await settle(page);
+    await remember(page);
+    await openHub(page);
+    await page.tap('[data-action="hub-settings"]');
+    const offered = { fullscreen: await page.isVisible('[data-action="fullscreen"]'), install: await page.isVisible('[data-action="hub-install"]') };
+    await page.tap('[data-action="fullscreen"]');
+    await page.waitForFunction(() => document.fullscreenElement !== null, null, { timeout: 5000 }).catch(() => {});
+    await settle(page);
+    const on = { element: await page.evaluate(() => document.fullscreenElement === document.documentElement), ...(await measure(page, { top: 0, right: 0, bottom: 0, left: 0 })) };
+    await page.tap('[data-action="fullscreen"]');
+    await page.waitForFunction(() => document.fullscreenElement === null, null, { timeout: 5000 }).catch(() => {});
+    await settle(page);
+    const off = { element: await page.evaluate(() => document.fullscreenElement !== null), ...(await measure(page, { top: 0, right: 0, bottom: 0, left: 0 })) };
+    await page.tap('[data-action="hub-close"]');
+    report.ui.edge.fullscreen = { offered, on, off };
+    check(
+      'edge: with the Fullscreen API, "Toàn màn hình" (not "Mở như ứng dụng") puts the whole page full screen and back; the same canvas and film element, the room filling the window each time',
+      offered.fullscreen && !offered.install && on.element && !off.element && [on, off].every((m) => fills(m) && m.sameCanvas && m.sameVideos),
+      { offered, on: { element: on.element, win: on.win, canvas: on.canvas, sameCanvas: on.sameCanvas, sameVideos: on.sameVideos }, off: { element: off.element, sameCanvas: off.sameCanvas, sameVideos: off.sameVideos } },
+    );
+    await context.close();
+  }
+
+  // D. The manifest, its icons, the page colours, the display mode reported through matchMedia, and
+  // the landing page scrolling before and after a visit to the room.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...PHONE });
+    await context.addInitScript(() => {
+      const original = window.matchMedia.bind(window);
+      window.matchMedia = (query) => (/display-mode:\s*standalone/.test(query) ? original('(min-width: 0px)') : original(query));
+    });
+    const page = await context.newPage();
+    attachConsole(page, 'edge-manifest');
+    await page.goto(base);
+    await waitForLanding(page);
+    const head = await page.evaluate(async () => {
+      const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') ?? null;
+      const response = await fetch(document.querySelector('link[rel="manifest"]').href);
+      const manifest = await response.json();
+      const icons = [];
+      for (const icon of manifest.icons) {
+        const image = new Image();
+        image.src = icon.src;
+        await image.decode();
+        const canvas = new OffscreenCanvas(image.naturalWidth, image.naturalHeight);
+        const g = canvas.getContext('2d', { willReadFrequently: true });
+        g.drawImage(image, 0, 0);
+        const { data, width, height } = g.getImageData(0, 0, image.naturalWidth, image.naturalHeight);
+        const bg = [data[0], data[1], data[2]];
+        let transparent = 0;
+        let outside = 0;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            if (data[i + 3] < 255) transparent++;
+            const far = Math.hypot(x + 0.5 - width / 2, y + 0.5 - height / 2) > 0.4 * width;
+            if (far && Math.max(...[0, 1, 2].map((k) => Math.abs(data[i + k] - bg[k]))) > 2) outside++;
+          }
+        }
+        icons.push({ src: icon.src, purpose: icon.purpose, sizes: icon.sizes, size: `${width}x${height}`, transparent, outside, bg });
+      }
+      return {
+        type: response.headers.get('content-type'),
+        manifest: { id: manifest.id, name: manifest.name, short_name: manifest.short_name, start_url: manifest.start_url, scope: manifest.scope, display: manifest.display, theme_color: manifest.theme_color, background_color: manifest.background_color },
+        icons,
+        appleIcon: document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href'),
+        appleTitle: meta('apple-mobile-web-app-title'),
+        statusBar: meta('apple-mobile-web-app-status-bar-style'),
+        theme: meta('theme-color'),
+        viewport: meta('viewport'),
+        display: document.documentElement.dataset.display,
+      };
+    });
+    report.ui.edge.manifest = head;
+    check(
+      'edge: manifest (Tân Phong Cinema / TP Cinema, id and start_url /cinema, scope /, standalone, room colours) served as application/manifest+json; viewport-fit=cover with no zoom lock; iOS title TP Cinema, translucent status bar, apple-touch-icon',
+      /manifest\+json/.test(head.type ?? '') && head.manifest.name === 'Tân Phong Cinema' && head.manifest.short_name === 'TP Cinema' && head.manifest.id === '/cinema' && head.manifest.start_url === '/cinema' && head.manifest.scope === '/' && head.manifest.display === 'standalone' &&
+        head.manifest.theme_color === '#0d0d10' && head.manifest.background_color === '#0d0d10' &&
+        /viewport-fit=cover/.test(head.viewport) && !/maximum-scale|user-scalable/.test(head.viewport) && head.appleTitle === 'TP Cinema' && head.statusBar === 'black-translucent' && head.appleIcon === '/apple-touch-icon.png',
+      head,
+    );
+    check('edge: install icons: the declared sizes, opaque, and the maskable one keeps everything but its background inside the central 80 % circle', head.icons.length === 3 && head.icons.every((i) => i.size === i.sizes && i.transparent === 0) && head.icons.filter((i) => i.purpose === 'maskable').every((i) => i.outside === 0), head.icons);
+    check('edge: the display mode reported by matchMedia marks the page standalone', head.display === 'standalone', head.display);
+
+    // The landing page scrolls; in the room nothing does (and it is the manifest's colour); back, it scrolls again.
+    const scrolls = () =>
+      page.evaluate(() => {
+        scrollTo({ top: 600, behavior: 'instant' });
+        const y = scrollY;
+        scrollTo({ top: 0, behavior: 'instant' });
+        return y;
+      });
+    const before = await scrolls();
+    await page.evaluate(() => document.querySelector('a[href="/cinema"]').click());
+    await waitForStatus(page);
+    const room = await page.evaluate(() => ({ theme: document.querySelector('meta[name="theme-color"]').getAttribute('content'), background: getComputedStyle(document.documentElement).backgroundColor, overflow: getComputedStyle(document.documentElement).overflow }));
+    await page.goBack();
+    await waitForLanding(page);
+    const after = await scrolls();
+    const theme = await page.evaluate(() => document.querySelector('meta[name="theme-color"]').getAttribute('content'));
+    report.ui.edge.landing = { before, room, after, landingTheme: head.theme, theme };
+    check(
+      'edge: the landing page scrolls before and after the room; the room does not scroll and is the manifest colour (#0d0d10); the theme colour follows each page',
+      before > 0 && after > 0 && room.overflow === 'hidden' && room.background === 'rgb(13, 13, 16)' && room.theme === '#0d0d10' && head.theme === '#14110f' && theme === '#14110f',
+      report.ui.edge.landing,
+    );
     await context.close();
   }
 }

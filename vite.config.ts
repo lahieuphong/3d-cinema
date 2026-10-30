@@ -1,26 +1,39 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite';
-import { BRAND, markImg, PAGE_TITLES } from './src/brand.ts';
+import { BRAND, markImg, PAGE_TITLES, webAppManifest } from './src/brand.ts';
 import { landingHtml } from './src/landing/content.ts';
 import { cinemaPageSkeleton } from './src/skeleton.ts';
+
+const MANIFEST_PATH = '/manifest.webmanifest';
 
 /**
  * Two HTML documents, one app: `/` is index.html (the landing page, written in at build time, so it
  * reads and links without JavaScript), `/cinema` is cinema.html (a short "opening" screen). Both load
  * src/main.ts, which routes inside the app from then on. Each document carries its own title,
- * description and share data for crawlers that do not run scripts. Hosting maps `/cinema` to
- * cinema.html (vercel.json); the dev and preview servers do it here.
+ * description and share data for crawlers that do not run scripts, and both link the web app
+ * manifest (/manifest.webmanifest, written from src/brand.ts) with what iOS reads for the Home
+ * Screen. Hosting maps `/cinema` to cinema.html (vercel.json); the dev and preview servers do it here.
  */
 function sitePages(): Plugin {
   const toCinemaDocument = (req: { url?: string }) => {
     if (req.url && /^\/cinema\/?(?:[?#]|$)/.test(req.url)) req.url = req.url.replace(/^\/cinema\/?/, '/cinema.html');
   };
+  const manifest = `${JSON.stringify(webAppManifest(), null, 2)}\n`;
   return {
     name: 'site-pages',
     configureServer(server) {
-      server.middlewares.use((req, _res, next) => {
-        toCinemaDocument(req as unknown as { url?: string });
+      server.middlewares.use((req, res, next) => {
+        const request = req as unknown as { url?: string };
+        if (request.url?.split('?')[0] === MANIFEST_PATH) {
+          res.setHeader('Content-Type', 'application/manifest+json');
+          res.end(manifest);
+          return;
+        }
+        toCinemaDocument(request);
         next();
       });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: MANIFEST_PATH.slice(1), source: manifest });
     },
     configurePreviewServer(server) {
       server.middlewares.use((req, _res, next) => {
@@ -40,11 +53,19 @@ function sitePages(): Plugin {
         const tags: HtmlTagDescriptor[] = [
           { tag: 'title', children: page.title, injectTo: 'head' },
           meta({ name: 'description', content: page.description }),
-          meta({ name: 'theme-color', content: BRAND.colors.charcoal }),
+          meta({ name: 'theme-color', content: cinema ? BRAND.colors.room : BRAND.colors.charcoal }),
           meta({ name: 'color-scheme', content: 'dark' }),
           { tag: 'link', attrs: { rel: 'canonical', href: `${BRAND.origin}${page.path}` }, injectTo: 'head' },
           { tag: 'link', attrs: { rel: 'icon', href: '/favicon.png', type: 'image/png', sizes: '64x64' }, injectTo: 'head' },
-          { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'manifest', href: MANIFEST_PATH }, injectTo: 'head' },
+          // Opened from the Home Screen: its own window (the manifest's display, and the older iOS
+          // switch), named "TP Cinema", the room drawn under a clear status bar (white text, the
+          // controls kept below it by the safe-area insets).
+          meta({ name: 'mobile-web-app-capable', content: 'yes' }),
+          meta({ name: 'apple-mobile-web-app-capable', content: 'yes' }),
+          meta({ name: 'apple-mobile-web-app-title', content: BRAND.shortName }),
+          meta({ name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }),
           meta({ property: 'og:type', content: 'website' }),
           meta({ property: 'og:site_name', content: BRAND.name }),
           meta({ property: 'og:locale', content: BRAND.locale }),

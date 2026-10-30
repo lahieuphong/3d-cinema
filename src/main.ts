@@ -2,6 +2,7 @@ import './tokens.css';
 import './site.css';
 import { BRAND, markImg, PAGE_TITLES } from './brand.ts';
 import type { CinemaSession } from './cinema/page.ts';
+import { applyDisplayMode } from './display.ts';
 import { applyStoredGlass } from './glass.ts';
 import { mountLandingPage } from './landing/landing.ts';
 import { createLoader, savesData } from './landing/loader.ts';
@@ -13,6 +14,8 @@ if (!host) throw new Error('Missing #app element.');
 const app = host;
 // "Giảm hiệu ứng kính", chosen on an earlier visit (the HTML shells already set it before painting).
 applyStoredGlass();
+// A browser tab, or an app window opened from the Home Screen.
+applyDisplayMode();
 
 // The auditorium comes in two downloads: its page (tasks, seat map, player) and its 3D part
 // (three.js, the room). Neither is fetched by the landing page on its own: only when the visitor
@@ -37,6 +40,14 @@ const DESCRIPTIONS: Record<RouteKind, string> = {
   'not-found': BRAND.description,
 };
 
+/** Each page's background, for the browser's bars where they take it (as in the HTML shells). */
+const THEME_COLORS: Record<RouteKind, string> = {
+  landing: BRAND.colors.charcoal,
+  cinema: BRAND.colors.room,
+  inspector: BRAND.colors.room,
+  'not-found': BRAND.colors.charcoal,
+};
+
 /**
  * Shows the page for the current URL, unmounting the previous one first (at most one renderer at
  * a time). `moveFocus` after in-app navigation: focus goes to the new page's main heading.
@@ -51,6 +62,7 @@ async function render({ moveFocus = false, force = false } = {}): Promise<void> 
   mounted = kind;
   document.documentElement.dataset.route = kind;
   document.querySelector('meta[name="description"]')?.setAttribute('content', DESCRIPTIONS[kind]);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLORS[kind]);
 
   if (kind === 'landing') {
     document.title = PAGE_TITLES.landing;

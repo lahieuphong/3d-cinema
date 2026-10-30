@@ -4,7 +4,9 @@
 // The logo comes from one file, fixtures/brand/logo-source.png (the gold film reel, as supplied):
 // faint stray pixels dropped, trimmed and centred on a transparent square, then written as the
 // page's mark (public/brand/logo-{64,128,256}.webp), the tab icon (public/favicon.png) and the home
-// screen icon (public/apple-touch-icon.png, on charcoal: iOS fills transparency with black).
+// screen icon (public/apple-touch-icon.png, on charcoal: iOS fills transparency with black); and the
+// install icons the web app manifest lists (public/brand/icon-{192,512}.png and
+// icon-maskable-512.png, on charcoal too).
 //
 // The screen shows a slate drawn here (fixtures/brand/screen-slate.png, the logo and the working
 // wordmark on dark), passed in with the development-only `?poster=` override, so no frame of the
@@ -15,8 +17,8 @@
 //   node scripts/capture-brand-assets.mjs
 //   BRAND_ONLY=step-2,step-3 node scripts/capture-brand-assets.mjs   # only those pictures
 //
-// Picture names for BRAND_ONLY: logo, hero, hero-portrait, step-1, step-2, step-3. (The logo comes
-// first: the step pictures show the page's header, which shows the mark.)
+// Picture names for BRAND_ONLY: logo, icons, hero, hero-portrait, step-1, step-2, step-3. (The logo
+// comes first: the step pictures show the page's header, which shows the mark.)
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -233,11 +235,11 @@ async function main() {
   try {
     const tool = await browser.newPage();
     const logo = await squareLogo(tool);
+    const write = async (file, base64) => {
+      await writeFile(path.join(root, 'public', file), Buffer.from(base64, 'base64'));
+      console.log(`  public/${file}  ${(Buffer.from(base64, 'base64').length / 1000).toFixed(1)} kB`);
+    };
     if (wanted('logo')) {
-      const write = async (file, base64) => {
-        await writeFile(path.join(root, 'public', file), Buffer.from(base64, 'base64'));
-        console.log(`  public/${file}  ${(Buffer.from(base64, 'base64').length / 1000).toFixed(1)} kB`);
-      };
       console.log('logo');
       // The page's mark (shown at 26–40 px, so 64/128/256 cover 1×–3× screens).
       for (const size of [64, 128, 256]) await write(`brand/logo-${size}.webp`, await logoAt(tool, logo, size, { type: 'image/webp' }));
@@ -246,8 +248,20 @@ async function main() {
       // Home screen icon: on warm charcoal, with room around it for the system's rounded corners.
       await write('apple-touch-icon.png', await logoAt(tool, logo, 180, { background: COLORS.charcoal, inset: 0.1 }));
     }
-    await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool, logo), 'base64'));
-    console.log('slate: fixtures/brand/screen-slate.png');
+    if (wanted('icons')) {
+      console.log('icons');
+      // Install icons, as the home screen icon: on charcoal, room around the reel for rounded corners.
+      for (const size of [192, 512]) await write(`brand/icon-${size}.png`, await logoAt(tool, logo, size, { background: COLORS.charcoal, inset: 0.1 }));
+      // Maskable: launchers cut it to their own shape (circle, squircle, rounded square), and every
+      // shape keeps the central circle 80 % of the icon across. The reel's square stays inside it
+      // (its side 56 % of the icon: its corners 0.56 × √2 / 2 ≈ 0.396 from the centre, under 0.4).
+      await write('brand/icon-maskable-512.png', await logoAt(tool, logo, 512, { background: COLORS.charcoal, inset: 0.22 }));
+    }
+    // The screen's slate: only the pictures of the room need it.
+    if (['hero', 'hero-portrait', 'step-1', 'step-2', 'step-3'].some(wanted)) {
+      await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool, logo), 'base64'));
+      console.log('slate: fixtures/brand/screen-slate.png');
+    }
 
     let page;
     if (wanted('hero')) {

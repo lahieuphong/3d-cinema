@@ -140,6 +140,19 @@ Chi tiết, bảng theo nhóm vật thể, ảnh và số đo trước/sau: [vis
 - [x] Màn chiếu giữ đúng màu video; không có điểm cháy trắng ở góc nào.
 - [ ] Chưa xem trên màn hình thật ngoài máy đo (độ sáng/gamma màn hình khác có thể làm vùng tối khác đi).
 
+**Tràn màn hình và mở từ Màn hình chính (30/10/2026)**
+
+Chi tiết, cách kiểm tra, ảnh trước/sau: [mobile-fullscreen.md](mobile-fullscreen.md).
+
+- [x] Rạp phủ kín cửa sổ, trang không cuộn, nút trong vùng an toàn (Chrome giả lập, có safe area qua
+  CDP): dọc, ngang, xoay 3 lần, sau đó chạm chọn đúng ghế; vẫn canvas và video cũ.
+- [x] Manifest (`TP Cinema`, `/cinema`, standalone, màu nền rạp), icon 192/512 và maskable; metadata iOS
+  ở cả hai trang HTML.
+- [x] "Toàn màn hình" khi có Fullscreen API; "Mở như ứng dụng" (chỉ khi được chạm) khi không có và chưa
+  ở chế độ ứng dụng.
+- [x] Landing vẫn cuộn trước và sau khi vào rạp.
+- [ ] iPhone thật: Safari (tab) và mở từ Màn hình chính; Android Chrome thật (cài đặt, toàn màn hình).
+
 ## 2. Chưa kiểm chứng
 
 - [ ] **Âm thanh bằng tai** — chưa nghe; chỉ biết track tiếng được giải mã và mute/volume đúng.
@@ -188,7 +201,9 @@ Chi tiết, bảng theo nhóm vật thể, ảnh và số đo trước/sau: [vis
 2. **Nghe tiếng:**
    - Phát, tắt/bật tiếng, kéo âm lượng (desktop), dùng phím âm lượng (iOS);
    - rời rạp khi đang phát: không còn tiếng.
-3. **Thanh địa chỉ và notch:** cuộn hoặc chạm để thanh địa chỉ co/giãn; không nút nào bị che.
+3. **Thanh địa chỉ và notch:** cuộn hoặc chạm để thanh địa chỉ co/giãn; không nút nào bị che. Rồi thêm
+   `/cinema` vào Màn hình chính và mở **TP Cinema** (các bước ở cuối
+   [mobile-fullscreen.md](mobile-fullscreen.md)).
 4. **VoiceOver (iOS/macOS) hoặc NVDA (Windows):**
    - landing: liên kết "Bỏ qua…", h1, ba bước;
    - rạp: ba tác vụ, nút chính của player, sơ đồ ghế;
