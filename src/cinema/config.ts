@@ -251,7 +251,8 @@ export const AUDITORIUM_CONFIG = {
       height: 1.8,
       /** Largest floor change taken in one step: aisle steps (0.18 m) yes, the stage (0.5 m) no. */
       maxStep: 0.25,
-      walkSpeed: 1.4,
+      /** m/s: a brisk walk, so crossing the room (18 m) takes about 7 s rather than 13. */
+      walkSpeed: 2.4,
       /** The eye follows steps up and down with this time constant instead of jumping. */
       eyeSmoothingSeconds: 0.12,
       minPitchDeg: -60,
