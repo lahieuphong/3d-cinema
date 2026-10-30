@@ -6030,7 +6030,7 @@ async function landingLayouts(browser, base) {
       };
     });
     report.landing.layouts[name].wide = wide;
-    check(`landing ${name}: the hero and the closing picture span the window edge to edge; the hero picture loads at once; no film strip, ${wide.elements} elements`, wide.hero.left === 0 && wide.hero.right === wide.window && wide.finale.left === 0 && wide.finale.right === wide.window && !wide.lazy && wide.strip === 0 && wide.elements < 200, wide);
+    check(`landing ${name}: the hero and the closing part span the window edge to edge; the hero picture loads at once; no film strip frame, ${wide.elements} elements`, wide.hero.left === 0 && wide.hero.right === wide.window && wide.finale.left === 0 && wide.finale.right === wide.window && !wide.lazy && wide.strip === 0 && wide.elements < 200, wide);
     await screenshot(page, `landing-${name}-1-top`);
     // Down the page so every frame has come up, then back: the whole page as a visitor sees it.
     const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);

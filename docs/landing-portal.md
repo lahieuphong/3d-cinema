@@ -45,20 +45,21 @@ cho nút vào rạp và vài điểm nhấn. Toàn bộ token để trong `.land
    - phác hoạ chạy một lần (2,6 s) khi phần này hiện lên và mỗi khi chọn mục khác, không lặp;
    - khi tắt JavaScript hoặc bật giảm chuyển động: phác hoạ đứng yên ở trạng thái cuối, ba mục hiện
      đủ.
-3. **Lời mời — "Trên màn chiếu":**
-   - ảnh căn phòng từ cuối lối giữa;
+3. **Lời mời — "Trên màn chiếu":** không dùng lại ảnh căn phòng (hero đã có):
+   - một chùm sáng máy chiếu rọi xuống từ ống kính phía trên chữ;
    - "Đèn đã dịu. Mời bạn vào rạp.";
    - ba phim của rạp trong một dải phim chạy ngang, nghiêng nhẹ, lỗ phim là ánh sáng mờ, mỗi khung
      ghi tên, độ dài, hãng và giấy phép; ảnh tĩnh `film-*.webp` làm từ poster, không tải từ `/media/`;
-   - các khung sáng dần lần lượt khi hiện lên; dải phim trôi ngang theo cuộn (chỉ khi có chuột);
+   - khi hiện lên: chùm sáng mở xuống từ ống kính, rồi các khung sáng dần lần lượt; dải phim trôi
+     ngang theo cuộn (chỉ khi có chuột); không gì tự chạy sau đó;
    - trên điện thoại vuốt ngang từng phim;
    - nút "Bước vào rạp".
 4. **Footer:** credit ba phim và ghi chú demo, chữ nhỏ.
 
-Ảnh mới chụp từ chính khán phòng bằng `scripts/capture-brand-assets.mjs` (`portal-hero`, `exp-*`,
-`portal-finale`):
+Ảnh mới chụp từ chính khán phòng bằng `scripts/capture-brand-assets.mjs` (`portal-hero`, `exp-*`;
+ảnh phim `film-*` làm từ poster):
 - giao diện ẩn khi chụp, chất lượng Ưu tiên đẹp, tỉ lệ điểm ảnh 2;
-- màn chiếu dùng slate logo (hero, ảnh Xem phim) hoặc slate mới `screen-glow.png` (màn sáng dịu, không chữ: ảnh lời mời);
+- màn chiếu dùng slate logo `screen-slate.png`;
 - scene production không đổi;
 - ảnh `frame-*` và `hero-*` cũ đã bỏ. Ảnh chia sẻ `share-1200.jpg` giữ nguyên.
 
@@ -73,7 +74,7 @@ cho nút vào rạp và vài điểm nhấn. Toàn bộ token để trong `.land
   - cuộn gốc của trình duyệt;
   - hai phần dưới hiện dần (16 px) khi vào màn hình;
   - ảnh hero trôi chậm hơn trang và theo chuột (có sẵn);
-  - ảnh lời mời trôi ±14 px, chỉ khi có chuột.
+  - dải phim trôi ngang theo cuộn, chỉ khi có chuột.
 - **Đổi ảnh Trải nghiệm:**
   - ảnh mới hiện đè lên ảnh cũ trong 0,28 s, sau khi đã giải mã xong;
   - không nháy đen, khung giữ nguyên kích thước.

@@ -112,53 +112,6 @@ export function startHeroMotion(hero: HTMLElement, layer: HTMLElement, options: 
 }
 
 /**
- * Pictures drift a little against their boxes as the page scrolls (each overhangs its box by `range`
- * px top and bottom, site.css), only with a mouse and without reduced motion: on
- * touch screens they stay put. One frame is drawn per scroll step, and only for the pictures in
- * view; nothing runs while the page stands still.
- */
-export function startPictureParallax(layers: HTMLElement[], range = 14): () => void {
-  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-  const fine = window.matchMedia?.('(hover: hover) and (pointer: fine)');
-  if (layers.length === 0 || typeof IntersectionObserver !== 'function' || !(fine?.matches ?? false) || (reduce?.matches ?? false)) return () => {};
-  const listeners = new AbortController();
-  const visible = new Set<HTMLElement>();
-  let frame: number | null = null;
-
-  const step = () => {
-    frame = null;
-    const middle = window.innerHeight / 2;
-    for (const layer of visible) {
-      const box = layer.parentElement!.getBoundingClientRect();
-      // −1 when the box's centre is a screen height below the middle, +1 a screen height above.
-      const t = Math.max(-1, Math.min(1, (middle - (box.top + box.height / 2)) / window.innerHeight));
-      layer.style.transform = `translate3d(0, ${(t * range).toFixed(1)}px, 0)`;
-    }
-  };
-  const schedule = () => {
-    if (frame === null && visible.size > 0 && !(reduce?.matches ?? false)) frame = requestAnimationFrame(step);
-  };
-  const observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      const layer = entry.target.querySelector<HTMLElement>(':scope > picture');
-      if (!layer) continue;
-      if (entry.isIntersecting) visible.add(layer);
-      else visible.delete(layer);
-    }
-    schedule();
-  });
-  for (const layer of layers) observer.observe(layer.parentElement!);
-  window.addEventListener('scroll', schedule, { signal: listeners.signal, passive: true });
-
-  return () => {
-    if (frame !== null) cancelAnimationFrame(frame);
-    listeners.abort();
-    observer.disconnect();
-    for (const layer of layers) layer.style.transform = '';
-  };
-}
-
-/**
  * The film strip feeds a little sideways as the page scrolls past it (`--drift`, ±`range` px; the
  * strip's own transform, site.css), like film through a projector: with a mouse, on screens wide
  * enough for the tilted strip, without reduced motion. One frame per scroll step while it is in

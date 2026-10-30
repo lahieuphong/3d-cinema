@@ -10,9 +10,10 @@ import { CINEMA_PATH } from '../router.ts';
  * the URL or the user.
  *
  * Three parts, "a door into the cinema": the room full width with a few words over it; one space,
- * three ways to use it (one picture, three choices; landing.ts turns the list into tabs); the
- * invitation in, with the three films on the screen in a strip of film (each with its length,
- * studio and licence; the full credits are in the footer). Every picture is a render of this auditorium (scripts/capture-brand-assets.mjs),
+ * three things it does (one picture each, with a sketch; landing.ts turns the list into tabs); the
+ * invitation in: a projector's beam over the three films on the screen in a strip of film (each
+ * with its length, studio and licence; the full credits are in the footer), no picture of the room
+ * this time (the hero has it). Every picture is a render of this auditorium (scripts/capture-brand-assets.mjs),
  * with a slate on its screen (a softly lit blank screen, or the logo) instead of a film frame.
  */
 
@@ -26,8 +27,6 @@ export const LANDING_IMAGES = {
   hero: { widths: [960, 1440, 1920, 2560], width: 2560, height: 1440 },
   heroPortrait: { widths: [720, 900], width: 900, height: 1920 },
   way: { widths: [720, 1080, 1600], width: 1600, height: 900 },
-  finale: { widths: [960, 1440, 2048], width: 2048, height: 857 },
-  finalePortrait: { widths: [720, 1080], width: 1080, height: 1350 },
 } as const;
 
 /**
@@ -98,7 +97,7 @@ export function wordmarkHtml(className = 'wordmark'): string {
 }
 
 export function landingHtml(): string {
-  const { hero, heroPortrait, way, finale, finalePortrait } = LANDING_IMAGES;
+  const { hero, heroPortrait, way } = LANDING_IMAGES;
   const cta = (label: string, extra = '') => `<a class="button button--primary${extra}" href="${CINEMA_PATH}" data-cta="cinema">${label}</a>`;
   return `<div class="landing" data-landing>
 <a class="skip-link" href="#noi-dung">Bỏ qua, tới nội dung chính</a>
@@ -165,14 +164,7 @@ ${WAYS.map(
 </div>
 </section>
 <section class="finale" aria-labelledby="finale-title">
-<div class="finale__media">
-<picture>
-<source media="(max-aspect-ratio: 4/5)" type="image/webp" srcset="${srcset('portal-finale-portrait', finalePortrait.widths)}" sizes="100vw">
-<source media="(max-aspect-ratio: 4/5)" type="image/jpeg" srcset="${IMG}/portal-finale-portrait-1080.jpg 1080w" sizes="100vw">
-<source type="image/webp" srcset="${srcset('portal-finale', finale.widths)}" sizes="100vw">
-<img class="finale__image" src="${IMG}/portal-finale-1440.jpg" width="${finale.width}" height="${finale.height}" alt="Khán phòng nhìn thẳng từ cuối lối giữa: các hàng ghế đỏ và màn chiếu sáng dịu giữa hai rèm." loading="lazy" decoding="async">
-</picture>
-</div>
+<div class="finale__beam" aria-hidden="true" data-reveal></div>
 <div class="finale__content" data-reveal>
 <p class="kicker">Trên màn chiếu</p>
 <h2 id="finale-title">Đèn đã dịu. Mời bạn vào rạp.</h2>

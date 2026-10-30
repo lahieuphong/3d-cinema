@@ -1,6 +1,6 @@
 import { isPlainClick } from '../router.ts';
 import { landingHtml } from './content.ts';
-import { startHeroMotion, startPictureParallax, startStripDrift } from './motion.ts';
+import { startHeroMotion, startStripDrift } from './motion.ts';
 import { enhanceWays } from './ways.ts';
 
 export interface LandingPageOptions {
@@ -42,7 +42,7 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
 
   // Pictures still on their way shimmer in their place and the hero fades in over it (site.css);
   // the ones already here are left alone. Without this script they simply appear.
-  for (const image of root.querySelectorAll<HTMLImageElement>('.hero__image, .experience__shot img, .finale__image, .film__frame img')) {
+  for (const image of root.querySelectorAll<HTMLImageElement>('.hero__image, .experience__shot img, .film__frame img')) {
     if (image.complete) continue;
     image.dataset.loading = '';
     const arrived = () => delete image.dataset.loading;
@@ -53,7 +53,6 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
   const hero = root.querySelector<HTMLElement>('.hero');
   const layer = root.querySelector<HTMLElement>('.hero__media');
   const stopMotion = hero && layer ? startHeroMotion(hero, layer) : () => {};
-  const stopParallax = startPictureParallax([...root.querySelectorAll<HTMLElement>('.finale__media > picture')]);
   const stopReveal = revealParts(root);
   const ways = root.querySelector<HTMLElement>('.experience');
   const stopWays = ways ? enhanceWays(ways) : () => {};
@@ -62,7 +61,6 @@ export function mountLandingPage(host: HTMLElement, options: LandingPageOptions)
 
   return () => {
     stopMotion();
-    stopParallax();
     stopReveal();
     stopWays();
     stopDrift();
