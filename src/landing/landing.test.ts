@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BRAND, markImg, PAGE_TITLES } from '../brand.ts';
 import { isPlainClick, matchRoute } from '../router.ts';
-import { landingHtml, LANDING_IMAGES } from './content.ts';
+import { landingHtml, LANDING_IMAGES, WAYS } from './content.ts';
 import { createLoader, savesData } from './loader.ts';
 
 describe('routes', () => {
@@ -69,37 +69,45 @@ describe('landing content', () => {
   const html = landingHtml();
 
   it('has the agreed copy, one h1, and real links into the auditorium', () => {
-    expect(html).toContain('Bước vào rạp. Chọn góc nhìn của bạn.');
-    expect(html).toContain('Khám phá không gian. Chọn ghế. Thưởng thức bộ phim.');
+    expect(html).toContain('<span class="hero__line">Một chỗ ngồi.</span> <span class="hero__line">Một góc nhìn riêng.</span>');
+    expect(html).toContain('Khám phá khán phòng 3D, chọn ghế và thưởng thức bộ phim.');
+    expect(html).toContain('Khám phá không gian <span aria-hidden="true">↓</span>');
+    expect(html).toContain('Đèn đã dịu. Mời bạn vào rạp.');
     expect(html).toContain(BRAND.demoNote);
     expect(html.match(/<h1[ >]/g)).toHaveLength(1);
-    // The header's "Vào rạp", the opening frame's "Vào rạp" and the last frame's "Bước vào rạp".
+    // The header's "Vào rạp", the hero's "Vào rạp" and the invitation's "Bước vào rạp".
     expect(html.match(/href="\/cinema" data-cta="cinema">(Vào rạp|Bước vào rạp)</g)).toHaveLength(3);
-    expect(html).toContain('href="#goc-nhin"');
-    expect(html).toContain('id="goc-nhin"');
-    expect(html).toContain('id="kham-pha"');
+    expect(html.match(/href="#trai-nghiem"/g)).toHaveLength(2);
+    expect(html).toContain('id="trai-nghiem"');
     expect(html).toContain('class="skip-link" href="#noi-dung"');
   });
 
-  it('is one film strip of four frames, the credits on its tail; the perforations are not markup', () => {
-    expect(html.match(/class="filmstrip"/g)).toHaveLength(1);
-    expect(html.match(/<section class="frame[ "]/g)).toHaveLength(4);
-    expect([...html.matchAll(/<span class="frame__number">(\d+)<\/span>/g)].map((m) => m[1])).toEqual(['02', '03', '04']);
-    expect(html.match(/<li class="reel__shot"/g)).toHaveLength(3);
-    expect(html.indexOf('<footer class="site-footer">')).toBeGreaterThan(html.indexOf('</main>'));
-    // Inside the strip: the strip closes after the footer.
-    expect(html).toMatch(/<\/footer>\s*<\/div>/);
-    expect(html).not.toMatch(/perforation|sprocket/);
+  it('has three parts and no film strip; the logo once, in the header', () => {
+    expect(html.match(/<section class="(hero|experience|finale)"/g)).toEqual(['<section class="hero"', '<section class="experience"', '<section class="finale"']);
+    expect(html).not.toMatch(/filmstrip|class="frame|reel__/);
+    expect(html.match(/class="brand-mark"/g)).toHaveLength(1);
   });
 
-  it("loads the hero at once and the frames' pictures lazily, all with their size reserved", () => {
+  it('offers three ways, each with its own picture and sentence, readable without the script', () => {
+    expect(WAYS.map((w) => w.title)).toEqual(['Khám phá', 'Chọn ghế', 'Xem phim']);
+    expect(new Set(WAYS.map((w) => w.name)).size).toBe(3);
+    for (const way of WAYS) {
+      expect(html).toContain(`<p class="way__text">${way.text}</p>`);
+      expect(html).toContain(`data-way="${way.id}"`);
+      expect(html).toContain(`/brand/${way.name}-1080.jpg`);
+    }
+    // One picture shown before any choice: the first.
+    expect(html.match(/class="experience__shot" data-way="[^"]+" data-active/g)).toHaveLength(1);
+  });
+
+  it('loads the hero at once and the pictures below lazily, all with their size reserved', () => {
     const hero = /<img class="hero__image"[^>]*>/.exec(html)![0];
     expect(hero).toContain('fetchpriority="high"');
     expect(hero).not.toContain('loading="lazy"');
     expect(hero).toContain(`width="${LANDING_IMAGES.hero.width}" height="${LANDING_IMAGES.hero.height}"`);
-    const frames = html.match(/<img class="frame__image"[^>]*>/g)!;
-    expect(frames).toHaveLength(5);
-    expect(frames.every((img) => img.includes('loading="lazy"') && /width="\d+" height="\d+"/.test(img) && /alt="[^"]{12,}"/.test(img))).toBe(true);
+    const below = html.match(/<img (?!class="hero__image")[^>]*>/g)!.filter((img) => !img.includes('brand-mark'));
+    expect(below).toHaveLength(4);
+    expect(below.every((img) => img.includes('loading="lazy"') && /width="\d+" height="\d+"/.test(img) && /alt="[^"]{12,}"/.test(img))).toBe(true);
     expect(html).not.toMatch(/data:image|base64/);
   });
 

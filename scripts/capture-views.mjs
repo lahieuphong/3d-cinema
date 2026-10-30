@@ -5970,17 +5970,18 @@ async function landingLayouts(browser, base) {
         // render is drawn with object-fit: cover at the image's object-position; in both renders the
         // screen spans these fractions of the picture.
         text: (() => {
-          let right = 0;
-          let top = Infinity;
-          for (const s of ['.hero h1', '.hero__lead', '.hero .eyebrow']) {
+          let [left, right, top, bottom] = [Infinity, 0, Infinity, 0];
+          for (const s of ['.hero h1', '.hero__lead']) {
             const range = document.createRange();
             range.selectNodeContents(document.querySelector(s));
             for (const r of range.getClientRects()) {
+              left = Math.min(left, r.left);
               right = Math.max(right, r.right);
               top = Math.min(top, r.top);
+              bottom = Math.max(bottom, r.bottom);
             }
           }
-          return { right: Math.round(right), top: Math.round(top) };
+          return { left: Math.round(left), right: Math.round(right), top: Math.round(top), bottom: Math.round(bottom) };
         })(),
         screenInPicture: (() => {
           const box = image.getBoundingClientRect();
@@ -5991,7 +5992,8 @@ async function landingLayouts(browser, base) {
           const x = box.x + (box.width - w) * px;
           const y = box.y + (box.height - h) * py;
           const portraitRender = image.naturalHeight > image.naturalWidth;
-          const frac = portraitRender ? { left: 0.2, right: 0.9, top: 0.26, bottom: 0.54 } : { left: 0.47, right: 0.83, top: 0.2, bottom: 0.57 };
+          // Where the screen (with its frame) lies in each render (portal-hero, portal-hero-portrait).
+          const frac = portraitRender ? { left: 0.08, right: 0.96, top: 0.18, bottom: 0.46 } : { left: 0.25, right: 0.57, top: 0.16, bottom: 0.52 };
           return { left: Math.round(x + frac.left * w), right: Math.round(x + frac.right * w), top: Math.round(y + frac.top * h), bottom: Math.round(y + frac.bottom * h) };
         })(),
         h1Size: getComputedStyle(document.querySelector('.hero h1')).fontSize,
@@ -6003,40 +6005,32 @@ async function landingLayouts(browser, base) {
       };
     });
     const portrait = layout.viewport.width / layout.viewport.height <= 0.8;
-    // Landscape layouts keep the words in the left part; the screen in the picture is right of centre.
-    // The words never cover the screen in the picture: beside it on wide layouts, under it in portrait.
+    // The words never cover the screen in the picture: under it (the hero's lower left; portrait:
+    // over the rows below it), or beside it on low landscape screens.
     const s = layout.screenInPicture;
-    const clear = portrait ? layout.text.top >= s.bottom : layout.text.right <= s.left;
+    const t = layout.text;
+    const clear = t.top >= s.bottom || t.bottom <= s.top || t.right <= s.left || t.left >= s.right;
     report.landing.layouts[name] = layout;
     check(`landing ${name}: "Bước vào rạp" on the first screen, no horizontal overflow, header ≤ 80 px`, layout.cta.bottom <= layout.viewport.height && layout.overflowX <= 0 && layout.header.height <= 80, { cta: layout.cta, header: layout.header.height, overflowX: layout.overflowX });
-    check(`landing ${name}: the words stay clear of the screen in the picture; the ${portrait ? 'portrait' : '16:9'} render is used`, clear && (portrait ? /hero-portrait/.test(layout.picture) : /\/hero-\d+/.test(layout.picture)), { text: layout.text, screen: layout.screenInPicture, picture: layout.picture });
+    check(`landing ${name}: the words stay clear of the screen in the picture; the ${portrait ? 'portrait' : '16:9'} render is used`, clear && (portrait ? /portal-hero-portrait/.test(layout.picture) : /\/portal-hero-\d+/.test(layout.picture)), { text: layout.text, screen: layout.screenInPicture, picture: layout.picture });
     check(`landing ${name}: main links and buttons are at least 44 px tall; headings h1 → h2 → h3`, layout.smallTargets.length === 0 && layout.headings[0] === 'H1' && layout.headings.filter((h) => h === 'H1').length === 1, { small: layout.smallTargets, headings: layout.headings.join(' ') });
-    // The film strip: its perforated edges are two pseudo-elements (no element per hole, no pointer),
-    // and no word, link or button of the page lies over them, at any scroll position; the strip
-    // runs to the foot of the page.
-    const strip = await page.evaluate(() => {
-      const element = document.querySelector('.filmstrip');
-      const r = element.getBoundingClientRect();
-      const edge = getComputedStyle(element, '::before');
-      const rail = parseFloat(edge.width);
-      const bad = [];
-      for (const e of document.querySelectorAll('.filmstrip :is(h1, h2, h3, p, a, li, figcaption), .site-header')) {
-        for (const box of e.getClientRects()) {
-          if (box.width === 0) continue;
-          if (box.left < r.left + rail - 0.5 || box.right > r.right - rail + 0.5) bad.push({ text: e.textContent.trim().slice(0, 30), left: Math.round(box.left), right: Math.round(box.right) });
-        }
-      }
+    // The room full width: the hero picture spans the window edge to edge (no frame, no box around
+    // the page), and it is not lazy; the page has no film strip left.
+    const wide = await page.evaluate(() => {
+      const hero = document.querySelector('.hero').getBoundingClientRect();
+      const finale = document.querySelector('.finale').getBoundingClientRect();
+      const image = document.querySelector('.hero__image');
       return {
-        rail,
-        pointer: edge.pointerEvents,
+        hero: { left: Math.round(hero.left), right: Math.round(hero.right), height: Math.round(hero.height) },
+        finale: { left: Math.round(finale.left), right: Math.round(finale.right) },
+        window: innerWidth,
+        lazy: image.loading === 'lazy',
+        strip: document.querySelectorAll('.filmstrip, .frame, .reel').length,
         elements: document.querySelectorAll('.landing *').length,
-        strip: { left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom + scrollY) },
-        page: document.documentElement.scrollHeight,
-        bad,
       };
     });
-    report.landing.layouts[name].strip = strip;
-    check(`landing ${name}: the film strip runs to the foot of the page; its edges (${Math.round(strip.rail)} px, pseudo-elements, no pointer) lie under no word or control; the page has ${strip.elements} elements`, strip.rail >= 15 && strip.pointer === 'none' && strip.bad.length === 0 && strip.page - strip.strip.bottom <= 1 && strip.elements < 260, strip);
+    report.landing.layouts[name].wide = wide;
+    check(`landing ${name}: the hero and the closing picture span the window edge to edge; the hero picture loads at once; no film strip, ${wide.elements} elements`, wide.hero.left === 0 && wide.hero.right === wide.window && wide.finale.left === 0 && wide.finale.right === wide.window && !wide.lazy && wide.strip === 0 && wide.elements < 200, wide);
     await screenshot(page, `landing-${name}-1-top`);
     // Down the page so every frame has come up, then back: the whole page as a visitor sees it.
     const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -6046,7 +6040,7 @@ async function landingLayouts(browser, base) {
     }
     await page.waitForTimeout(1300);
     const shown = await page.evaluate(() => [...document.querySelectorAll('[data-reveal]')].every((e) => e.hasAttribute('data-shown') && getComputedStyle(e).opacity === '1'));
-    check(`landing ${name}: scrolled down, every frame has come up (full opacity)`, shown, shown);
+    check(`landing ${name}: scrolled down, every part has come up (full opacity)`, shown, shown);
     await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
     await page.waitForTimeout(300);
     if (!name.startsWith('zoom')) await screenshot(page, `landing-${name}-2-page`, { fullPage: true });
@@ -6057,8 +6051,8 @@ async function landingLayouts(browser, base) {
     const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
     const page = await context.newPage();
     for (const [file, src] of [
-      ['landing-hero-render-16x9', '/brand/hero-1920.webp'],
-      ['landing-hero-render-portrait', '/brand/hero-portrait-1080.webp'],
+      ['landing-hero-render-16x9', '/brand/portal-hero-1920.webp'],
+      ['landing-hero-render-portrait', '/brand/portal-hero-portrait-900.webp'],
       ['landing-share-card', '/brand/share-1200.jpg'],
     ]) {
       await page.setContent(`<body style="margin:0;background:#14110f"><img src="${base.replace(/\/$/, '')}${src}" style="display:block;max-width:1200px;max-height:900px"></body>`);
@@ -6104,10 +6098,10 @@ async function landingNetwork(browser, base) {
     return result;
   };
   const cold = await run('opened');
-  // The frames' pictures are loading="lazy"; Chrome still fetches lazy images within a distance of
-  // the viewport, so they may come early. The film and the auditorium's code never do. The logo is one
+  // The pictures below the hero are loading="lazy"; Chrome still fetches lazy images within a
+  // distance of the viewport, so they may come early. The film and the auditorium's code never do. The logo is one
   // small file (the size for this screen's pixel ratio), not a render.
-  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy frame pictures and the logo', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length <= 2 && cold.before.brand.every((p) => /hero|frame-|\/logo-\d+\.webp$/.test(p)), cold.before);
+  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy pictures of the parts below and the logo', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /portal-hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length <= 2 && cold.before.brand.every((p) => /portal-|exp-|\/logo-\d+\.webp$/.test(p)), cold.before);
   check('landing idle: no WebGL context, no video element, no animation frames once the entrance animation is over', cold.idle.webgl === 0 && cold.idle.videos === 0 && cold.idle.framesIn2s === 0, cold.idle);
   const hover = await run('hover', { hover: true });
   check('landing intent: hovering "Bước vào rạp" fetches the auditorium code (page and 3D part) but builds nothing — no canvas, no WebGL, no video, no film request', hover.after.page && hover.after.view && hover.after.three && hover.after.canvases === 0 && hover.after.webgl === 0 && hover.after.videos === 0 && hover.after.media === 0, hover.after);
@@ -6168,14 +6162,14 @@ async function landingFlows(browser, base) {
     check('refresh: /cinema stays in the auditorium, / stays on the landing page', reloadCinema.path === '/cinema' && reloadCinema.cinema === 'ready' && reloadLanding.path === '/' && reloadLanding.landing, { reloadCinema, reloadLanding });
     // In-page links do not re-render the page.
     await page.evaluate(() => (window.__landingMarker = document.querySelector('[data-landing]')));
-    await page.click('.hero a[href="#goc-nhin"]');
+    await page.click('.hero a[href="#trai-nghiem"]');
     await page.waitForTimeout(900);
-    // The navigation floats over the page (Prompt 15): the guide lands just below it, not under it.
-    const anchored = await page.evaluate(() => ({ hash: location.hash, top: Math.round(document.querySelector('#goc-nhin').getBoundingClientRect().top), header: Math.round(document.querySelector('.site-header').getBoundingClientRect().bottom), same: window.__landingMarker === document.querySelector('[data-landing]') }));
+    // The header stays with the hero (it does not float): "Trải nghiệm" lands near the top.
+    const anchored = await page.evaluate(() => ({ hash: location.hash, top: Math.round(document.querySelector('#trai-nghiem').getBoundingClientRect().top), header: Math.round(document.querySelector('.site-header').getBoundingClientRect().bottom), same: window.__landingMarker === document.querySelector('[data-landing]') }));
     await page.goBack();
     await page.waitForTimeout(600);
     const anchorBack = await page.evaluate(() => ({ hash: location.hash, same: window.__landingMarker === document.querySelector('[data-landing]') }));
-    check('in-page links: "Xem trải nghiệm" scrolls to frame 02; Back returns without rebuilding the page', anchored.hash === '#goc-nhin' && anchored.top >= anchored.header && anchored.top < anchored.header + 40 && anchored.same && anchorBack.hash === '' && anchorBack.same, { anchored, anchorBack });
+    check('in-page links: "Khám phá không gian" scrolls to "Trải nghiệm"; Back returns without rebuilding the page', anchored.hash === '#trai-nghiem' && anchored.top >= 0 && anchored.top <= 40 && anchored.same && anchorBack.hash === '' && anchorBack.same, { anchored, anchorBack });
     await context.close();
   }
 
@@ -6387,6 +6381,71 @@ async function landingFlows(browser, base) {
     await context.close();
   }
 
+  // "Trải nghiệm": three ways, one picture. Each choice (press, or arrows on the focused tab) shows
+  // its own picture and sentence, the frame keeps its size, the tabs say which is chosen; nothing
+  // changes on its own. Without the script, the three ways and their sentences are all there.
+  {
+    const { context, page } = await open('landing-ways');
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.evaluate(() => document.querySelector('#trai-nghiem').scrollIntoView({ behavior: 'instant' }));
+    await page.waitForTimeout(1200);
+    const ways = () =>
+      page.evaluate(() => {
+        const media = document.querySelector('.experience__media');
+        const r = media.getBoundingClientRect();
+        const active = [...document.querySelectorAll('.experience__shot[data-active]')];
+        return {
+          tabs: [...document.querySelectorAll('[role="tab"]')].map((t) => ({ name: t.textContent.trim().split('\n')[0], selected: t.getAttribute('aria-selected'), tabIndex: t.tabIndex })),
+          panel: { role: media.getAttribute('role'), labelledBy: media.getAttribute('aria-labelledby') },
+          active: active.map((s) => s.dataset.way),
+          opacity: active.map((s) => getComputedStyle(s).opacity),
+          loaded: active.map((s) => s.querySelector('img').complete && s.querySelector('img').naturalWidth > 0),
+          box: { w: Math.round(r.width), h: Math.round(r.height) },
+          focus: document.activeElement?.id ?? null,
+        };
+      });
+    const states = [await ways()];
+    await page.click('[role="tab"]#tab-chon-ghe');
+    await page.waitForTimeout(700);
+    states.push(await ways());
+    await screenshot(page, 'landing-ways-1-seats');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(700);
+    states.push(await ways());
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(700);
+    states.push(await ways());
+    await page.keyboard.press('End');
+    await page.waitForTimeout(400);
+    const before = await ways();
+    await page.waitForTimeout(3000);
+    const after = await ways();
+    report.landing.flows.ways = { states, before, after };
+    const order = states.map((s) => s.active[0]);
+    check(
+      '"Trải nghiệm": three tabs over one picture; a press and the arrows choose a way (its own picture, fully shown), one selected tab in the tab order, the frame the same size throughout, nothing changing on its own',
+      JSON.stringify(order) === JSON.stringify(['kham-pha', 'chon-ghe', 'xem-phim', 'kham-pha']) &&
+        states.every((s) => s.tabs.length === 3 && s.tabs.filter((t) => t.selected === 'true').length === 1 && s.tabs.filter((t) => t.tabIndex === 0).length === 1 && s.active.length === 1 && s.opacity[0] === '1' && s.loaded[0] && s.panel.role === 'tabpanel' && s.box.w === states[0].box.w && s.box.h === states[0].box.h) &&
+        states[2].focus === 'tab-xem-phim' && before.active[0] === 'xem-phim' && after.active[0] === 'xem-phim',
+      { order, states: states.map((s) => ({ active: s.active, selected: s.tabs.map((t) => t.selected).join(','), box: s.box, focus: s.focus })) },
+    );
+    await context.close();
+  }
+  {
+    const { context, page } = await open('landing-ways-no-js', { javaScriptEnabled: false });
+    await page.goto(base);
+    await page.waitForSelector('[data-landing] .experience');
+    const plain = await page.evaluate(() => ({
+      ways: [...document.querySelectorAll('.way')].map((w) => ({ title: w.querySelector('h3').textContent.trim(), text: w.querySelector('.way__text').textContent.trim(), shown: getComputedStyle(w.querySelector('.way__text')).display !== 'none' })),
+      tabs: document.querySelectorAll('[role="tab"]').length,
+      picture: document.querySelector('.experience__shot[data-active] img')?.getAttribute('src') ?? null,
+      visible: [...document.querySelectorAll('[data-reveal]')].every((e) => getComputedStyle(e).opacity === '1'),
+    }));
+    check('"Trải nghiệm" without JavaScript: the three ways with their sentences, the first picture, everything visible, no tabs', plain.ways.length === 3 && plain.ways.every((w) => w.shown && w.text.length > 10) && plain.tabs === 0 && /exp-explore/.test(plain.picture ?? '') && plain.visible, plain);
+    await context.close();
+  }
+
   // Reduced motion: nothing moves, everything is there at once.
   {
     const { context, page } = await open('landing-reduced-motion', { reducedMotion: 'reduce' });
@@ -6419,7 +6478,7 @@ async function landingFlows(browser, base) {
     const f0 = (await probe(page)).frames;
     await page.waitForTimeout(1000);
     const f1 = (await probe(page)).frames;
-    await page.evaluate(() => window.scrollTo(0, document.querySelector('#kham-pha').offsetTop));
+    await page.evaluate(() => window.scrollTo(0, document.querySelector('#trai-nghiem').offsetTop));
     await page.waitForTimeout(800);
     const f2 = (await probe(page)).frames;
     await page.mouse.move(200, 200, { steps: 10 });

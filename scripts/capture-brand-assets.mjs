@@ -1,7 +1,7 @@
 // Renders the landing page's pictures from the auditorium itself and writes them to public/brand/:
-// hero (16:9 and a portrait cut), the pictures of the landing page's frames (the view from a seat,
-// three corners of the room, the closing view in scope and portrait), the share card; and every size
-// of the logo.
+// the hero (16:9 and a portrait cut), the three pictures of "Trải nghiệm" (the lit steps, the layout
+// of the rows, the view from a seat), the closing view (scope and portrait), the share card; and
+// every size of the logo.
 //
 // The logo comes from one file, fixtures/brand/logo-source.png (the gold film reel, as supplied):
 // faint stray pixels dropped, trimmed and centred on a transparent square, then written as the
@@ -10,17 +10,19 @@
 // install icons the web app manifest lists (public/brand/icon-{192,512}.png and
 // icon-maskable-512.png, on charcoal too).
 //
-// The screen shows a slate drawn here (fixtures/brand/screen-slate.png, the logo and the working
-// wordmark on dark), passed in with the development-only `?poster=` override, so no frame of the
-// demo film ends up in an image without its credit. The auditorium's own film and poster are untouched.
+// The screen shows one of two slates drawn here, passed in with the development-only `?poster=`
+// override, so no frame of the demo film ends up in an image without its credit:
+// fixtures/brand/screen-slate.png (the logo and the working wordmark on dark) or screen-glow.png (a
+// softly lit blank screen, the moment before the film: no logo to compete with the words over it).
+// The auditorium's own film and poster are untouched.
 // Starts its own Vite dev server and a locally installed Chrome/Edge with a fresh profile
 // (playwright-core, no browser download). WebP and JPEG are encoded by the browser's canvas.
 //
 //   node scripts/capture-brand-assets.mjs
-//   BRAND_ONLY=frame-seat,frame-finale node scripts/capture-brand-assets.mjs   # only those pictures
+//   BRAND_ONLY=portal-hero,exp-watch node scripts/capture-brand-assets.mjs   # only those pictures
 //
-// Picture names for BRAND_ONLY: logo, icons, hero, hero-portrait, frame-seat, frame-aisle, frame-rows,
-// frame-screen, frame-finale. Every picture is the room alone (the page's controls hidden).
+// Picture names for BRAND_ONLY: logo, icons, share, portal-hero, exp-explore, exp-seats, exp-watch,
+// portal-finale. Every picture is the room alone (the page's controls hidden).
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -47,17 +49,21 @@ const wanted = (name) => only.size === 0 || only.has(name);
 const COLORS = { charcoal: '#14110f', champagne: '#d9c08c' };
 
 /**
- * The landing page's frames (src/landing/content.ts LANDING_IMAGES): the pose, the window it is
- * rendered in (CSS px, pixel ratio 2) and the widths written (WebP; JPEG for browsers without it).
+ * The landing page's pictures (src/landing/content.ts LANDING_IMAGES): the pose, the window it is
+ * rendered in (CSS px, pixel ratio 2), the slate on the screen and the widths written (WebP; JPEG
+ * for browsers without it).
  */
-const FRAMES = {
-  'frame-seat': [{ pose: 'seat', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1440], jpegWidths: [1080] }],
-  'frame-aisle': [{ pose: 'stairs', viewport: { width: 640, height: 800 }, widths: [600, 1000], jpegWidths: [1000] }],
-  'frame-rows': [{ pose: 'rows', viewport: { width: 960, height: 640 }, widths: [640, 960], jpegWidths: [960] }],
-  'frame-screen': [{ pose: 'screen', viewport: { width: 960, height: 640 }, widths: [640, 960], jpegWidths: [960] }],
-  'frame-finale': [
-    { pose: 'finale', viewport: { width: 1200, height: 502 }, widths: [960, 1440, 2048], jpegWidths: [1440] },
-    { pose: 'finalePortrait', viewport: { width: 640, height: 800 }, suffix: '-portrait', widths: [720, 1080], jpegWidths: [1080] },
+const PICTURES = {
+  'portal-hero': [
+    { pose: 'portal', viewport: { width: 1280, height: 720 }, slate: 'screen-glow.png', widths: [960, 1440, 1920, 2560], jpegWidths: [1920] },
+    { pose: 'portalPortrait', viewport: { width: 450, height: 960 }, slate: 'screen-glow.png', suffix: '-portrait', widths: [720, 900], jpegWidths: [900] },
+  ],
+  'exp-explore': [{ pose: 'stairs', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1600], jpegWidths: [1080] }],
+  'exp-seats': [{ pose: 'layout', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1600], jpegWidths: [1080] }],
+  'exp-watch': [{ pose: 'seat', viewport: { width: 960, height: 540 }, widths: [720, 1080, 1600], jpegWidths: [1080] }],
+  'portal-finale': [
+    { pose: 'finale', viewport: { width: 1200, height: 502 }, slate: 'screen-glow.png', widths: [960, 1440, 2048], jpegWidths: [1440] },
+    { pose: 'finalePortrait', viewport: { width: 640, height: 800 }, slate: 'screen-glow.png', suffix: '-portrait', widths: [720, 1080], jpegWidths: [1080] },
   ],
 };
 
@@ -66,19 +72,20 @@ const VIEW_ONLY =
   '.cinema-header,.cinema-hub,.cinema-taskbar,.cinema-overlay,.cinema-filmstatus,.cinema-notice,.cinema-caption,.cinema-return,.cinema-tourbar{display:none!important}' +
   '.cinema-main{padding:0!important}.cinema-screen{gap:0!important}.cinema-stage{border:0!important;border-radius:0!important}';
 
-// Camera poses (metres, room coordinates; the screen is at z = −8.7): the hero sees the room from the
-// back right so the screen sits right of centre and the left stays calm for the words.
+// Camera poses (metres, room coordinates; the screen is at z = −8.7).
 const POSES = {
-  hero: { position: [3.5, 3.6, 7.5], target: [-3.5, 1.6, -8.0] },
-  heroPortrait: { position: [0.8, 4.2, 8.4], target: [-0.6, 1.4, -8.7] },
+  // The share card: the room from the back right.
+  share: { position: [3.5, 3.6, 7.5], target: [-3.5, 1.6, -8.0] },
+  // The hero: from the top of the left aisle, down its lit steps and across the rows to the screen.
+  // The screen keeps to the upper half; the steps and the front rows below it take the words.
+  portal: { position: [-4.9, 4.2, 8.0], target: [2.2, 0.6, -8.7] },
+  portalPortrait: { position: [-4.5, 4.4, 8.2], target: [-0.4, -0.6, -8.7] },
+  // From above the front corner: the whole layout of the rows.
+  layout: { position: [4.6, 4.4, -7.6], target: [-1.5, 0.8, 4.5] },
   // Up the right aisle from its foot: the lit steps, the handrail, the rows rising beside them.
   stairs: { position: [5.15, 1.75, -4.6], target: [4.4, 3.2, 8.5] },
   // From seat F06's eyes (layout.seatEyePosition), at the screen.
   seat: { seat: 'F06', target: [0, 2.3, -8.7] },
-  // From beside the stage, back up the rows.
-  rows: { position: [2.6, 1.8, -6.9], target: [-2.5, 3.0, 5.5] },
-  // From the left aisle, mid-room: the screen, its curtain and the rows in front of it.
-  screen: { position: [-4.6, 2.7, 0.8], target: [0.8, 2.0, -8.7] },
   // Down the middle from the back: the closing frame (scope, and a portrait cut for phones).
   finale: { position: [0, 4.0, 8.3], target: [0, 2.4, -8.7] },
   finalePortrait: { position: [0, 4.4, 8.3], target: [0, 2.0, -8.7] },
@@ -190,6 +197,28 @@ async function drawSlate(page, logoBase64) {
   );
 }
 
+/**
+ * The other slate: a blank screen lit softly from its centre (a wide, warm-grey glow falling off to
+ * the screen's dark edges), as the room looks just before the film.
+ */
+async function drawGlow(page) {
+  return page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1920;
+    canvas.height = 1080;
+    const g = canvas.getContext('2d');
+    // An ellipse: a circular gradient stretched across the width.
+    g.setTransform(1.12, 0, 0, 1, -0.06 * 1920, 0);
+    const glow = g.createRadialGradient(960, 520, 0, 960, 520, 1000);
+    glow.addColorStop(0, '#6e675e');
+    glow.addColorStop(0.45, '#58524b');
+    glow.addColorStop(1, '#27231f');
+    g.fillStyle = glow;
+    g.fillRect(-200, 0, 2400, 1080);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+}
+
 /** Encodes `pngBase64` at each width (height follows the aspect, or `crop` = target aspect) as WebP and JPEG. */
 async function encode(page, pngBase64, name, widths, { jpegWidths = [], crop = null, quality = 0.82 } = {}) {
   const files = await page.evaluate(
@@ -293,38 +322,28 @@ async function main() {
       // (its side 56 % of the icon: its corners 0.56 × √2 / 2 ≈ 0.396 from the centre, under 0.4).
       await write('brand/icon-maskable-512.png', await logoAt(tool, logo, 512, { background: COLORS.charcoal, inset: 0.22 }));
     }
-    // The screen's slate: only the pictures of the room need it.
-    if (['hero', 'hero-portrait', ...Object.keys(FRAMES)].some(wanted)) {
+    // The screen's slates: only the pictures of the room need them.
+    if (['share', ...Object.keys(PICTURES)].some(wanted)) {
       await writeFile(path.join(slateDir, 'screen-slate.png'), Buffer.from(await drawSlate(tool, logo), 'base64'));
-      console.log('slate: fixtures/brand/screen-slate.png');
+      await writeFile(path.join(slateDir, 'screen-glow.png'), Buffer.from(await drawGlow(tool), 'base64'));
+      console.log('slates: fixtures/brand/screen-slate.png, screen-glow.png');
     }
 
     let page;
-    if (wanted('hero')) {
-      // Hero, 16:9: 2560 × 1440 render (High quality, pixel ratio 2).
+    if (wanted('share')) {
+      // Share card, 1200 × 630, from a 2560 × 1440 render (High quality, pixel ratio 2).
       page = await openRoom(browser, base, { width: 1280, height: 720 }, 2);
-      const hero = await renderView(page, POSES.hero);
+      const share = await renderView(page, POSES.share);
       await page.close();
-      console.log('hero');
-      await encode(tool, hero, 'hero', [960, 1440, 1920, 2560], { jpegWidths: [1920] });
-      // Share card, 1200 × 630, from the same render.
-      await encode(tool, hero, 'share', [], { jpegWidths: [1200], crop: 1200 / 630, quality: 0.86 });
+      console.log('share');
+      await encode(tool, share, 'share', [], { jpegWidths: [1200], crop: 1200 / 630, quality: 0.86 });
     }
 
-    if (wanted('hero-portrait')) {
-      // Hero, portrait (2:3): 1440 × 2160 render.
-      page = await openRoom(browser, base, { width: 720, height: 1080 }, 2);
-      const portrait = await renderView(page, POSES.heroPortrait);
-      await page.close();
-      console.log('hero portrait');
-      await encode(tool, portrait, 'hero-portrait', [720, 1080, 1440], { jpegWidths: [1080] });
-    }
-
-    // The landing page's frames, each from its own render (High quality, pixel ratio 2).
-    for (const [name, frame] of Object.entries(FRAMES)) {
+    // The landing page's pictures, each from its own render (High quality, pixel ratio 2).
+    for (const [name, renders] of Object.entries(PICTURES)) {
       if (!wanted(name)) continue;
-      for (const { pose, viewport, suffix = '', widths, jpegWidths } of frame) {
-        page = await openRoom(browser, base, viewport, 2);
+      for (const { pose, viewport, slate = 'screen-slate.png', suffix = '', widths, jpegWidths } of renders) {
+        page = await openRoom(browser, base, viewport, 2, `?poster=${slate}`);
         await page.evaluate(() => window.__cinema.setQualityLevel('high'));
         const picture = await renderView(page, POSES[pose]);
         await page.close();

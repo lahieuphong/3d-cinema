@@ -112,12 +112,12 @@ export function startHeroMotion(hero: HTMLElement, layer: HTMLElement, options: 
 }
 
 /**
- * The frames' pictures drift a little against their frames as the page scrolls (each overhangs its
- * frame by `range` px top and bottom, site.css), only with a mouse and without reduced motion: on
+ * Pictures drift a little against their boxes as the page scrolls (each overhangs its box by `range`
+ * px top and bottom, site.css), only with a mouse and without reduced motion: on
  * touch screens they stay put. One frame is drawn per scroll step, and only for the pictures in
  * view; nothing runs while the page stands still.
  */
-export function startFrameParallax(layers: HTMLElement[], range = 14): () => void {
+export function startPictureParallax(layers: HTMLElement[], range = 14): () => void {
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const fine = window.matchMedia?.('(hover: hover) and (pointer: fine)');
   if (layers.length === 0 || typeof IntersectionObserver !== 'function' || !(fine?.matches ?? false) || (reduce?.matches ?? false)) return () => {};
@@ -130,7 +130,7 @@ export function startFrameParallax(layers: HTMLElement[], range = 14): () => voi
     const middle = window.innerHeight / 2;
     for (const layer of visible) {
       const box = layer.parentElement!.getBoundingClientRect();
-      // −1 when the frame's centre is a screen height below the middle, +1 a screen height above.
+      // −1 when the box's centre is a screen height below the middle, +1 a screen height above.
       const t = Math.max(-1, Math.min(1, (middle - (box.top + box.height / 2)) / window.innerHeight));
       layer.style.transform = `translate3d(0, ${(t * range).toFixed(1)}px, 0)`;
     }

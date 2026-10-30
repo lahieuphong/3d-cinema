@@ -112,13 +112,13 @@ async function hostingRules() {
   return {
     pages: table(['/', '/cinema', '/cinema/', '/khong-co-trang-nay', '/cinema/khong-co']),
     missing: table(missing),
-    files: table([entry, FILM, '/brand/hero-960.webp', '/favicon.png', '/cinema.html', '/index.html']),
+    files: table([entry, FILM, '/brand/portal-hero-960.webp', '/favicon.png', '/cinema.html', '/index.html']),
     destinationsExist: routes.filter((r) => r.dest).every((r) => isFile(r.dest)),
     redirects: (config.redirects ?? []).length + routes.filter((r) => r.status >= 300 && r.status < 400).length,
     cache: {
       immutable: caches([entry]),
       noCache: caches(['/', '/cinema', '/cinema/', '/index.html', '/cinema.html', '/favicon.png']),
-      revalidated: caches([FILM, '/media/big-buck-bunny-trailer-poster.jpg', '/brand/hero-960.webp']),
+      revalidated: caches([FILM, '/media/big-buck-bunny-trailer-poster.jpg', '/brand/portal-hero-960.webp']),
       missing: caches(missing),
     },
   };
@@ -313,13 +313,13 @@ async function main() {
         sections: [...document.querySelectorAll('section h2')].map((h) => h.textContent),
         note: document.querySelector('.noscript-note') !== null || /cần JavaScript/.test(document.body.innerText),
         image: document.querySelector('.hero__image')?.naturalWidth > 0,
-        styled: getComputedStyle(document.querySelector('.hero h1')).fontWeight >= 700,
+        styled: getComputedStyle(document.querySelector('.hero h1')).fontWeight >= 600 && parseFloat(getComputedStyle(document.querySelector('.hero h1')).fontSize) >= 28,
       }));
       await page.screenshot({ path: path.join(outDir, 'landing-no-javascript.png'), fullPage: false });
       await page.goto(`${base}/cinema`);
       const cinema = await page.evaluate(() => ({ text: document.body.innerText, home: Boolean(document.querySelector('a[href="/"]')) }));
       result.landing.noScript = { landing, cinema: { home: cinema.home, mentionsJs: /JavaScript/.test(cinema.text) } };
-      check('without JavaScript: / shows the hero, the guide and real links to /cinema, styled, with a note; /cinema says it needs JavaScript and links back', landing.h1?.includes('Bước vào rạp') && landing.cta.length === 3 && landing.cta.every((h) => h === '/cinema') && landing.sections.length >= 3 && landing.note && landing.image && landing.styled && cinema.home && /JavaScript/.test(cinema.text), result.landing.noScript);
+      check('without JavaScript: / shows the hero, "Trải nghiệm" and the invitation (their headings), real links to /cinema, styled, with a note; /cinema says it needs JavaScript and links back', landing.h1?.includes('Một chỗ ngồi') && landing.cta.length === 3 && landing.cta.every((h) => h === '/cinema') && landing.sections.length === 2 && landing.note && landing.image && landing.styled && cinema.home && /JavaScript/.test(cinema.text), result.landing.noScript);
       await context.close();
     }
 

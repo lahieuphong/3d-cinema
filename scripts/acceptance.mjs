@@ -369,12 +369,12 @@ async function flows(browser, base) {
     const content = await page.evaluate(() => ({
       h1: document.querySelector('h1')?.textContent?.trim(),
       ctas: [...document.querySelectorAll('a[data-cta]')].map((a) => a.getAttribute('href')),
-      steps: document.querySelectorAll('#kham-pha h3').length,
+      steps: document.querySelectorAll('#trai-nghiem h3').length,
       heroImage: Boolean(document.querySelector('.hero img')?.currentSrc || document.querySelector('.hero img')?.src),
     }));
     await shot(page, 'k-landing-no-javascript');
     report.flows.noJavaScript = content;
-    check('K. without JavaScript the landing page has its heading, three links to /cinema, the three shots of "Khám phá" and the hero picture', /Bước vào rạp/.test(content.h1 ?? '') && content.ctas.length === 3 && content.ctas.every((href) => href === '/cinema') && content.steps === 3 && content.heroImage, content);
+    check('K. without JavaScript the landing page has its heading, three links to /cinema, the three ways of "Trải nghiệm" and the hero picture', /Một chỗ ngồi/.test(content.h1 ?? '') && content.ctas.length === 3 && content.ctas.every((href) => href === '/cinema') && content.steps === 3 && content.heroImage, content);
     await context.close();
   }
 
@@ -482,7 +482,7 @@ async function hosting(base) {
   }
   const longCache = (cache) => /immutable|max-age=[1-9]/.test(cache ?? '');
   const entry = pages['/'].assets.find((a) => a.endsWith('.js'));
-  const files = { entry: await get(entry), brand: await get('/brand/hero-960.webp'), poster: await get('/media/big-buck-bunny-trailer-poster.jpg') };
+  const files = { entry: await get(entry), brand: await get('/brand/portal-hero-960.webp'), poster: await get('/media/big-buck-bunny-trailer-poster.jpg') };
   const ranges = { start: await get(FILM, { Range: 'bytes=0-1023' }), seek: await get(FILM, { Range: 'bytes=8000000-8000999' }) };
   const result = { pages, missing, files, ranges };
   // PAGE_TITLES in src/brand.ts: "<name> — <tagline>" and "Phòng chiếu 3D · <name>".

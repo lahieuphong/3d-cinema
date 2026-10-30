@@ -153,14 +153,14 @@ Chi tiết, cách kiểm tra, ảnh trước/sau: [mobile-fullscreen.md](mobile-
 - [x] Landing vẫn cuộn trước và sau khi vào rạp.
 - [ ] iPhone thật: Safari (tab) và mở từ Màn hình chính; Android Chrome thật (cài đặt, toàn màn hình).
 
-**Landing "Cuộn phim dẫn vào rạp" (30/10/2026)**
+**Landing "Cinematic Portal — Cánh cửa vào rạp" (30/10/2026, thay bản dải phim)**
 
-Chi tiết, số đo trước/sau: [landing-filmstrip.md](landing-filmstrip.md).
+Chi tiết, số đo trước/sau: [landing-portal.md](landing-portal.md).
 
-- [x] Dải phim liên tục tới chân trang, mép phim là pseudo-element, không đè chữ hay nút ở 9 kích thước.
-- [x] Nút "Vào rạp" ở màn hình đầu; "Bước vào rạp" ở khung cuối; cả hai vào `/cinema`.
-- [x] Giảm chuyển động, bàn phím, khi tắt JavaScript; Back/Forward giữa landing và rạp.
-- [x] Lần đầu vào landing 139,1 → 142,3 KB; CLS 0; không tải mã rạp trước khi người dùng tỏ ý.
+- [x] Ba phần: hero tràn chiều rộng, "Trải nghiệm" (một ảnh, ba lựa chọn dạng tab), lời mời; không còn dải phim.
+- [x] Nút "Vào rạp" ở màn hình đầu, "Bước vào rạp" ở cuối; cả hai vào `/cinema`. Chữ không đè màn chiếu ở 9 kích thước.
+- [x] Bàn phím (tab, mũi tên), giảm chuyển động, khi tắt JavaScript; Back/Forward giữa landing và rạp.
+- [x] Lần đầu vào landing 142,3 → 142,7 KB; CLS 0; LCP là tiêu đề; không tải mã rạp trước khi người dùng tỏ ý.
 - [ ] Safari, Firefox và máy thật.
 
 ## 2. Chưa kiểm chứng
