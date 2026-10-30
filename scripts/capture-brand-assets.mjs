@@ -22,10 +22,13 @@
 //   BRAND_ONLY=portal-hero,exp-watch node scripts/capture-brand-assets.mjs   # only those pictures
 //
 // Picture names for BRAND_ONLY: logo, icons, share, portal-hero, exp-explore, exp-seats, exp-watch,
-// portal-finale. Every picture is the room alone (the page's controls hidden).
+// portal-finale, films. Every picture of the room is the room alone (the page's controls hidden).
+// "films": the three films' stills for the landing page's film strip (public/brand/film-*.webp),
+// made from their posters in public/media/ (the landing page fetches nothing from /media/; each
+// still is shown with its film's credit on the page).
 
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -220,10 +223,10 @@ async function drawGlow(page) {
 }
 
 /** Encodes `pngBase64` at each width (height follows the aspect, or `crop` = target aspect) as WebP and JPEG. */
-async function encode(page, pngBase64, name, widths, { jpegWidths = [], crop = null, quality = 0.82 } = {}) {
+async function encode(page, pngBase64, name, widths, { jpegWidths = [], crop = null, quality = 0.82, mime = 'image/png' } = {}) {
   const files = await page.evaluate(
-    async ({ pngBase64, widths, jpegWidths, crop, quality }) => {
-      const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${pngBase64}`)).blob());
+    async ({ pngBase64, widths, jpegWidths, crop, quality, mime }) => {
+      const image = await createImageBitmap(await (await fetch(`data:${mime};base64,${pngBase64}`)).blob());
       let sx = 0;
       let sy = 0;
       let sw = image.width;
@@ -253,7 +256,7 @@ async function encode(page, pngBase64, name, widths, { jpegWidths = [], crop = n
       }
       return outputs;
     },
-    { pngBase64, widths, jpegWidths, crop, quality },
+    { pngBase64, widths, jpegWidths, crop, quality, mime },
   );
   for (const file of files) {
     const ext = file.type === 'image/webp' ? 'webp' : 'jpg';
@@ -337,6 +340,16 @@ async function main() {
       await page.close();
       console.log('share');
       await encode(tool, share, 'share', [], { jpegWidths: [1200], crop: 1200 / 630, quality: 0.86 });
+    }
+
+    if (wanted('films')) {
+      // The films' stills (16:9), from their posters.
+      const media = path.join(root, 'public', 'media');
+      for (const file of (await readdir(media)).filter((f) => f.endsWith('-poster.jpg'))) {
+        const name = `film-${file.replace(/-poster\.jpg$/, '')}`;
+        console.log(name);
+        await encode(tool, (await readFile(path.join(media, file))).toString('base64'), name, [480, 800], { mime: 'image/jpeg', quality: 0.8 });
+      }
     }
 
     // The landing page's pictures, each from its own render (High quality, pixel ratio 2).

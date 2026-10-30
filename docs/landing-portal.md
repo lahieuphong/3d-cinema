@@ -31,15 +31,28 @@ cho nút vào rạp và vài điểm nhấn. Toàn bộ token để trong `.land
    - chữ ở một phần ba dưới bên trái, dưới màn chiếu;
    - điện thoại dọc có ảnh riêng: màn chiếu ở trên, bậc lối đi và hàng ghế ở dưới;
    - màn thấp (điện thoại ngang, zoom): ảnh chiếm phần phải, chữ trên nền tối bên trái.
-2. **Trải nghiệm — "Một không gian, ba cách khám phá":**
-   - một ảnh lớn 16:9 và ba lựa chọn: Khám phá (bậc lối đi), Chọn ghế (bố trí hàng ghế nhìn từ
-     trên cao), Xem phim (từ ghế F06);
-   - chọn một mục thì đổi ảnh và câu mô tả; không tự chạy;
-   - dùng pattern tab (`role="tablist"`/`tab`/`tabpanel`): chuột, chạm, phím mũi tên, Home, End;
-   - khi tắt JavaScript: ba mục và ba câu hiện đủ cùng ảnh đầu.
-3. **Lời mời:**
-   - ảnh rộng chính giữa từ cuối phòng (bản dọc riêng cho điện thoại);
-   - "Đèn đã dịu. Mời bạn vào rạp." và nút "Bước vào rạp".
+2. **Trải nghiệm — "Một không gian, ba cách khám phá":** ba chức năng có thật trong rạp, mỗi chức
+   năng một ảnh và một bản phác hoạ động của đúng control làm việc đó, theo kiểu kính của rạp:
+   - **Tham quan tự động** (`tour.ts`): ảnh bố trí phòng; đường đi vẽ dần qua các điểm dừng, chip
+     tour lần lượt ghi tên điểm dừng thật ("Tổng quan phòng chiếu", "Màn chiếu, rèm và bục", "Nhìn lại
+     các hàng ghế");
+   - **Đi bộ trong rạp** (`walker.ts`, cần điều khiển, WASD): ảnh bậc lối đi; cần điều khiển đẩy
+     tới, phím W sáng, mũi tên hiện dần lên bậc;
+   - **Xem từ ghế này**: ảnh từ ghế F06; sơ đồ 110 ghế hiện ra, F06 được chọn, rồi chip "Xem từ ghế
+     này" và máy quay "đến" chỗ ngồi;
+   - mỗi thẻ có icon của rạp (`src/icons.ts`, dùng chung với rạp), câu mô tả và cách mở trong rạp;
+   - dùng pattern tab: chuột, chạm, phím mũi tên, Home, End;
+   - phác hoạ chạy một lần (2,6 s) khi phần này hiện lên và mỗi khi chọn mục khác, không lặp;
+   - khi tắt JavaScript hoặc bật giảm chuyển động: phác hoạ đứng yên ở trạng thái cuối, ba mục hiện
+     đủ.
+3. **Lời mời — "Trên màn chiếu":**
+   - ảnh căn phòng từ cuối lối giữa;
+   - "Đèn đã dịu. Mời bạn vào rạp.";
+   - ba phim của rạp trong một dải phim chạy ngang, nghiêng nhẹ, lỗ phim là ánh sáng mờ, mỗi khung
+     ghi tên, độ dài, hãng và giấy phép; ảnh tĩnh `film-*.webp` làm từ poster, không tải từ `/media/`;
+   - các khung sáng dần lần lượt khi hiện lên; dải phim trôi ngang theo cuộn (chỉ khi có chuột);
+   - trên điện thoại vuốt ngang từng phim;
+   - nút "Bước vào rạp".
 4. **Footer:** credit ba phim và ghi chú demo, chữ nhỏ.
 
 Ảnh mới chụp từ chính khán phòng bằng `scripts/capture-brand-assets.mjs` (`portal-hero`, `exp-*`,

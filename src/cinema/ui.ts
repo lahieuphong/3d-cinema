@@ -1,6 +1,7 @@
 import { BRAND, markImg } from '../brand.ts';
 import { isStandalone } from '../display.ts';
 import { loadReducedGlass, setReducedGlass } from '../glass.ts';
+import { ICONS } from '../icons.ts';
 import { isPlainClick } from '../router.ts';
 import { roomSkeleton, seatSkeleton } from '../skeleton.ts';
 import type { ToggleablePart } from './architecture.ts';
@@ -139,28 +140,7 @@ export interface CinemaUi {
   dispose(): void;
 }
 
-export const ICONS = {
-  explore: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 1.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4zm3.4 3.8-4.6 2.2-2.2 4.6 4.6-2.2zm-3.4 2.4a1 1 0 1 1 0 2 1 1 0 0 1 0-2z',
-  seats: 'M7.5 4h9A2.5 2.5 0 0 1 19 6.5V11h.5a1.5 1.5 0 0 1 1.5 1.5V18h-2v2h-1.8v-2H6.8v2H5v-2H3v-5.5A1.5 1.5 0 0 1 4.5 11H5V6.5A2.5 2.5 0 0 1 7.5 4zm0 1.8a.7.7 0 0 0-.7.7V11h10.4V6.5a.7.7 0 0 0-.7-.7zm-2.7 7v3.4h14.4v-3.4z',
-  watch: 'M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zm.3 1.8v10.4h14.4V6.8zm5.2 2.4 5 2.8-5 2.8z',
-  settings:
-    'M4 6.1h8.2a2.6 2.6 0 0 1 5 0H20v1.8h-2.8a2.6 2.6 0 0 1-5 0H4zm10.7.9a.8.8 0 1 0 0 0zM4 16.1h2.8a2.6 2.6 0 0 1 5 0H20v1.8h-8.2a2.6 2.6 0 0 1-5 0H4zM9.3 17a.8.8 0 1 0 0 0z',
-  more: 'M7 10l5 5 5-5z',
-  reset: 'M12 5a7 7 0 1 1-6.6 9.3l1.7-.6A5.2 5.2 0 1 0 8.4 8.3L10.5 10H4.6V4.1l2.5 2.5A7 7 0 0 1 12 5z',
-  tour: 'M12 3.2a6.3 6.3 0 0 1 6.3 6.3c0 4.4-5 9.9-5.7 10.6a.8.8 0 0 1-1.2 0C10.7 19.4 5.7 13.9 5.7 9.5A6.3 6.3 0 0 1 12 3.2zm0 3.9a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z',
-  walk: 'M13.5 2.8a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8zM10 8.2l2.6-.9a1.6 1.6 0 0 1 1.9.8l1.2 2.4 2.5 1-.7 1.7-3-1.2-.6-1.2-.9 3.6 2.2 2.4.9 4.5h-1.9l-.8-3.8-2.3-2.2-.9 3.1-2.8 2.9-1.3-1.3 2.5-2.6 1.4-5.9-.9.4-1.2 2.6-1.7-.8 1.5-3.2z',
-  map: 'M4 5h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 11h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 17h4v2H4zm6 0h4v2h-4zm6 0h4v2h-4z',
-  chevron: 'M9.2 5.6 7.8 7l5 5-5 5 1.4 1.4 6.4-6.4z',
-  back: 'M14.8 5.6 16.2 7l-5 5 5 5-1.4 1.4L8.4 12z',
-  stop: 'M8.5 7h7A1.5 1.5 0 0 1 17 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 15.5v-7A1.5 1.5 0 0 1 8.5 7z',
-  fullscreen: 'M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z',
-  // Khám phá's views: the room from the back (screen and curved rows), the seats from the front (an
-  // armchair), the view from one seat (an eye; also "Xem từ ghế …"), and the rarer views (stacked frames).
-  overview: 'M6 4h12a1 1 0 0 1 1 1v1.6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm-1 7.2c4.6 1.6 9.4 1.6 14 0v2.2c-4.6 1.6-9.4 1.6-14 0zM3 16c5.9 2.1 12.1 2.1 18 0v2.2c-5.9 2.1-12.1 2.1-18 0z',
-  seatsView: 'M7.5 4h9A1.5 1.5 0 0 1 18 5.5V12H6V5.5A1.5 1.5 0 0 1 7.5 4zM3 11h2.2v3.3h13.6V11H21v5.5a1 1 0 0 1-1 1h-1V20h-2v-2.5H7V20H5v-2.5H4a1 1 0 0 1-1-1z',
-  eye: 'M3 12c1.4-3.4 4.8-6 9-6s7.6 2.6 9 6c-1.4 3.4-4.8 6-9 6s-7.6-2.6-9-6zm1.9 0c1.2 2.4 3.9 4.2 7.1 4.2s5.9-1.8 7.1-4.2c-1.2-2.4-3.9-4.2-7.1-4.2S6.1 9.6 4.9 12zM12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z',
-  views: 'M3.5 8h12A1.5 1.5 0 0 1 17 9.5v9a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 2 18.5v-9A1.5 1.5 0 0 1 3.5 8zM7 4h13.5A1.5 1.5 0 0 1 22 5.5v10a1.5 1.5 0 0 1-1.5 1.5H19v-1.8h1.2V5.8H8.8v.8H7z',
-};
+export { ICONS };
 
 /** The visitor views' icons (the inspection views are rows in Công cụ nâng cao, words only). */
 const PRESET_ICONS: Partial<Record<CameraPresetId, string>> = { overview: ICONS.overview, seats: ICONS.seatsView, seatEye: ICONS.eye };

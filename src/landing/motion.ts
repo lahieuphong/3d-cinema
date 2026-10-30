@@ -157,3 +157,40 @@ export function startPictureParallax(layers: HTMLElement[], range = 14): () => v
     for (const layer of layers) layer.style.transform = '';
   };
 }
+
+/**
+ * The film strip feeds a little sideways as the page scrolls past it (`--drift`, ±`range` px; the
+ * strip's own transform, site.css), like film through a projector: with a mouse, on screens wide
+ * enough for the tilted strip, without reduced motion. One frame per scroll step while it is in
+ * view; nothing runs while the page stands still.
+ */
+export function startStripDrift(strip: HTMLElement, range = 48): () => void {
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const fine = window.matchMedia?.('(hover: hover) and (pointer: fine) and (min-width: 720px)');
+  if (typeof IntersectionObserver !== 'function' || !(fine?.matches ?? false) || (reduce?.matches ?? false)) return () => {};
+  const listeners = new AbortController();
+  let inView = false;
+  let frame: number | null = null;
+  const step = () => {
+    frame = null;
+    const box = strip.getBoundingClientRect();
+    // +1 when the strip is a screen height below the middle of the window, −1 a screen height above.
+    const t = Math.max(-1, Math.min(1, (box.top + box.height / 2 - window.innerHeight / 2) / window.innerHeight));
+    strip.style.setProperty('--drift', `${(t * range).toFixed(1)}px`);
+  };
+  const schedule = () => {
+    if (frame === null && inView) frame = requestAnimationFrame(step);
+  };
+  const observer = new IntersectionObserver(([entry]) => {
+    inView = entry.isIntersecting;
+    schedule();
+  });
+  observer.observe(strip);
+  window.addEventListener('scroll', schedule, { signal: listeners.signal, passive: true });
+  return () => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    listeners.abort();
+    observer.disconnect();
+    strip.style.removeProperty('--drift');
+  };
+}

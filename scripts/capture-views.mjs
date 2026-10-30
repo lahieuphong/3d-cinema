@@ -6101,7 +6101,7 @@ async function landingNetwork(browser, base) {
   // The pictures below the hero are loading="lazy"; Chrome still fetches lazy images within a
   // distance of the viewport, so they may come early. The film and the auditorium's code never do. The logo is one
   // small file (the size for this screen's pixel ratio), not a render.
-  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy pictures of the parts below and the logo', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /portal-hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length <= 2 && cold.before.brand.every((p) => /portal-|exp-|\/logo-\d+\.webp$/.test(p)), cold.before);
+  check('landing network: opening / fetches no auditorium code, no three.js, no film; pictures: one hero render, plus lazy pictures of the parts below and the logo', cold.before.cinemaCode === 0 && cold.before.three === 0 && cold.before.media === 0 && cold.before.brand.filter((p) => /portal-hero/.test(p)).length === 1 && cold.before.brand.filter((p) => /\/logo-/.test(p)).length <= 2 && cold.before.brand.every((p) => /portal-|exp-|film-|\/logo-\d+\.webp$/.test(p)), cold.before);
   check('landing idle: no WebGL context, no video element, no animation frames once the entrance animation is over', cold.idle.webgl === 0 && cold.idle.videos === 0 && cold.idle.framesIn2s === 0, cold.idle);
   const hover = await run('hover', { hover: true });
   check('landing intent: hovering "Bước vào rạp" fetches the auditorium code (page and 3D part) but builds nothing — no canvas, no WebGL, no video, no film request', hover.after.page && hover.after.view && hover.after.three && hover.after.canvases === 0 && hover.after.webgl === 0 && hover.after.videos === 0 && hover.after.media === 0, hover.after);
@@ -6406,10 +6406,10 @@ async function landingFlows(browser, base) {
         };
       });
     const states = [await ways()];
-    await page.click('[role="tab"]#tab-chon-ghe');
+    await page.click('[role="tab"]#tab-di-bo');
     await page.waitForTimeout(700);
     states.push(await ways());
-    await screenshot(page, 'landing-ways-1-seats');
+    await screenshot(page, 'landing-ways-1-walk');
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(700);
     states.push(await ways());
@@ -6425,9 +6425,9 @@ async function landingFlows(browser, base) {
     const order = states.map((s) => s.active[0]);
     check(
       '"Trải nghiệm": three tabs over one picture; a press and the arrows choose a way (its own picture, fully shown), one selected tab in the tab order, the frame the same size throughout, nothing changing on its own',
-      JSON.stringify(order) === JSON.stringify(['kham-pha', 'chon-ghe', 'xem-phim', 'kham-pha']) &&
+      JSON.stringify(order) === JSON.stringify(['tham-quan', 'di-bo', 'xem-tu-ghe', 'tham-quan']) &&
         states.every((s) => s.tabs.length === 3 && s.tabs.filter((t) => t.selected === 'true').length === 1 && s.tabs.filter((t) => t.tabIndex === 0).length === 1 && s.active.length === 1 && s.opacity[0] === '1' && s.loaded[0] && s.panel.role === 'tabpanel' && s.box.w === states[0].box.w && s.box.h === states[0].box.h) &&
-        states[2].focus === 'tab-xem-phim' && before.active[0] === 'xem-phim' && after.active[0] === 'xem-phim',
+        states[2].focus === 'tab-xem-tu-ghe' && before.active[0] === 'xem-tu-ghe' && after.active[0] === 'xem-tu-ghe',
       { order, states: states.map((s) => ({ active: s.active, selected: s.tabs.map((t) => t.selected).join(','), box: s.box, focus: s.focus })) },
     );
     await context.close();
@@ -6437,12 +6437,37 @@ async function landingFlows(browser, base) {
     await page.goto(base);
     await page.waitForSelector('[data-landing] .experience');
     const plain = await page.evaluate(() => ({
-      ways: [...document.querySelectorAll('.way')].map((w) => ({ title: w.querySelector('h3').textContent.trim(), text: w.querySelector('.way__text').textContent.trim(), shown: getComputedStyle(w.querySelector('.way__text')).display !== 'none' })),
+      ways: [...document.querySelectorAll('.way')].map((w) => ({ title: w.querySelector('h3').textContent.trim(), text: w.querySelector('.way__text').textContent.trim(), shown: getComputedStyle(w.querySelector('.way__text')).display !== 'none' && getComputedStyle(w.querySelector('.way__how')).display !== 'none' })),
       tabs: document.querySelectorAll('[role="tab"]').length,
       picture: document.querySelector('.experience__shot[data-active] img')?.getAttribute('src') ?? null,
       visible: [...document.querySelectorAll('[data-reveal]')].every((e) => getComputedStyle(e).opacity === '1'),
     }));
-    check('"Trải nghiệm" without JavaScript: the three ways with their sentences, the first picture, everything visible, no tabs', plain.ways.length === 3 && plain.ways.every((w) => w.shown && w.text.length > 10) && plain.tabs === 0 && /exp-explore/.test(plain.picture ?? '') && plain.visible, plain);
+    check('"Trải nghiệm" without JavaScript: the three ways with their sentences, the first picture, everything visible, no tabs', plain.ways.length === 3 && plain.ways.every((w) => w.shown && w.text.length > 10) && plain.tabs === 0 && /exp-seats/.test(plain.picture ?? '') && plain.visible, plain);
+    await context.close();
+  }
+
+  // The films on the screen: scrolled to, the strip holds the three films (their stills shown, lit
+  // up, from /brand/), each with its title, length, studio and licence; nothing from /media/.
+  {
+    const { context, page } = await open('landing-films');
+    const requests = [];
+    page.on('request', (r) => requests.push(new URL(r.url()).pathname));
+    await page.goto(base);
+    await waitForLanding(page);
+    await page.evaluate(() => document.querySelector('.films').scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(1800);
+    const films = await page.evaluate(() => ({
+      shown: document.querySelector('.films').hasAttribute('data-shown'),
+      films: [...document.querySelectorAll('.film')].map((f) => {
+        const img = f.querySelector('img');
+        const r = f.getBoundingClientRect();
+        return { title: f.querySelector('.film__title').textContent, meta: f.querySelector('.film__meta').textContent, loaded: img.complete && img.naturalWidth > 0, opacity: getComputedStyle(img).opacity, src: img.currentSrc.replace(location.origin, ''), visible: r.right > 0 && r.left < innerWidth };
+      }),
+      overflowX: document.documentElement.scrollWidth - innerWidth,
+    }));
+    await screenshot(page, 'landing-films');
+    report.landing.flows.films = films;
+    check('the films on the screen: three in the strip, their stills from /brand/ shown at full light, each with title, length, studio and licence; nothing from /media/, no sideways scroll', films.shown && films.films.length === 3 && films.films.every((f) => f.loaded && f.opacity === '1' && /^\/brand\/film-/.test(f.src) && f.visible && / · /.test(f.meta)) && !requests.some((p) => p.startsWith('/media/')) && films.overflowX <= 0, films);
     await context.close();
   }
 

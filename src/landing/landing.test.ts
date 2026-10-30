@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BRAND, markImg, PAGE_TITLES } from '../brand.ts';
+import { FILMS } from '../films.ts';
 import { isPlainClick, matchRoute } from '../router.ts';
 import { landingHtml, LANDING_IMAGES, WAYS } from './content.ts';
 import { createLoader, savesData } from './loader.ts';
@@ -88,8 +89,10 @@ describe('landing content', () => {
     expect(html.match(/class="brand-mark"/g)).toHaveLength(1);
   });
 
-  it('offers three ways, each with its own picture and sentence, readable without the script', () => {
-    expect(WAYS.map((w) => w.title)).toEqual(['Khám phá', 'Chọn ghế', 'Xem phim']);
+  it('offers three things the auditorium does, each with its own picture, sentence and sketch, readable without the script', () => {
+    expect(WAYS.map((w) => w.title)).toEqual(['Tham quan tự động', 'Đi bộ trong rạp', 'Xem từ ghế này']);
+    // The sketches are drawings: hidden from assistive technology.
+    expect(html.match(/<div class="sketch sketch--[a-z-]+" aria-hidden="true">/g)).toHaveLength(3);
     expect(new Set(WAYS.map((w) => w.name)).size).toBe(3);
     for (const way of WAYS) {
       expect(html).toContain(`<p class="way__text">${way.text}</p>`);
@@ -106,9 +109,23 @@ describe('landing content', () => {
     expect(hero).not.toContain('loading="lazy"');
     expect(hero).toContain(`width="${LANDING_IMAGES.hero.width}" height="${LANDING_IMAGES.hero.height}"`);
     const below = html.match(/<img (?!class="hero__image")[^>]*>/g)!.filter((img) => !img.includes('brand-mark'));
-    expect(below).toHaveLength(4);
+    // Three ways, the room at the end, three films.
+    expect(below).toHaveLength(7);
     expect(below.every((img) => img.includes('loading="lazy"') && /width="\d+" height="\d+"/.test(img) && /alt="[^"]{12,}"/.test(img))).toBe(true);
     expect(html).not.toMatch(/data:image|base64/);
+  });
+
+  it('shows the three films on the screen in a strip, each with its length, studio and licence', () => {
+    const films = [...html.matchAll(/<li class="film"[\s\S]*?<\/li>/g)].map((m) => m[0]);
+    expect(films).toHaveLength(FILMS.length);
+    FILMS.forEach((film, i) => {
+      expect(films[i]).toContain(`<h3 class="film__title">${film.title}</h3>`);
+      expect(films[i]).toContain(`${film.length} · ${film.studio} · ${film.license}`);
+      // Its still comes from the landing page's pictures, never from the films' own files.
+      expect(films[i]).toMatch(/src="\/brand\/film-[a-z0-9-]+-800\.webp"/);
+      expect(films[i]).not.toContain('/media/');
+    });
+    expect(html.indexOf('class="films__strip"')).toBeLessThan(html.indexOf('Bước vào rạp'));
   });
 
   it('makes no claims a demo cannot back (prices, showtimes, reviews, user counts)', () => {
