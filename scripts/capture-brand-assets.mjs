@@ -74,10 +74,10 @@ const VIEW_ONLY =
 const POSES = {
   // The share card: the room from the back right.
   share: { position: [3.5, 3.6, 7.5], target: [-3.5, 1.6, -8.0] },
-  // The hero: from the top of the left aisle, down its lit steps and across the rows to the screen.
-  // The screen keeps to the upper half; the steps and the front rows below it take the words.
-  portal: { position: [-4.9, 4.2, 8.0], target: [2.2, 0.6, -8.7] },
-  portalPortrait: { position: [-4.5, 4.4, 8.2], target: [-0.4, -0.6, -8.7] },
+  // The hero: from the back of the room on its centre line, straight at the screen (no tilt to one
+  // side). The screen keeps to the upper half; the rows below it take the words.
+  portal: { position: [0, 4.2, 8.0], target: [0, 0.6, -8.7] },
+  portalPortrait: { position: [0, 4.4, 8.2], target: [0, -0.6, -8.7] },
   // From above the front corner: the whole layout of the rows.
   layout: { position: [4.6, 4.4, -7.6], target: [-1.5, 0.8, 4.5] },
   // Up the right aisle from its foot: the lit steps, the handrail, the rows rising beside them.
