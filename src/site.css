@@ -542,27 +542,33 @@ html[data-route='landing'] {
   margin-top: clamp(28px, 4vw, 48px);
 }
 
-/* One frame of fixed shape; the three pictures lie in it, one shown. */
+/* One frame of fixed shape; the three pictures lie in it, one shown, each with its sketch. */
 .experience__media {
   position: relative;
   margin: 0;
   overflow: hidden;
   aspect-ratio: 16 / 9;
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--portal-surface);
+  box-shadow:
+    0 30px 80px rgb(0 0 0 / 0.45),
+    0 0 0 1px rgb(242 238 231 / 0.06);
 }
 
 .experience__shot {
   position: absolute;
   inset: 0;
-  display: block;
   opacity: 0;
 }
 
+.experience__shot picture,
 .experience__shot img {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.experience__shot img {
   object-fit: cover;
 }
 
@@ -579,9 +585,439 @@ html[data-route='landing'] {
   opacity: 1;
 }
 
+.experience__lead {
+  max-width: 36rem;
+  margin: 14px 0 0;
+  color: var(--portal-ink-secondary);
+}
+
+/* ---------- The sketches over the pictures ----------
+
+   Small drawings of the controls that do each thing, in the auditorium's own glass: the tour bar
+   and its path, the walking stick and the keys, the seat map and "Xem từ ghế này". Drawn whole
+   without the script or with reduced motion; otherwise played once when the part comes up and each
+   time a way is chosen (2.6 s, nothing loops). */
+
+.sketch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sketch__chip {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 14px 7px 10px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: var(--radius-pill);
+  background: rgb(18 16 16 / 0.6);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  color: var(--portal-ink);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.sketch__icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.sketch__chip--gold {
+  top: auto;
+  right: 16px;
+  bottom: 16px;
+  left: auto;
+  border-color: transparent;
+  background: var(--portal-gold);
+  color: #17130d;
+}
+
+/* Tham quan: the path through the room, its stops, and the stop the tour bar names. */
+.sketch__path {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sketch__path path {
+  fill: none;
+  stroke: var(--portal-gold);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  filter: drop-shadow(0 0 1.5px rgb(220 200 150 / 0.7));
+}
+
+.sketch__path circle {
+  fill: var(--portal-ink);
+  stroke: var(--portal-gold);
+  stroke-width: 0.8;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sketch__stops {
+  display: grid;
+}
+
+.sketch__stops > span {
+  grid-area: 1 / 1;
+}
+
+.sketch__stops > span:not(:last-child) {
+  opacity: 0;
+}
+
+/* Đi bộ: steps up the aisle, the stick pushed forward, W held. */
+.sketch__steps > span {
+  position: absolute;
+  width: 3.2%;
+  aspect-ratio: 1;
+  border-top: 2px solid var(--portal-gold);
+  border-left: 2px solid var(--portal-gold);
+  opacity: 0.85;
+  transform: rotate(45deg);
+  filter: drop-shadow(0 0 4px rgb(220 200 150 / 0.6));
+}
+
+.sketch__steps > span:nth-child(1) {
+  left: 44%;
+  top: 80%;
+}
+
+.sketch__steps > span:nth-child(2) {
+  left: 47.5%;
+  top: 68%;
+}
+
+.sketch__steps > span:nth-child(3) {
+  left: 50.5%;
+  top: 58%;
+}
+
+.sketch__stick {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: clamp(56px, 11%, 84px);
+  aspect-ratio: 1;
+  border: 1.5px solid rgb(255 255 255 / 0.35);
+  border-radius: 50%;
+  background: rgb(18 16 16 / 0.4);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.sketch__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40%;
+  aspect-ratio: 1;
+  margin: -20% 0 0 -20%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #fff, #ddd5c8 60%, #b9ad9c);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+  transform: translateY(-55%);
+}
+
+.sketch__keys {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  grid-template-areas:
+    '. w .'
+    'a s d';
+  gap: 4px;
+}
+
+.sketch__keys kbd {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 6px;
+  background: rgb(18 16 16 / 0.6);
+  color: var(--portal-ink-secondary);
+  font: 600 12px var(--font-sans);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.sketch__keys kbd:nth-child(1) {
+  grid-area: w;
+  border-color: transparent;
+  background: var(--portal-gold);
+  color: #17130d;
+}
+
+.sketch__keys kbd:nth-child(2) {
+  grid-area: a;
+}
+
+.sketch__keys kbd:nth-child(3) {
+  grid-area: s;
+}
+
+.sketch__keys kbd:nth-child(4) {
+  grid-area: d;
+}
+
+/* Xem từ ghế: the seat map, F06 chosen, and the way to its view. */
+.sketch__map {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  gap: 6px;
+  width: clamp(120px, 27%, 220px);
+  padding: 10px 10px 8px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 10px;
+  background: rgb(18 16 16 / 0.62);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.4);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.sketch__screen {
+  height: 3px;
+  margin: 0 12%;
+  border-radius: 2px;
+  background: rgb(242 238 231 / 0.7);
+}
+
+/* Ten rows of eleven seats, as dots. */
+.sketch__grid {
+  position: relative;
+  aspect-ratio: 11 / 8;
+  background-image: radial-gradient(circle, rgb(170 44 60 / 0.95) 0 34%, rgb(170 44 60 / 0) 40%);
+  background-size: calc(100% / 11) calc(100% / 10);
+}
+
+/* Row F (sixth from the screen), seat 06. */
+.sketch__seat {
+  position: absolute;
+  top: calc(100% / 10 * 5);
+  left: calc(100% / 11 * 5);
+  width: calc(100% / 11);
+  height: calc(100% / 10);
+  border-radius: 2px;
+  background: var(--portal-gold);
+  box-shadow: 0 0 0 2px rgb(200 177 124 / 0.35), 0 0 10px rgb(220 200 150 / 0.8);
+}
+
+.sketch__label {
+  color: var(--portal-ink-secondary);
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  text-align: center;
+}
+
+/* Played when the part has come up (landing.ts) and each time a way is chosen. */
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__chip {
+  animation: sketch-in 0.5s var(--ease-out) 0.1s both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__path path {
+  animation: sketch-draw 2.2s var(--ease-in-out, ease-in-out) 0.2s both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__path circle {
+  animation: sketch-pop 0.4s var(--ease-out) both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__path circle:nth-of-type(1) {
+  animation-delay: 0.2s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__path circle:nth-of-type(2) {
+  animation-delay: 0.9s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__path circle:nth-of-type(3) {
+  animation-delay: 1.6s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__path circle:nth-of-type(4) {
+  animation-delay: 2.3s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__stops > span:nth-child(1) {
+  animation: stop-first 2.4s linear both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__stops > span:nth-child(2) {
+  animation: stop-second 2.4s linear both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__stops > span:nth-child(3) {
+  animation: stop-last 2.4s linear both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__steps > span {
+  animation: sketch-step 0.5s var(--ease-out) both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__steps > span:nth-child(1) {
+  animation-delay: 0.8s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__steps > span:nth-child(2) {
+  animation-delay: 1.3s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__steps > span:nth-child(3) {
+  animation-delay: 1.8s;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__knob {
+  animation: sketch-push 0.6s var(--ease-out) 0.5s both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__stick,
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__keys,
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__map {
+  animation: sketch-in 0.5s var(--ease-out) 0.15s both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__keys kbd:nth-child(1) {
+  animation: sketch-key 0.4s var(--ease-out) 0.5s both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__seat {
+  animation: sketch-seat 0.7s var(--ease-out) 0.7s both;
+}
+
+.experience__stage[data-shown] .experience__shot[data-active] .sketch__chip--gold {
+  animation: sketch-in 0.5s var(--ease-out) 1.3s both;
+}
+
+/* Then the camera arrives at the seat. */
+.experience__stage[data-shown] .experience__shot[data-way='xem-tu-ghe'][data-active] img {
+  animation: sketch-arrive 1.2s var(--ease-out) 1.5s both;
+}
+
+@keyframes sketch-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes sketch-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes sketch-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+
+@keyframes stop-first {
+  0%,
+  35% {
+    opacity: 1;
+  }
+
+  45%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes stop-second {
+  0%,
+  35% {
+    opacity: 0;
+  }
+
+  45%,
+  70% {
+    opacity: 1;
+  }
+
+  80%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes stop-last {
+  0%,
+  70% {
+    opacity: 0;
+  }
+
+  80%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes sketch-step {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+
+@keyframes sketch-push {
+  from {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sketch-key {
+  from {
+    border-color: rgb(255 255 255 / 0.22);
+    background: rgb(18 16 16 / 0.6);
+    color: var(--portal-ink-secondary);
+  }
+}
+
+@keyframes sketch-seat {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes sketch-arrive {
+  from {
+    transform: scale(1.08);
+    filter: brightness(0.8);
+  }
+}
+
+/* ---------- The three ways ---------- */
+
 .experience__ways {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -589,52 +1025,60 @@ html[data-route='landing'] {
 
 .way {
   position: relative;
-  padding: 16px 20px 16px 24px;
-  border-radius: 4px;
-}
-
-/* A thin rule at the left of each choice; champagne for the chosen one. */
-.way::before {
-  content: '';
-  position: absolute;
-  top: 16px;
-  bottom: 16px;
-  left: 0;
-  width: 2px;
-  background: rgb(242 238 231 / 0.16);
-  transition: background-color 0.28s var(--ease-out);
+  overflow: hidden;
+  padding: 16px 18px;
+  border: 1px solid transparent;
+  border-radius: 10px;
 }
 
 .way__title {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 14px;
   margin: 0;
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   line-height: 1.3;
 }
 
-.way__number {
-  color: var(--portal-ink-tertiary);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.08em;
+.way__icon {
+  flex: none;
+  box-sizing: content-box;
+  width: 20px;
+  height: 20px;
+  padding: 9px;
+  border-radius: 50%;
+  background: rgb(242 238 231 / 0.07);
+  fill: var(--portal-ink-secondary);
+  transition:
+    background-color 0.28s var(--ease-out),
+    fill 0.28s var(--ease-out);
 }
 
 .way__text {
-  margin: 6px 0 0;
+  margin: 10px 0 0 52px;
   color: var(--portal-ink-secondary);
 }
 
-/* As tabs (landing.ts): the choices are pressed, the chosen one shows its sentence. */
+.way__how {
+  margin: 8px 0 0 52px;
+  color: var(--portal-gold);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+/* As tabs (landing.ts): the chosen way opens (its sentence and how to reach it), with a line that
+   runs once along its foot while the sketch plays. */
 .experience[data-ways='tabs'] .way {
   cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-out);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .experience[data-ways='tabs'] .way:hover {
-  background: rgb(242 238 231 / 0.04);
+  background: rgb(242 238 231 / 0.035);
 }
 
 .experience[data-ways='tabs'] .way:focus-visible {
@@ -646,36 +1090,64 @@ html[data-route='landing'] {
   color: var(--portal-ink-secondary);
 }
 
-.experience[data-ways='tabs'] .way:not([data-active]) .way__text {
+.experience[data-ways='tabs'] .way:not([data-active]) :is(.way__text, .way__how) {
   display: none;
 }
 
-.experience[data-ways='tabs'] .way[data-active]::before {
+.experience[data-ways='tabs'] .way[data-active] {
+  border-color: rgb(200 177 124 / 0.28);
+  background: linear-gradient(135deg, rgb(242 238 231 / 0.06), rgb(242 238 231 / 0.02));
+}
+
+.experience[data-ways='tabs'] .way[data-active] .way__icon {
+  background: rgb(200 177 124 / 0.18);
+  fill: var(--portal-gold);
+}
+
+.experience[data-ways='tabs'] .way[data-active]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
   background: var(--portal-gold);
+  transform-origin: left;
 }
 
-.experience[data-ways='tabs'] .way[data-active] .way__number {
-  color: var(--portal-gold);
+.experience[data-ways='tabs'] .experience__stage[data-shown] .way[data-active]::after {
+  animation: way-run 2.6s linear both;
 }
 
-/* ---------- 3. The invitation ---------- */
+@keyframes way-run {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ---------- 3. The invitation: the films on the screen ----------
+
+   The room from the back, its screen above the words; then the three films the screen plays, in a
+   strip of film that runs across the page (slightly tilted, its holes a faint light, no gold rails),
+   then the way in. The strip comes up with the part, its frames light up one after the other like
+   a projector warming, and it feeds a little sideways as the page scrolls past (with a mouse). */
 
 .finale {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  min-height: min(max(42vw, 420px), 760px);
   overflow: hidden;
   isolation: isolate;
+  /* The screen in the picture shows above the words. */
+  padding: clamp(220px, 26vw, 400px) 0 clamp(56px, 7vw, 96px);
   text-align: center;
 }
 
 .finale__media {
   position: absolute;
-  inset: -16px 0;
+  top: -16px;
+  right: 0;
+  left: 0;
   z-index: -2;
+  aspect-ratio: 2048 / 857;
 }
 
 .finale__media picture,
@@ -690,24 +1162,171 @@ html[data-route='landing'] {
   object-position: 50% 40%;
 }
 
-/* Out of the dark above and back into it below; the words sit on the seats, the screen stays clear. */
-.finale::after {
+/* Out of the dark above and back into it below the seats. */
+.finale__media::after {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
   background:
     linear-gradient(180deg, var(--portal-bg) 0%, rgb(16 16 17 / 0) 22%),
-    linear-gradient(0deg, var(--portal-bg) 0%, rgb(16 16 17 / 0.62) 20%, rgb(16 16 17 / 0) 46%);
+    linear-gradient(0deg, var(--portal-bg) 0%, rgb(16 16 17 / 0.72) 30%, rgb(16 16 17 / 0) 62%);
   pointer-events: none;
 }
 
 .finale__content {
-  padding: 48px var(--portal-gutter) clamp(48px, 7vw, 88px);
+  padding: 0 var(--portal-gutter);
 }
 
-.finale .button {
-  margin-top: 28px;
+.finale__lead {
+  max-width: 40rem;
+  margin: 14px auto 0;
+  color: var(--portal-ink-secondary);
+}
+
+/* The strip: wider than the window, so it runs off both sides. */
+.films {
+  margin: clamp(36px, 5vw, 64px) -6vw 0;
+}
+
+.films__strip {
+  --rail: clamp(18px, 2vw, 28px);
+  --hole: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 28'%3E%3Crect x='6' y='9' width='12' height='10' rx='2' fill='%23efe6d4' fill-opacity='0.2'/%3E%3C/svg%3E");
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: var(--rail) 0;
+  list-style: none;
+  background-color: #0b0a0a;
+  background-image:
+    var(--hole),
+    var(--hole),
+    linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0) 30%, rgb(255 255 255 / 0) 70%, rgb(255 255 255 / 0.04));
+  background-repeat: repeat-x, repeat-x, no-repeat;
+  background-position:
+    0 0,
+    0 100%,
+    0 0;
+  background-size:
+    calc(var(--rail) * 0.86) var(--rail),
+    calc(var(--rail) * 0.86) var(--rail),
+    100% 100%;
+  box-shadow:
+    0 28px 70px rgb(0 0 0 / 0.55),
+    0 0 0 1px rgb(255 255 255 / 0.04);
+  transform: rotate(-2deg) translateX(var(--drift, 0px));
+}
+
+/* Blank frames on either side: the strip goes on. */
+.films__strip::before,
+.films__strip::after {
+  content: '';
+  flex: none;
+  width: var(--film-width);
+  border-radius: 3px;
+  background: linear-gradient(135deg, #171415, #100e0f);
+}
+
+.films__strip,
+.film {
+  --film-width: clamp(240px, 26vw, 380px);
+}
+
+.film {
+  flex: none;
+  width: var(--film-width);
+}
+
+.film__figure {
+  position: relative;
+  margin: 0;
+}
+
+.film__frame {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  background: #141213;
+  transition: box-shadow 0.4s var(--ease-out);
+}
+
+.film__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition:
+    opacity 0.9s var(--ease-out),
+    transform 1.2s var(--ease-out);
+}
+
+/* A soft vignette, as a frame looks against the light. */
+.film__frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 95% at 50% 40%, rgb(0 0 0 / 0) 55%, rgb(0 0 0 / 0.45) 100%);
+  pointer-events: none;
+}
+
+.film__caption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  padding: 36px 14px 10px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(0deg, rgb(8 7 7 / 0.88), rgb(8 7 7 / 0));
+  text-align: left;
+}
+
+.film__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+}
+
+.film__meta {
+  margin: 2px 0 0;
+  color: var(--portal-ink-secondary);
+  font-size: var(--text-xs);
+}
+
+@media (hover: hover) {
+  .film:hover .film__frame {
+    box-shadow:
+      0 0 0 1px rgb(200 177 124 / 0.55),
+      0 0 36px rgb(220 200 150 / 0.16);
+  }
+
+  .film:hover .film__frame img {
+    transform: scale(1.04);
+  }
+}
+
+/* Coming up with the part: the frames light up one after the other. */
+.landing[data-reveal-ready] .films:not([data-shown]) .film__frame img {
+  opacity: 0.12;
+  transform: scale(1.06);
+}
+
+.landing[data-reveal-ready] .film:nth-child(2) .film__frame img {
+  transition-delay: 0.18s;
+}
+
+.landing[data-reveal-ready] .film:nth-child(3) .film__frame img {
+  transition-delay: 0.36s;
+}
+
+.landing[data-reveal-ready] .films:hover .film__frame img {
+  transition-delay: 0s;
+}
+
+.finale__cta {
+  margin-top: clamp(36px, 4.5vw, 56px);
 }
 
 .button--large {
@@ -791,37 +1410,51 @@ html[data-route='landing'] {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The choices side by side under the picture, the chosen one's sentence below them. */
+  /* The choices side by side under the picture (icon over name), the chosen one's sentence below
+     them. */
   .experience[data-ways='tabs'] .experience__ways {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0;
+    gap: 6px;
   }
 
   .experience[data-ways='tabs'] .way {
-    padding: 14px 8px 12px;
+    padding: 12px 6px 10px;
     text-align: center;
   }
 
-  .experience[data-ways='tabs'] .way::before {
-    top: 0;
-    right: 8px;
-    bottom: auto;
-    left: 8px;
-    width: auto;
-    height: 2px;
-  }
-
   .experience[data-ways='tabs'] .way__title {
-    justify-content: center;
-    font-size: var(--text-md);
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--text-sm);
   }
 
-  .experience[data-ways='tabs'] .way__number {
+  .experience[data-ways='tabs'] .way[data-active] :is(.way__text, .way__how) {
     display: none;
   }
 
-  .experience[data-ways='tabs'] .way[data-active] .way__text {
+  /* The keys belong to a keyboard: on a phone the stick says it. */
+  .sketch__keys {
     display: none;
+  }
+
+  .sketch__chip {
+    top: 10px;
+    left: 10px;
+    padding: 5px 10px 5px 8px;
+    font-size: var(--text-xs);
+  }
+
+  .sketch__chip--gold {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: auto;
+  }
+
+  .sketch__map {
+    top: 10px;
+    right: 10px;
+    padding: 6px 6px 4px;
   }
 
   .experience__caption {
@@ -838,6 +1471,36 @@ html[data-route='landing'] {
 }
 
 @media (max-width: 719px) {
+  /* The strip lies straight and is swiped, one film at a time; its holes travel with the films. */
+  .films {
+    margin-inline: 0;
+  }
+
+  .films__strip {
+    --film-width: 74vw;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-inline: 13vw;
+    background-attachment: local;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 13vw;
+    scrollbar-width: none;
+    transform: none;
+  }
+
+  .films__strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .films__strip::before,
+  .films__strip::after {
+    display: none;
+  }
+
+  .film {
+    scroll-snap-align: center;
+  }
+
   /* "Trải nghiệm" is also the second line of the hero; the header keeps the brand and the way in. */
   .site-nav {
     display: none;
@@ -874,23 +1537,21 @@ html[data-route='landing'] {
     padding-bottom: max(40px, calc(env(safe-area-inset-bottom) + 24px));
   }
 
-  /* Tall enough that the words stay under the screen. */
+  /* The portrait cut of the room; the words start under its screen. */
   .finale {
-    min-height: min(165vw, 780px);
+    padding-top: min(78vw, 560px);
+  }
+
+  .finale__media {
+    aspect-ratio: 4 / 5;
   }
 
   .finale__image {
-    object-position: 50% 15%;
+    object-position: 50% 30%;
   }
 
   .experience {
     padding-bottom: 24px;
-  }
-
-  .finale::after {
-    background:
-      linear-gradient(180deg, var(--portal-bg) 0%, rgb(16 16 17 / 0) 10%),
-      linear-gradient(0deg, var(--portal-bg) 0%, rgb(16 16 17 / 0.62) 20%, rgb(16 16 17 / 0) 46%);
   }
 }
 
@@ -986,7 +1647,10 @@ html[data-route='landing'] {
   }
 
   .experience__shot[data-active],
-  .way::before,
+  .experience[data-ways='tabs'] .way,
+  .way__icon,
+  .film__frame,
+  .film__frame img,
   .button,
   .site-nav a {
     transition: none;
@@ -1076,6 +1740,7 @@ html[data-route='landing'] {
 .skeleton,
 .hero__media:has(img[data-loading]),
 .experience__shot img[data-loading],
+.film__frame img[data-loading],
 .cinema-film__thumb[data-loading] {
   background-color: var(--skeleton-fill);
   background-image: linear-gradient(100deg, rgb(255 255 255 / 0) 40%, var(--skeleton-sheen) 50%, rgb(255 255 255 / 0) 60%);
@@ -1307,6 +1972,7 @@ html[data-route='landing'] {
   .shimmer-text,
   .hero__media:has(img[data-loading]),
   .experience__shot img[data-loading],
+  .film__frame img[data-loading],
   .cinema-film__thumb[data-loading] {
     animation: none;
   }
