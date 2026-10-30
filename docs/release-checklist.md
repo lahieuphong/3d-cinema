@@ -250,6 +250,6 @@ Chi tiết, số đo trước/sau: [landing-portal.md](landing-portal.md).
   - bản rollback đã biết tốt: `dpl_NpH96…` (`192318f`) hoặc `dpl_FVoxAkbu…` (`f55ef30`).
 - [ ] Làm các mục ở phần 4 trên ít nhất một iPhone và một Android trước khi quảng bá cho người dùng
   mobile.
-- [ ] Giữ dòng ghi công và giấy phép của cả ba phim (Big Buck Bunny CC BY 3.0, The Daily Dweebs
-  CC BY-SA 4.0, Caminandes 3 CC BY) trong Cài đặt › Thông tin và footer trang mở đầu (xem
+- [ ] Giữ dòng ghi công và giấy phép của cả năm phim (Big Buck Bunny CC BY 3.0, The Daily Dweebs
+  CC BY-SA 4.0, Caminandes 3 CC BY, Coffee Run CC BY 4.0, Caminandes 2 CC BY 3.0) trong Cài đặt › Thông tin và footer trang mở đầu (xem
   `docs/media-credits.md`).

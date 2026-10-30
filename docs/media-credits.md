@@ -1,13 +1,15 @@
 # Nguồn media và giấy phép
 
-Phòng chiếu có ba phim, chọn trong **Xem phim** (danh sách mở từ tên phim trên trình phát; trên điện
-thoại là các dòng trong nút điều khiển). Cả ba là phim mở của Blender, không lời thoại:
+Phòng chiếu có năm phim, chọn trong **Xem phim** (danh sách mở từ tên phim trên trình phát; trên điện
+thoại là các dòng trong nút điều khiển). Cả năm là phim mở của Blender, không lời thoại:
 
 | Phim | Tệp | Giấy phép |
 | --- | --- | --- |
 | *Big Buck Bunny* (trailer, 2008) | `big-buck-bunny-trailer-720p.mp4` | CC BY 3.0 |
 | *The Daily Dweebs* (2017) | `daily-dweebs-720p.mp4` | CC BY-SA 4.0 |
 | *Caminandes 3: Llamigos* (2016) | `caminandes-3-llamigos-720p.mp4` | CC BY (Blender Studio) |
+| *Coffee Run* (2020) | `coffee-run-720p.mp4` | CC BY 4.0 |
+| *Caminandes 2: Gran Dillama* (2013) | `caminandes-2-gran-dillama-720p.mp4` | CC BY 3.0 |
 
 Mỗi phim có poster (`*-poster.jpg`, hiện trên màn chiếu trước khi phát) và ảnh nhỏ cho danh sách
 (`*-thumb.webp`, 192 × 108, chỉ tải khi danh sách mở). Dữ liệu và dòng ghi công: `FILMS` trong
@@ -105,7 +107,7 @@ hàng đơn điệu (quy hoạch động). Script và kết quả: `artifacts/pr
 > (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org · CC BY 3.0
 
 với liên kết tới https://peach.blender.org/about/ và trang giấy phép, ở Cài đặt › Thông tin và
-footer trang mở đầu (xem "Ghi công hiển thị cho cả ba phim"). Nguồn: `credit` của phim trong
+footer trang mở đầu (xem "Ghi công hiển thị cho cả năm phim"). Nguồn: `credit` của phim trong
 `FILMS`, `src/films.ts`.
 
 ### Phụ đề
@@ -181,11 +183,75 @@ phụ đề (`captions: null`).
   `519ae4a696ac493e396c30d6e9158694a1f33a4c68dba34098039240956de564`.
 - **Ảnh nhỏ:** thu nhỏ từ poster, WebP 192×108, 4 128 byte.
 
-## Ghi công hiển thị cho cả ba phim
+## Coffee Run
 
-- **Cài đặt › Thông tin** (trong phòng chiếu) liệt kê cả ba phim, mỗi phim một nhóm: ghi công và
+| Mục | Nội dung |
+| --- | --- |
+| Tác phẩm | *Coffee Run* — phim ngắn, 2020 (Open Movie thứ 13 của Blender, đạo diễn Hjalti Hjalmarsson) |
+| Tác giả / đơn vị | Blender Animation Studio (Blender Foundation) |
+| URL nguồn (tệp gốc) | https://video.blender.org/download/web-videos/ff8fe61b-026f-4f07-b66b-2a790d6f6ab1-720.mp4 (bản 720p trên video.blender.org) |
+| Trang dự án | https://studio.blender.org/projects/coffee-run/ |
+| Giấy phép | Creative Commons Attribution 4.0 (CC BY 4.0) |
+| URL giấy phép | https://creativecommons.org/licenses/by/4.0/ |
+| Tệp trong dự án | `public/media/coffee-run-720p.mp4`, `coffee-run-poster.jpg`, `coffee-run-thumb.webp` |
+
+### Cách đã xác minh giấy phép (ngày 2026-10-30)
+
+- Trang giấy phép của dự án (https://studio.blender.org/films/coffee-run/pages/licensing): "The
+  content of the Coffee Run project is released under the Creative Commons Attribution 4.0
+  license." Dòng ghi công trang này yêu cầu: **"(CC) Blender Foundation | studio.blender.org"**.
+- Trang đó loại trừ: mọi logo (Blender, Coffee Run, Creative Commons), thương hiệu liên quan, và tư
+  liệu không do dự án làm ra. Dự án này không dùng riêng logo nào; phim được giữ nguyên, kể cả khung
+  cuối có logo Blender Cloud và Blender.
+- Phim không có lời thoại (nhạc và tiếng động); video.blender.org không có phụ đề cho phim
+  (`captions: null`).
+
+### Tệp
+
+- **Không chỉnh sửa:** tệp tải về được dùng nguyên byte. MP4 (H.264 + AAC), **1719×720 (2,39:1)**,
+  184,7 s, 38 989 727 byte, "fast start" (`ftyp`, `moov`, `free`, `mdat`), SHA-256
+  `f0d4d30bda8eb9f568803a3e2deca0769a0abea3ff8bd6e9150fc59fbbb3339a`. Màn chiếu 16:9 hiện phim có
+  dải đen trên dưới (như mọi hình không phải 16:9).
+- **Poster:** hình ở giây 38,5, JPEG chất lượng 82, 1719×720, 66 192 byte, SHA-256
+  `4ba0f256de6bd6aa14a877ec150aab1e23e89c7ab5d5b4d35bd33fdd37e5f9fe`.
+- **Ảnh nhỏ:** cắt giữa 16:9 từ cùng hình đó, WebP 192×108, 3 592 byte. Ảnh trên dải phim của trang
+  mở đầu (`public/brand/film-coffee-run-{480,800}.webp`) cũng cắt giữa 16:9 từ poster.
+
+## Caminandes 2: Gran Dillama
+
+| Mục | Nội dung |
+| --- | --- |
+| Tác phẩm | *Caminandes 2: Gran Dillama* — phim ngắn, 2013 |
+| Tác giả / đơn vị | Blender Institute (Blender Foundation) |
+| URL nguồn (tệp gốc) | https://video.blender.org/download/web-videos/fb70d459-48d2-4db5-adba-813c84f9200a-720.mp4 (bản 720p trên video.blender.org) |
+| Trang dự án | https://studio.blender.org/projects/caminandes-2/ · https://www.caminandes.com |
+| Giấy phép | Creative Commons Attribution 3.0 (CC BY 3.0) |
+| URL giấy phép | https://creativecommons.org/licenses/by/3.0/ |
+| Tệp trong dự án | `public/media/caminandes-2-gran-dillama-720p.mp4`, `caminandes-2-gran-dillama-poster.jpg`, `caminandes-2-gran-dillama-thumb.webp` |
+
+### Cách đã xác minh giấy phép (ngày 2026-10-30)
+
+- Khung cuối của chính phim (giây 143–146), đọc từ tệp tải về: biểu tượng CC và BY, rồi
+  **"Released under Creative Commons Attribution 3.0 — Blender Foundation - www.caminandes.org"**.
+  Dòng ghi công trên trang lấy đúng phần này: **"Blender Foundation – www.caminandes.org"**.
+- Một số bản sao trên Wikimedia Commons ghi CC BY-SA 3.0; khung giấy phép trong phim chỉ có CC và BY
+  (không có SA), nên trang theo phim: CC BY 3.0. Blender Studio không có trang giấy phép riêng cho
+  phim này (https://studio.blender.org/films/caminandes-2/pages/licensing trả 404).
+- Phim không có lời thoại (tiếng con vật và nhạc), nên không có phụ đề (`captions: null`).
+
+### Tệp
+
+- **Không chỉnh sửa:** MP4 (H.264 + AAC), 1280×720, 146,1 s, 26 712 755 byte, "fast start", SHA-256
+  `9603822180459078ff7ba243c53861a118570d5f16301527e045794f0eec53cd`.
+- **Poster:** hình ở giây 42,6, JPEG chất lượng 82, 1280×720, 128 138 byte, SHA-256
+  `9a167ab602bfb7dbb7422c71309502fce508e9ae306d99382352e5d3655afb1d`.
+- **Ảnh nhỏ:** thu nhỏ từ cùng hình đó, WebP 192×108, 4 560 byte.
+
+## Ghi công hiển thị cho cả năm phim
+
+- **Cài đặt › Thông tin** (trong phòng chiếu) liệt kê cả năm phim, mỗi phim một nhóm: ghi công và
   giấy phép, có liên kết.
-- **Footer trang mở đầu** liệt kê cả ba phim với ghi công và giấy phép.
+- **Footer trang mở đầu** liệt kê cả năm phim với ghi công và giấy phép.
 - **Trình phát** chỉ hiện tên phim (danh sách phim hiện thêm thời lượng và hãng); từ 2026-10-29,
   theo yêu cầu của chủ dự án, nó không còn dòng ghi công. CC BY / BY-SA cho phép ghi công "theo cách
   hợp lý với phương tiện", và trang ghi công riêng (Thông tin, footer) là cách thường dùng. Nếu bỏ
@@ -220,7 +286,7 @@ không chép thư mục này vào `dist/`.
   - Nguồn phim của khán phòng (các phim và poster của chúng) không đổi.
 - **Ảnh bước 2 và 3** là ảnh chụp giao diện thật của trang `/cinema`. Trong đó có dòng ghi công Big
   Buck Bunny của trình phát (chữ), nhưng không có hình của phim.
-- **Ghi công video:** footer của trang mở đầu ghi công cả ba phim (mục "Ghi công hiển thị cho cả ba
+- **Ghi công video:** footer của trang mở đầu ghi công cả năm phim (mục "Ghi công hiển thị cho cả năm
   phim" ở trên), vì chúng được phát trong phòng chiếu mà trang dẫn vào.
 - **Mã hoá:** WebP (và JPEG dự phòng) bằng canvas của Chrome. AVIF không dùng được: canvas của Chrome
   không mã hoá AVIF và không cài thêm công cụ nào.

@@ -22,7 +22,7 @@
 //
 // Picture names for BRAND_ONLY: logo, icons, share, portal-hero, exp-explore, exp-seats, exp-watch,
 // films. Every picture of the room is the room alone (the page's controls hidden).
-// "films": the three films' stills for the landing page's film strip (public/brand/film-*.webp),
+// "films": the films' stills for the landing page's film strip (public/brand/film-*.webp),
 // made from their posters in public/media/ (the landing page fetches nothing from /media/; each
 // still is shown with its film's credit on the page).
 
@@ -312,12 +312,12 @@ async function main() {
     }
 
     if (wanted('films')) {
-      // The films' stills (16:9), from their posters.
+      // The films' stills (16:9, the middle of a wider poster), from their posters.
       const media = path.join(root, 'public', 'media');
       for (const file of (await readdir(media)).filter((f) => f.endsWith('-poster.jpg'))) {
         const name = `film-${file.replace(/-poster\.jpg$/, '')}`;
         console.log(name);
-        await encode(tool, (await readFile(path.join(media, file))).toString('base64'), name, [480, 800], { mime: 'image/jpeg', quality: 0.8 });
+        await encode(tool, (await readFile(path.join(media, file))).toString('base64'), name, [480, 800], { mime: 'image/jpeg', quality: 0.8, crop: 16 / 9 });
       }
     }
 

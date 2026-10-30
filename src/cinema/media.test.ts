@@ -455,8 +455,8 @@ describe('film picture and controls', () => {
     expect(primaryAction(snapshot('ended'))).toBe('replay');
   });
 
-  it('three films, each with its own file, stills and the attribution its licence asks for', () => {
-    expect(FILMS).toHaveLength(3);
+  it('five films, each with its own file, stills and the attribution its licence asks for', () => {
+    expect(FILMS).toHaveLength(5);
     expect(DEMO_FILM).toBe(FILMS[0]);
     expect(new Set(FILMS.map((film) => film.id)).size).toBe(FILMS.length);
     for (const film of FILMS) {

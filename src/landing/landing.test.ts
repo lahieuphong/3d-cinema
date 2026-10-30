@@ -109,13 +109,13 @@ describe('landing content', () => {
     expect(hero).not.toContain('loading="lazy"');
     expect(hero).toContain(`width="${LANDING_IMAGES.hero.width}" height="${LANDING_IMAGES.hero.height}"`);
     const below = html.match(/<img (?!class="hero__image")[^>]*>/g)!.filter((img) => !img.includes('brand-mark'));
-    // Three ways and three films (the invitation has no picture of the room: the hero has it).
-    expect(below).toHaveLength(6);
+    // Three ways and the films (the invitation has no picture of the room: the hero has it).
+    expect(below).toHaveLength(3 + FILMS.length);
     expect(below.every((img) => img.includes('loading="lazy"') && /width="\d+" height="\d+"/.test(img) && /alt="[^"]{12,}"/.test(img))).toBe(true);
     expect(html).not.toMatch(/data:image|base64/);
   });
 
-  it('shows the three films on the screen in a strip, each with its length, studio and licence', () => {
+  it('shows the five films on the screen in a strip, each with its length, studio and licence', () => {
     const films = [...html.matchAll(/<li class="film"[\s\S]*?<\/li>/g)].map((m) => m[0]);
     expect(films).toHaveLength(FILMS.length);
     FILMS.forEach((film, i) => {

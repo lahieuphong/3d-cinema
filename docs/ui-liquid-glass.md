@@ -128,9 +128,9 @@ Nguyên tắc chung:
     - Khám phá: góc nhìn, tham quan, đi bộ;
     - Chọn ghế: tóm tắt, sơ đồ, “Xem từ ghế”;
     - Xem phim: trình phát. Tên phim là một nút viên thuốc (icon dải phim, tên, mũi tên menu — cùng
-      khuôn với “Góc khác”). Trình phát không có dòng ghi công; ghi công cả ba phim ở Cài đặt ›
+      khuôn với “Góc khác”). Trình phát không có dòng ghi công; ghi công cả năm phim ở Cài đặt ›
       Thông tin và footer trang mở đầu.
-  - Chọn phim (3 phim): bấm tên phim mở danh sách kính (cùng tông với dock, mép trái thẳng mép trái
+  - Chọn phim (5 phim; danh sách cuộn được khi cửa sổ thấp): bấm tên phim mở danh sách kính (cùng tông với dock, mép trái thẳng mép trái
     dock) phía trên trình phát, tiêu đề nhỏ “Phim”, mỗi phim một dòng: ảnh nhỏ 16:9 bo 8 px (shimmer
     tới khi tải xong), tên đậm, “thời lượng · hãng” nhỏ, dấu ✓ champagne ở phim đang chiếu (nền
     sáng hơn, bo tròn). Hover là một giọt sáng bo tròn, không có ô vuông. Esc hoặc bấm ra ngoài là

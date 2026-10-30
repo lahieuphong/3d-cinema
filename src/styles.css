@@ -1516,7 +1516,8 @@ html[data-display='standalone'] .cinema-app {
 }
 
 /* The list: the films as rows (a still, the name, length and studio, a tick on the one showing),
-   in the pane's glass (Materials), its left edge on the pane's, 8 px above it. */
+   in the pane's glass (Materials), its left edge on the pane's, 8 px above it. The five rows
+   fit above the task bar on most windows; on a lower one the list scrolls. */
 .cinema-films__menu {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -1526,6 +1527,9 @@ html[data-display='standalone'] .cinema-app {
   flex-direction: column;
   gap: 2px;
   width: min(340px, calc(100vw - 32px));
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border-radius: var(--radius-lg);
 }
@@ -3285,6 +3289,8 @@ button.cinema-hub__row:disabled {
   position: static;
   display: flex;
   width: auto;
+  max-height: none;
+  overflow: visible;
   padding: 0;
 }
 

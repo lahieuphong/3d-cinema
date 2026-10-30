@@ -1262,7 +1262,7 @@ html[data-route='landing'] {
 /* ---------- 3. The invitation: the films on the screen ----------
 
    No picture of the room here (the hero has it): a projector's beam falls from a lens above the
-   words onto the three films the screen plays, in a strip of film that runs across the page
+   words onto the five films the screen plays, in a strip of film that runs across the page
    (slightly tilted, its holes a faint light, no gold rails), then the way in. As the part comes up
    the beam opens downwards from the lens, then the frames light up one after the other; the strip
    feeds a little sideways as the page scrolls past (with a mouse). Nothing moves on its own after. */
@@ -1389,9 +1389,11 @@ html[data-route='landing'] {
   background: linear-gradient(135deg, #171415, #100e0f);
 }
 
+/* Five frames across (17.5vw each: with the gaps they stay inside the strip's 112vw from 720 px
+   up), and a blank one either side. */
 .films__strip,
 .film {
-  --film-width: clamp(240px, 26vw, 380px);
+  --film-width: clamp(150px, 17.5vw, 320px);
 }
 
 .film {
@@ -1481,6 +1483,14 @@ html[data-route='landing'] {
 
 .landing[data-reveal-ready] .film:nth-child(3) .film__frame img {
   transition-delay: 0.36s;
+}
+
+.landing[data-reveal-ready] .film:nth-child(4) .film__frame img {
+  transition-delay: 0.54s;
+}
+
+.landing[data-reveal-ready] .film:nth-child(5) .film__frame img {
+  transition-delay: 0.72s;
 }
 
 .landing[data-reveal-ready] .films:hover .film__frame img {

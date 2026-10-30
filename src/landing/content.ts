@@ -11,7 +11,7 @@ import { CINEMA_PATH } from '../router.ts';
  *
  * Three parts, "a door into the cinema": the room full width with a few words over it; one space,
  * three things it does (one picture each, with a sketch; landing.ts turns the list into tabs); the
- * invitation in: a projector's beam over the three films on the screen in a strip of film (each
+ * invitation in: a projector's beam over the five films on the screen in a strip of film (each
  * with its length, studio and licence; the full credits are in the footer), no picture of the room
  * this time (the hero has it). Every picture is a render of this auditorium (scripts/capture-brand-assets.mjs),
  * with a slate on its screen (a softly lit blank screen, or the logo) instead of a film frame.
@@ -168,7 +168,7 @@ ${WAYS.map(
 <div class="finale__content" data-reveal>
 <p class="kicker">Trên màn chiếu</p>
 <h2 id="finale-title">Đèn đã dịu. Mời bạn vào rạp.</h2>
-<p class="finale__lead">Ba phim ngắn đang chờ trên màn chiếu. Chọn phim trong rạp, ở “Xem phim”.</p>
+<p class="finale__lead">Năm phim ngắn đang chờ trên màn chiếu. Chọn phim trong rạp, ở “Xem phim”.</p>
 </div>
 <div class="films" data-reveal>
 <ol class="films__strip">
@@ -176,7 +176,7 @@ ${FILMS.map(
   (film, i) => `<li class="film" data-edge="TP ${String(i + 1).padStart(2, '0')}">
 <figure class="film__figure">
 <div class="film__frame">
-<img src="${IMG}/${filmStill(film)}-800.webp" srcset="${IMG}/${filmStill(film)}-480.webp 480w, ${IMG}/${filmStill(film)}-800.webp 800w" sizes="(min-width: 960px) 26vw, 72vw" width="800" height="450" alt="Một khung hình của phim ${film.title}." loading="lazy" decoding="async">
+<img src="${IMG}/${filmStill(film)}-800.webp" srcset="${IMG}/${filmStill(film)}-480.webp 480w, ${IMG}/${filmStill(film)}-800.webp 800w" sizes="(min-width: 720px) 18vw, 74vw" width="800" height="450" alt="Một khung hình của phim ${film.title}." loading="lazy" decoding="async">
 </div>
 <figcaption class="film__caption">
 <h3 class="film__title">${film.title}</h3>

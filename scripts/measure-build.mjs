@@ -70,7 +70,7 @@ async function bundle() {
     // Everything a visit to /cinema downloads before the scene is ready (all JS except the seat inspector).
     toScene: { raw: sum(files, 'raw') - sum(inspector, 'raw') + htmlBytes, gzip: sum(files, 'gzip') - sum(inspector, 'gzip') + gzipSync(html).length },
     jsTotal: { raw: sum(js, 'raw'), gzip: sum(js, 'gzip') },
-    // The three films, their posters and the film list's stills.
+    // The five films, their posters and the film list's stills.
     media: await Promise.all((await readdir(path.join(dist, 'media'))).sort().map(async (name) => ({ name, bytes: (await stat(path.join(dist, 'media', name))).size }))),
     fixturesInDist: existsSync(path.join(dist, 'fixtures')),
   };

@@ -3659,11 +3659,11 @@ async function filmMobile(browser, base) {
   }
 }
 
-// Three films: the list over the room (desktop) and in the control hub (phone). Another film on the
+// Five films: the list over the room (desktop) and in the control hub (phone). Another film on the
 // same element: the old one stops, the new one plays on if the last one was playing, else its
 // poster shows; title and tick follow; the choice survives the inspector round trip.
 async function filmChoice(browser, base) {
-  const FILM_IDS = ['big-buck-bunny-trailer', 'daily-dweebs', 'caminandes-3'];
+  const FILM_IDS = ['big-buck-bunny-trailer', 'daily-dweebs', 'caminandes-3', 'coffee-run', 'caminandes-2'];
   const shown = (page) =>
     page.evaluate(() => {
       const f = window.__cinema.film();
@@ -3696,7 +3696,7 @@ async function filmChoice(browser, base) {
   await ensureTask(page, 'watch');
   await page.waitForFunction(() => window.__cinema.film().view?.screen?.content === 'poster', null, { timeout: 10_000 });
   let s = await shown(page);
-  check('film choice: three films offered under the title, the first one on and ticked, the list closed', JSON.stringify(s.options) === JSON.stringify(FILM_IDS) && s.id === FILM_IDS[0] && JSON.stringify(s.pressed) === JSON.stringify([FILM_IDS[0]]) && s.expanded === 'false' && s.menu === null && /Big Buck Bunny/.test(s.title), s);
+  check('film choice: five films offered under the title, the first one on and ticked, the list closed', JSON.stringify(s.options) === JSON.stringify(FILM_IDS) && s.id === FILM_IDS[0] && JSON.stringify(s.pressed) === JSON.stringify([FILM_IDS[0]]) && s.expanded === 'false' && s.menu === null && /Big Buck Bunny/.test(s.title), s);
 
   await page.click('button[data-action="film-menu"]');
   await page.waitForFunction(() => [...document.querySelectorAll('.cinema-film__thumb')].every((i) => i.complete && i.naturalWidth > 0 && !('loading' in i.dataset)), null, { timeout: 10_000 });
@@ -3776,7 +3776,7 @@ async function filmChoice(browser, base) {
       return { id: b.dataset.film, width: Math.round(r.width), height: Math.round(r.height), inside: r.x >= 0 && r.right <= innerWidth };
     }),
   }));
-  check('film choice mobile: the three films are rows in the hub (no menu), each at least 44 px tall and inside the screen', rows.toggle === 0 && rows.rows.length === 3 && rows.rows.every((r) => r.height >= 44 && r.inside), rows);
+  check('film choice mobile: the five films are rows in the hub (no menu), each at least 44 px tall and inside the screen', rows.toggle === 0 && rows.rows.length === FILM_IDS.length && rows.rows.every((r) => r.height >= 44 && r.inside), rows);
   await p.tap('.cinema-hub .cinema-film[data-film="daily-dweebs"]');
   await p.waitForFunction(() => window.__cinema.film().id === 'daily-dweebs');
   s = await shown(p);
@@ -3979,14 +3979,14 @@ async function uiLayouts(browser, base) {
     const pausedBox = await chromeBox(page);
 
     report.ui.canvas[name] = shares;
-    // The films' attribution: all three in Cài đặt › Thông tin (and on the landing page), none in the player.
+    // The films' attribution: all five in Cài đặt › Thông tin (and on the landing page), none in the player.
     const credit = await page.evaluate(() => ({
       player: document.querySelector('.cinema-player__credit') !== null,
       about: [...document.querySelectorAll('#cinema-hub-about a[href]')].map((a) => a.textContent),
     }));
     check(
-      `ui ${name}: the three films' attribution and licences are in Cài đặt › Thông tin; the player carries no credit line`,
-      !credit.player && credit.about.length === 6 && ['www.bigbuckbunny.org', 'dailydweebs.com', 'caminandes.com'].every((t) => credit.about.some((x) => x.includes(t))) && ['CC BY 3.0', 'CC BY-SA 4.0', 'CC BY'].every((t) => credit.about.includes(t)),
+      `ui ${name}: the five films' attribution and licences are in Cài đặt › Thông tin; the player carries no credit line`,
+      !credit.player && credit.about.length === 10 && ['www.bigbuckbunny.org', 'dailydweebs.com', 'caminandes.com', 'studio.blender.org', 'www.caminandes.org'].every((t) => credit.about.some((x) => x.includes(t))) && ['CC BY 3.0', 'CC BY-SA 4.0', 'CC BY', 'CC BY 4.0'].every((t) => credit.about.includes(t)),
       credit,
     );
     report.ui.chrome[name] = { explore: [chrome['1-explore'], touring, stopped], seats: [chrome['2-seats'], ...counts.slice(-1), summaryFull], watch: [ready, playingBox, pausedBox], exploreWithMini };
@@ -5367,10 +5367,10 @@ async function uiSettings(browser, base) {
     await page.click('[data-action="hub-back"]');
     const aboutBack = await panelState(page);
     check(
-      'settings (desktop): "Thông tin" shows Tân Phong Cinema, "Bản demo — không bán vé hoặc giữ chỗ." and, for each of the three films, its credit and licence links; "Quay lại" returns focus to its row (the player has no credit line)',
+      'settings (desktop): "Thông tin" shows Tân Phong Cinema, "Bản demo — không bán vé hoặc giữ chỗ." and, for each of the five films, its credit and licence links; "Quay lại" returns focus to its row (the player has no credit line)',
       about.view === 'about' && about.title === 'Thông tin' && /Tân Phong Cinema/.test(about.text) && about.text.includes('Bản demo — không bán vé hoặc giữ chỗ.') &&
-        JSON.stringify(groups) === JSON.stringify(['Big Buck Bunny (trailer)', 'The Daily Dweebs', 'Caminandes 3: Llamigos']) && links.length === 6 &&
-        links.some((l) => /Blender Foundation/.test(l.text) && l.href.startsWith('https://')) && links.some((l) => l.text === 'CC BY 3.0' && /creativecommons/.test(l.href)) && links.some((l) => l.text === 'CC BY-SA 4.0' && /creativecommons/.test(l.href)) && links.every((l) => l.target === '_blank') &&
+        JSON.stringify(groups) === JSON.stringify(['Big Buck Bunny (trailer)', 'The Daily Dweebs', 'Caminandes 3: Llamigos', 'Coffee Run', 'Caminandes 2: Gran Dillama']) && links.length === 10 &&
+        links.some((l) => /Blender Foundation/.test(l.text) && l.href.startsWith('https://')) && links.some((l) => l.text === 'CC BY 3.0' && /creativecommons/.test(l.href)) && links.some((l) => l.text === 'CC BY-SA 4.0' && /creativecommons/.test(l.href)) && links.some((l) => l.text === 'CC BY 4.0' && /creativecommons/.test(l.href)) && links.every((l) => l.target === '_blank') &&
         aboutBack.view === 'settings' && aboutBack.focus === 'hub-about' && (await page.$$('.cinema-player__credit')).length === 0,
       { about: about.text.split('\n'), groups, links, back: aboutBack.focus },
     );
@@ -6446,7 +6446,7 @@ async function landingFlows(browser, base) {
     await context.close();
   }
 
-  // The films on the screen: scrolled to, the strip holds the three films (their stills shown, lit
+  // The films on the screen: scrolled to, the strip holds the five films (their stills shown, lit
   // up, from /brand/), each with its title, length, studio and licence; nothing from /media/.
   {
     const { context, page } = await open('landing-films');
@@ -6467,7 +6467,7 @@ async function landingFlows(browser, base) {
     }));
     await screenshot(page, 'landing-films');
     report.landing.flows.films = films;
-    check('the films on the screen: three in the strip, their stills from /brand/ shown at full light, each with title, length, studio and licence; nothing from /media/, no sideways scroll', films.shown && films.films.length === 3 && films.films.every((f) => f.loaded && f.opacity === '1' && /^\/brand\/film-/.test(f.src) && f.visible && / · /.test(f.meta)) && !requests.some((p) => p.startsWith('/media/')) && films.overflowX <= 0, films);
+    check('the films on the screen: five in the strip, their stills from /brand/ shown at full light, each with title, length, studio and licence; nothing from /media/, no sideways scroll', films.shown && films.films.length === 5 && films.films.every((f) => f.loaded && f.opacity === '1' && /^\/brand\/film-/.test(f.src) && f.visible && / · /.test(f.meta)) && !requests.some((p) => p.startsWith('/media/')) && films.overflowX <= 0, films);
     await context.close();
   }
 
