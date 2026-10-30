@@ -275,13 +275,97 @@ html[data-route='landing'] {
   color: var(--portal-ink);
 }
 
+/* ---------- Glass buttons ----------
+
+   The page's ways in are lenses of glass: a lit top edge, a soft shade at the foot, a reflection
+   across their upper half, and a band of light that slides over them now and then, one way and
+   then back (each on its own beat, so they never flash together; a compositor-only transform, no
+   script). Under the pointer they lift and brighten, under a press they give. With reduced motion
+   they stay still and plain. */
+
+.landing :is(.button--primary, .button--small, .hero__more) {
+  --sweep-delay: 0s;
+  --sweep-light: rgb(255 255 255 / 0.68);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  transition:
+    transform 0.25s var(--ease-out),
+    box-shadow 0.25s var(--ease-out),
+    background-color 0.25s var(--ease-out),
+    border-color 0.25s var(--ease-out),
+    color 0.25s var(--ease-out);
+}
+
+/* The reflection over the upper half. */
+.landing :is(.button--primary, .button--small, .hero__more)::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px 52%;
+  z-index: -1;
+  border-radius: var(--radius-pill) var(--radius-pill) 40% 40% / var(--radius-pill) var(--radius-pill) 100% 100%;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.3), rgb(255 255 255 / 0));
+  pointer-events: none;
+}
+
+/* The band of light: across, a pause, back. */
+.landing :is(.button--primary, .button--small, .hero__more)::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  background: linear-gradient(105deg, rgb(255 255 255 / 0) 28%, var(--sweep-light) 46%, rgb(255 255 255 / 0.16) 54%, rgb(255 255 255 / 0) 70%);
+  transform: translateX(-125%);
+  animation: glass-sweep 5.5s var(--ease-in-out, ease-in-out) var(--sweep-delay) infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes glass-sweep {
+  0%,
+  14% {
+    transform: translateX(-125%);
+  }
+
+  46%,
+  100% {
+    transform: translateX(125%);
+  }
+}
+
+.landing :is(.button--primary, .button--small, .hero__more):hover {
+  transform: translateY(-2px);
+}
+
+.landing :is(.button--primary, .button--small, .hero__more):active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.08s;
+}
+
+/* Champagne glass: the hero's "Vào rạp" and "Bước vào rạp". */
 .landing .button--primary {
-  background: var(--portal-gold);
+  --sweep-delay: 1.6s;
+  border: 1px solid rgb(255 246 222 / 0.55);
+  background: linear-gradient(180deg, #e2cf9f 0%, #cbb47e 50%, #b59c63 100%);
   color: #17130d;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    inset 0 -3px 8px rgb(110 80 30 / 0.3),
+    0 8px 22px rgb(200 177 124 / 0.2),
+    0 2px 6px rgb(0 0 0 / 0.35);
 }
 
 .landing .button--primary:hover {
-  background: var(--portal-gold-strong);
+  background: linear-gradient(180deg, #ecdcb3 0%, #d6c08c 50%, #bfa66e 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.65),
+    inset 0 -3px 8px rgb(110 80 30 / 0.28),
+    0 12px 28px rgb(200 177 124 / 0.3),
+    0 3px 8px rgb(0 0 0 / 0.35);
+}
+
+.landing .finale .button--primary {
+  --sweep-delay: 2.8s;
 }
 
 /* ---------- Header: flat, over the hero ---------- */
@@ -314,37 +398,51 @@ html[data-route='landing'] {
   margin-left: auto;
 }
 
+/* A line of champagne grows under the link from its left. */
 .site-nav a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
   padding: 0 4px;
+  background: linear-gradient(var(--portal-gold), var(--portal-gold)) 4px calc(100% - 9px) / 0 1.5px no-repeat;
   color: var(--portal-ink);
   font-size: var(--text-md);
   font-weight: var(--weight-medium);
   text-decoration: none;
-  text-underline-offset: 6px;
   text-shadow: 0 1px 10px rgb(0 0 0 / 0.6);
+  transition:
+    background-size 0.35s var(--ease-out),
+    color 0.25s var(--ease-out);
 }
 
-.site-nav a:hover {
-  text-decoration: underline;
-  text-decoration-color: rgb(242 238 231 / 0.5);
+.site-nav a:is(:hover, :focus-visible) {
+  background-size: calc(100% - 8px) 1.5px;
+  color: #fff;
 }
 
-/* The way in from the header: an outline in champagne, filled on hover. */
+/* The way in from the header: clear glass with a champagne rim, filled with champagne on hover. */
 .button--small {
   min-height: 44px;
-  padding: 0 20px;
-  border-color: rgb(200 177 124 / 0.75);
-  background-color: rgb(16 16 17 / 0.25);
+  padding: 0 22px;
+  border: 1px solid rgb(200 177 124 / 0.7);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.03));
   color: var(--portal-ink);
   font-size: var(--text-sm);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 6px 18px rgb(0 0 0 / 0.28);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+
+.landing .button--small {
+  --sweep-delay: 0.4s;
+  --sweep-light: rgb(255 248 230 / 0.32);
 }
 
 .button--small:hover {
-  border-color: var(--portal-gold);
-  background-color: var(--portal-gold);
+  border-color: rgb(255 246 222 / 0.6);
+  background: linear-gradient(180deg, #e2cf9f, #c2aa72);
   color: #17130d;
 }
 
@@ -448,20 +546,56 @@ html[data-route='landing'] {
   margin-top: 24px;
 }
 
+/* The second way: clear glass, its arrow nodding towards the part below now and then. */
 .hero__more {
+  --sweep-delay: 3.2s;
+  --sweep-light: rgb(255 248 230 / 0.3);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 1px solid rgb(242 238 231 / 0.24);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.03));
   color: var(--portal-ink);
   font-weight: var(--weight-medium);
-  text-decoration: underline;
-  text-decoration-color: rgb(242 238 231 / 0.35);
-  text-underline-offset: 6px;
+  text-decoration: none;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 6px 18px rgb(0 0 0 / 0.25);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
 }
 
 .hero__more:hover {
-  text-decoration-color: var(--portal-gold);
+  border-color: rgb(200 177 124 / 0.7);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.06));
+}
+
+.hero__more > span {
+  display: inline-block;
+  color: var(--portal-gold);
+  animation: arrow-nod 3s var(--ease-in-out, ease-in-out) 1.2s infinite;
+}
+
+@keyframes arrow-nod {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+
+  70% {
+    transform: translateY(4px);
+  }
+
+  80% {
+    transform: translateY(0);
+  }
+
+  88% {
+    transform: translateY(2px);
+  }
 }
 
 .hero__note {
@@ -1604,7 +1738,14 @@ html[data-route='landing'] {
   }
 
   .hero__actions {
-    gap: 8px 20px;
+    gap: 8px 10px;
+  }
+
+  /* Both ways in on one line. */
+  .hero__more {
+    gap: 6px;
+    padding: 0 14px;
+    font-size: var(--text-sm);
   }
 }
 
@@ -1672,12 +1813,22 @@ html[data-route='landing'] {
   .film__frame,
   .film__frame img,
   .button,
+  .landing :is(.button--primary, .button--small, .hero__more),
   .site-nav a {
     transition: none;
   }
 
-  .button--primary::after {
+  .button--primary::after,
+  .landing :is(.button--primary, .button--small, .hero__more)::after {
     display: none;
+  }
+
+  .hero__more > span {
+    animation: none;
+  }
+
+  .landing :is(.button--primary, .button--small, .hero__more):is(:hover, :active) {
+    transform: none;
   }
 }
 

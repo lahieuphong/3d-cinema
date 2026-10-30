@@ -187,7 +187,7 @@ ${FILMS.map(
 ).join('\n')}
 </ol>
 </div>
-<div class="finale__cta">
+<div class="finale__cta" data-reveal>
 ${cta('Bước vào rạp', ' button--large')}
 </div>
 </section>
